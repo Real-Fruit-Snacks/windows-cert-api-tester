@@ -48,9 +48,11 @@ public partial class MainWindow : Window
         }
         IgnoreServerCertCheck.IsChecked = _state.IgnoreServerCertErrors;
         TimeoutBox.Text = _state.TimeoutSeconds.ToString();
+        BaseUrlBox.Text = _state.LastBaseUrl ?? "";
 
         LoadCertificates();
         SelectCertByThumbprint(_state.LastCertThumbprint);
+        RefreshSavedBases();
         RefreshHistoryList();
 
         PreviewKeyDown += Window_PreviewKeyDown;
@@ -74,6 +76,7 @@ public partial class MainWindow : Window
         _state.LastCertThumbprint = SelectedThumbprint();
         _state.IgnoreServerCertErrors = IgnoreServerCertCheck.IsChecked == true;
         _state.TimeoutSeconds = ParseTimeout();
+        _state.LastBaseUrl = string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? null : BaseUrlBox.Text.Trim();
         _state.Save();
         base.OnClosing(e);
     }
@@ -156,10 +159,52 @@ public partial class MainWindow : Window
 
     private void SelectCertByThumbprint(string? thumbprint)
     {
-        if (string.IsNullOrEmpty(thumbprint)) return;
+        if (string.IsNullOrEmpty(thumbprint)) { CertCombo.SelectedIndex = 0; return; }
         int idx = _visibleOptions.FindIndex(o => o.Thumbprint == thumbprint);
-        if (idx >= 0) CertCombo.SelectedIndex = idx;
+        CertCombo.SelectedIndex = idx >= 0 ? idx : 0;
     }
+
+    // ---------- website (base URL) ----------
+
+    private void RefreshSavedBases()
+    {
+        var items = new List<string> { "— saved websites —" };
+        items.AddRange(_state.SavedBaseUrls);
+        SavedBasesCombo.ItemsSource = items;
+        SavedBasesCombo.SelectedIndex = 0;
+    }
+
+    private void SavedBasesCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SavedBasesCombo.SelectedIndex > 0 && SavedBasesCombo.SelectedItem is string s)
+        {
+            BaseUrlBox.Text = s;
+            SavedBasesCombo.SelectedIndex = 0;
+        }
+    }
+
+    private void ForgetBaseButton_Click(object sender, RoutedEventArgs e)
+    {
+        var b = BaseUrlBox.Text.Trim();
+        if (!string.IsNullOrEmpty(b) && _state.SavedBaseUrls.Remove(b))
+        {
+            RefreshSavedBases();
+            StatusText.Text = $"Forgot website {b}.";
+        }
+    }
+
+    private void SaveBaseUrl()
+    {
+        var b = BaseUrlBox.Text.Trim();
+        if (!string.IsNullOrEmpty(b) && !_state.SavedBaseUrls.Contains(b, StringComparer.OrdinalIgnoreCase))
+        {
+            _state.SavedBaseUrls.Insert(0, b);
+            if (_state.SavedBaseUrls.Count > 20) _state.SavedBaseUrls.RemoveRange(20, _state.SavedBaseUrls.Count - 20);
+            RefreshSavedBases();
+        }
+    }
+
+    private string EffectiveUrl() => UrlHelper.Combine(BaseUrlBox.Text, UrlBox.Text);
 
     // ---------- headers / auth ----------
 
@@ -215,7 +260,7 @@ public partial class MainWindow : Window
         return new ApiRequest
         {
             Method = new HttpMethod(method),
-            Url = UrlBox.Text.Trim(),
+            Url = EffectiveUrl(),
             Headers = BuildHeaders(),
             Body = body,
             ContentType = contentType,
@@ -228,7 +273,8 @@ public partial class MainWindow : Window
     private async System.Threading.Tasks.Task SendRequestAsync()
     {
         if (!SendButton.IsEnabled) return;
-        if (string.IsNullOrWhiteSpace(UrlBox.Text)) { StatusText.Text = "Enter a URL."; return; }
+        if (string.IsNullOrWhiteSpace(EffectiveUrl())) { StatusText.Text = "Enter a URL."; return; }
+        SaveBaseUrl();
 
         var cert = SelectedCert();
         var request = BuildRequest();
@@ -241,7 +287,7 @@ public partial class MainWindow : Window
             var response = await _apiClient.SendAsync(
                 request, cert, IgnoreServerCertCheck.IsChecked == true, cancellationToken: _cts.Token);
             RenderResponse(response);
-            AddToHistory(request, response);
+            AddToHistory(response);
         }
         finally
         {
@@ -328,7 +374,7 @@ public partial class MainWindow : Window
 
     private void CopyCurlButton_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(UrlBox.Text)) { StatusText.Text = "Enter a URL first."; return; }
+        if (string.IsNullOrWhiteSpace(EffectiveUrl())) { StatusText.Text = "Enter a URL first."; return; }
         TrySetClipboard(BuildCurl(), "Copied cURL command.");
     }
 
@@ -342,7 +388,7 @@ public partial class MainWindow : Window
     {
         var method = ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!;
         var sb = new StringBuilder();
-        sb.Append("curl -X ").Append(method).Append(" \"").Append(UrlBox.Text.Trim()).Append('"');
+        sb.Append("curl -X ").Append(method).Append(" \"").Append(EffectiveUrl()).Append('"');
         foreach (var h in BuildHeaders())
             sb.Append(" \\\n  -H \"").Append(h.Key).Append(": ").Append(h.Value.Replace("\"", "\\\"")).Append('"');
         var thumb = SelectedThumbprint();
@@ -396,12 +442,15 @@ public partial class MainWindow : Window
 
     // ---------- history ----------
 
-    private void AddToHistory(ApiRequest request, ApiResponse response)
+    private const int MaxStoredBody = 256 * 1024;
+
+    private void AddToHistory(ApiResponse response)
     {
         var entry = new HistoryEntry
         {
-            Method = request.Method.Method,
-            Url = request.Url,
+            Method = ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!,
+            BaseUrl = string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? null : BaseUrlBox.Text.Trim(),
+            Url = UrlBox.Text.Trim(),
             Headers = _headerRows.Select(h => new HeaderRow { Enabled = h.Enabled, Name = h.Name, Value = h.Value }).ToList(),
             Body = string.IsNullOrEmpty(BodyBox.Text) ? null : BodyBox.Text,
             ContentType = (ContentTypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "application/json",
@@ -409,12 +458,34 @@ public partial class MainWindow : Window
             AuthUser = BasicUserBox.Text,
             AuthSecret = AuthTypeCombo.SelectedIndex == 1 ? BearerTokenBox.Text : BasicPassBox.Text,
             CertThumbprint = SelectedThumbprint(),
-            StatusCode = response.StatusCode
+            IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true,
+            TimeoutSeconds = ParseTimeout(),
+            StatusCode = response.StatusCode,
+            Response = BuildSnapshot(response)
         };
-        _state.History.RemoveAll(h => h.Method == entry.Method && h.Url == entry.Url);
+        _state.History.RemoveAll(h => h.Method == entry.Method && h.EffectiveUrl == entry.EffectiveUrl);
         _state.History.Insert(0, entry);
-        if (_state.History.Count > 50) _state.History.RemoveRange(50, _state.History.Count - 50);
+        if (_state.History.Count > 30) _state.History.RemoveRange(30, _state.History.Count - 30);
         RefreshHistoryList();
+    }
+
+    private ResponseSnapshot BuildSnapshot(ApiResponse r)
+    {
+        var body = r.Body;
+        bool truncated = body.Length > MaxStoredBody;
+        return new ResponseSnapshot
+        {
+            StatusCode = r.StatusCode,
+            ReasonPhrase = r.ReasonPhrase,
+            ElapsedMs = r.Elapsed.TotalMilliseconds,
+            ContentType = r.ContentType,
+            Body = truncated ? Array.Empty<byte>() : body,
+            BodyTruncated = truncated,
+            Headers = r.Headers.Select(h => new HeaderRow { Name = h.Key, Value = h.Value }).ToList(),
+            Diagnostics = FormatDiagnostics(r.Connection),
+            ErrorKind = r.Error?.Kind.ToString(),
+            ErrorMessage = r.Error?.Message
+        };
     }
 
     private void RefreshHistoryList()
@@ -438,6 +509,8 @@ public partial class MainWindow : Window
 
     private void LoadEntry(HistoryEntry entry)
     {
+        // Fully replace the current request with the stored one.
+        BaseUrlBox.Text = entry.BaseUrl ?? "";
         SelectMethod(entry.Method);
         UrlBox.Text = entry.Url;
 
@@ -453,7 +526,65 @@ public partial class MainWindow : Window
         BasicUserBox.Text = entry.AuthUser ?? "";
         BasicPassBox.Text = entry.AuthType == "Basic" ? entry.AuthSecret ?? "" : "";
 
+        IgnoreServerCertCheck.IsChecked = entry.IgnoreServerCert;
+        TimeoutBox.Text = entry.TimeoutSeconds.ToString();
         SelectCertByThumbprint(entry.CertThumbprint);
+
+        // Restore that request's own response.
+        if (entry.Response is not null) RenderSnapshot(entry.Response);
+        else ClearResponse();
+    }
+
+    private void RenderSnapshot(ResponseSnapshot s)
+    {
+        DiagnosticsBox.Text = s.Diagnostics ?? "No connection details available.";
+
+        if (s.ErrorMessage is not null)
+        {
+            _lastResponse = null;
+            _lastRawText = s.ErrorMessage;
+            SetPretty(s.ErrorMessage, BodyKind.Text);
+            RawBox.Text = s.ErrorMessage;
+            ResponseHeadersBox.Text = "";
+            StatusText.Text = $"Error [{s.ErrorKind}]: {s.ErrorMessage}   (from history)";
+            return;
+        }
+
+        var recon = new ApiResponse
+        {
+            StatusCode = s.StatusCode,
+            ReasonPhrase = s.ReasonPhrase,
+            ContentType = s.ContentType,
+            Body = s.Body,
+            Headers = s.Headers.Select(h => new KeyValuePair<string, string>(h.Name, h.Value)).ToList(),
+            Elapsed = TimeSpan.FromMilliseconds(s.ElapsedMs)
+        };
+        _lastResponse = recon;
+
+        if (s.BodyTruncated)
+        {
+            SetPretty("(the response body was too large to keep in history — re-send to see it)", BodyKind.Text);
+            _lastRawText = "";
+        }
+        else
+        {
+            var formatted = _formatter.Format(recon);
+            SetPretty(formatted.Text, formatted.Kind);
+            _lastRawText = Encoding.UTF8.GetString(s.Body);
+        }
+        RawBox.Text = _lastRawText;
+        ResponseHeadersBox.Text = string.Join("\n", recon.Headers.Select(h => $"{h.Key}: {h.Value}"));
+        StatusText.Text = $"{s.StatusCode} {s.ReasonPhrase}  •  {s.Body.Length} bytes  •  {s.ElapsedMs:F0} ms   (from history)";
+    }
+
+    private void ClearResponse()
+    {
+        PrettyRich.Document = new System.Windows.Documents.FlowDocument();
+        RawBox.Text = "";
+        ResponseHeadersBox.Text = "";
+        DiagnosticsBox.Text = "";
+        _lastResponse = null;
+        _lastRawText = "";
     }
 
     private void SelectMethod(string method)

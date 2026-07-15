@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ApiTester.App;
 
@@ -17,6 +18,9 @@ public sealed class AppState
     public string? LastCertThumbprint { get; set; }
     public bool IgnoreServerCertErrors { get; set; }
     public int TimeoutSeconds { get; set; } = 100;
+
+    public string? LastBaseUrl { get; set; }
+    public List<string> SavedBaseUrls { get; set; } = new();
 
     public List<HistoryEntry> History { get; set; } = new();
 
@@ -53,11 +57,28 @@ public sealed class AppState
     }
 }
 
+/// <summary>Combines a base URL with a path, honoring absolute URLs typed in the path box.</summary>
+public static class UrlHelper
+{
+    public static string Combine(string? baseUrl, string? path)
+    {
+        path = (path ?? "").Trim();
+        baseUrl = (baseUrl ?? "").Trim();
+        if (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return path;
+        if (string.IsNullOrEmpty(baseUrl)) return path;
+        if (string.IsNullOrEmpty(path)) return baseUrl;
+        return baseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
+    }
+}
+
 public sealed class HistoryEntry
 {
     public DateTime Timestamp { get; set; } = DateTime.Now;
     public string Method { get; set; } = "GET";
-    public string Url { get; set; } = "";
+    public string? BaseUrl { get; set; }
+    public string Url { get; set; } = "";           // the path/rest typed in the URL box
     public List<HeaderRow> Headers { get; set; } = new();
     public string? Body { get; set; }
     public string ContentType { get; set; } = "application/json";
@@ -65,9 +86,27 @@ public sealed class HistoryEntry
     public string? AuthUser { get; set; }
     public string? AuthSecret { get; set; }
     public string? CertThumbprint { get; set; }
+    public bool IgnoreServerCert { get; set; }
+    public int TimeoutSeconds { get; set; } = 100;
     public int? StatusCode { get; set; }
+    public ResponseSnapshot? Response { get; set; }
 
-    public string Display => $"{Method}  {Url}";
+    [JsonIgnore] public string EffectiveUrl => UrlHelper.Combine(BaseUrl, Url);
+
+    [JsonIgnore]
+    public string DisplayPath
+    {
+        get
+        {
+            if (Uri.TryCreate(EffectiveUrl, UriKind.Absolute, out var u))
+                return string.IsNullOrEmpty(u.PathAndQuery) ? "/" : u.PathAndQuery;
+            return string.IsNullOrEmpty(Url) ? EffectiveUrl : Url;
+        }
+    }
+
+    [JsonIgnore]
+    public string DisplayHost =>
+        Uri.TryCreate(EffectiveUrl, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Host}" : "";
 }
 
 public sealed class HeaderRow
@@ -75,4 +114,19 @@ public sealed class HeaderRow
     public bool Enabled { get; set; } = true;
     public string Name { get; set; } = "";
     public string Value { get; set; } = "";
+}
+
+/// <summary>A stored snapshot of the response for a history entry.</summary>
+public sealed class ResponseSnapshot
+{
+    public int? StatusCode { get; set; }
+    public string? ReasonPhrase { get; set; }
+    public double ElapsedMs { get; set; }
+    public string? ContentType { get; set; }
+    public byte[] Body { get; set; } = Array.Empty<byte>();
+    public bool BodyTruncated { get; set; }
+    public List<HeaderRow> Headers { get; set; } = new();
+    public string? Diagnostics { get; set; }
+    public string? ErrorKind { get; set; }
+    public string? ErrorMessage { get; set; }
 }

@@ -64,10 +64,14 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel>
-                                <TextBlock Text="{Binding Method}" FontSize="10" FontWeight="Bold"
-                                           Foreground="{StaticResource Accent}"/>
-                                <TextBlock Text="{Binding Url}" TextTrimming="CharacterEllipsis"
-                                           Foreground="{StaticResource Text.Soft}" FontSize="11.5"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Method}" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource Text.Normal}" FontSize="12"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding DisplayHost}" TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource Text.Faint}" FontSize="10" Margin="0,1,0,0"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -80,14 +84,27 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*" MinHeight="130"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="2*" MinHeight="170"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- cert row -->
+            <!-- website (base URL) row -->
             <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                <TextBlock Text="WEBSITE" Style="{StaticResource Caption}" DockPanel.Dock="Left"
+                           VerticalAlignment="Center" Width="92"/>
+                <ComboBox x:Name="SavedBasesCombo" DockPanel.Dock="Right" Width="190" Margin="8,0,0,0"
+                          SelectionChanged="SavedBasesCombo_SelectionChanged"/>
+                <Button x:Name="ForgetBaseButton" DockPanel.Dock="Right" Content="Forget" Width="74"
+                        Click="ForgetBaseButton_Click"/>
+                <TextBox x:Name="BaseUrlBox" VerticalContentAlignment="Center"
+                         ToolTip="Base URL, e.g. https://internal.corp — the URL box below is appended to this. Leave blank to type full URLs."/>
+            </DockPanel>
+
+            <!-- cert row -->
+            <DockPanel Grid.Row="1" Margin="0,0,0,8">
                 <TextBlock Text="CERTIFICATE" Style="{StaticResource Caption}" DockPanel.Dock="Left"
                            VerticalAlignment="Center" Width="92"/>
                 <CheckBox x:Name="IgnoreServerCertCheck" DockPanel.Dock="Right"
@@ -100,7 +117,7 @@
             </DockPanel>
 
             <!-- request line -->
-            <DockPanel Grid.Row="1" Margin="0,0,0,8">
+            <DockPanel Grid.Row="2" Margin="0,0,0,8">
                 <ComboBox x:Name="MethodCombo" DockPanel.Dock="Left" Width="92" SelectedIndex="0" Margin="0,0,8,0">
                     <ComboBoxItem>GET</ComboBoxItem>
                     <ComboBoxItem>POST</ComboBoxItem>
@@ -120,11 +137,12 @@
                              VerticalContentAlignment="Center" ToolTip="Request timeout (seconds)"/>
                     <TextBlock Text="s" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{StaticResource Text.Muted}"/>
                 </StackPanel>
-                <TextBox x:Name="UrlBox" VerticalContentAlignment="Center" KeyDown="UrlBox_KeyDown"/>
+                <TextBox x:Name="UrlBox" VerticalContentAlignment="Center" KeyDown="UrlBox_KeyDown"
+                         ToolTip="Path appended to the website above (e.g. /api/thing), or a full URL if no website is set."/>
             </DockPanel>
 
             <!-- request config tabs -->
-            <TabControl Grid.Row="2">
+            <TabControl Grid.Row="3">
                 <TabItem Header="Headers">
                     <DockPanel Margin="2">
                         <Button DockPanel.Dock="Bottom" x:Name="AddHeaderButton" Content="+ Add header" Width="120"
@@ -199,11 +217,11 @@
                 </TabItem>
             </TabControl>
 
-            <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
+            <GridSplitter Grid.Row="4" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
                           VerticalAlignment="Center"/>
 
             <!-- response -->
-            <DockPanel Grid.Row="4">
+            <DockPanel Grid.Row="5">
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
                     <TextBlock Text="RESPONSE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -236,7 +254,7 @@
             </DockPanel>
 
             <!-- status bar -->
-            <Border Grid.Row="5" Margin="0,8,0,0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
+            <Border Grid.Row="6" Margin="0,8,0,0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
                     BorderThickness="1" CornerRadius="6" Padding="12,8">
                 <DockPanel>
                     <Button x:Name="SelfTestButton" Content="Run Self-Test" Width="118"
