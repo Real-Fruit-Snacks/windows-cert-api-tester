@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Certificate API Tester — Windows client-certificate (mTLS) API client</title>
+<meta name="description" content="A Windows desktop API tester that authenticates to endpoints with a client certificate from the Windows certificate store (mTLS) and renders responses of any format.">
+<meta property="og:title" content="Certificate API Tester">
+<meta property="og:description" content="Authenticate to endpoints with a client certificate from the Windows store (mTLS), and read whatever they return.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://real-fruit-snacks.github.io/windows-cert-api-tester/assets/banner.svg">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='3'%20fill='%23090c0d'/%3E%3Crect%20x='3'%20y='3'%20width='4.4'%20height='4.4'%20rx='1'%20fill='%2363f2ab'/%3E%3Crect%20x='8.6'%20y='3'%20width='4.4'%20height='4.4'%20rx='1'%20fill='%236bdcff'/%3E%3Crect%20x='3'%20y='8.6'%20width='4.4'%20height='4.4'%20rx='1'%20fill='%23f0c674'/%3E%3Crect%20x='8.6'%20y='8.6'%20width='4.4'%20height='4.4'%20rx='1'%20fill='%23dce4df'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/tokens.css">
+<style>
+  * { box-sizing: border-box; }
+  html { background: var(--twb-bg-0); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--twb-bg-0);
+    color: var(--twb-text-normal);
+    font-family: var(--twb-font-ui);
+    font-size: 16px;
+    line-height: var(--twb-line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--twb-selection); }
+  a { color: var(--twb-accent-alt); text-decoration: none; border-bottom: 1px solid transparent; }
+  a:hover { border-bottom-color: var(--twb-accent-alt); }
+  code { font-family: var(--twb-font-mono); font-size: 0.9em; color: var(--twb-text-soft);
+    background: var(--twb-bg-2); border: 1px solid var(--twb-border); border-radius: var(--twb-radius-s); padding: 1px 6px; }
+  pre { font-family: var(--twb-font-mono); font-size: 13.5px; line-height: 1.62; background: var(--twb-bg-2);
+    border: 1px solid var(--twb-border); border-radius: var(--twb-radius-m); padding: 16px 18px; overflow-x: auto; color: var(--twb-text-soft); }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+  .manifest { font-family: var(--twb-font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--twb-text-muted); }
+  .manifest .chev { color: var(--twb-accent); }
+
+  header.site { border-bottom: 1px solid var(--twb-border); background: var(--twb-bg-1);
+    position: sticky; top: 0; z-index: 10; backdrop-filter: blur(6px); }
+  header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 52px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .logo { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 18px; }
+  .brand .logo i { display: block; width: 8px; height: 8px; border-radius: 2px; }
+  .brand .name { font-family: var(--twb-font-mono); font-weight: 700; letter-spacing: 0.04em; color: var(--twb-text-normal); font-size: 14px; }
+  header.site nav a { color: var(--twb-text-muted); font-size: 14px; margin-left: 20px; border: none; }
+  header.site nav a:hover { color: var(--twb-text-normal); }
+
+  .hero { text-align: center; padding: 56px 0 8px; }
+  .hero img { width: 100%; max-width: 820px; height: auto; border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); }
+  .hero p.lead { font-size: 18px; color: var(--twb-text-soft); max-width: 640px; margin: 26px auto 0; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 28px 0 8px; }
+  .btn { font-family: var(--twb-font-mono); font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+    padding: 11px 20px; border-radius: var(--twb-radius-m); border: 1px solid var(--twb-border-strong);
+    color: var(--twb-text-normal); background: var(--twb-bg-2); cursor: pointer; }
+  .btn:hover { border-color: var(--twb-accent); color: var(--twb-text-normal); }
+  .btn.primary { background: var(--twb-accent); color: var(--twb-text-on-accent); border-color: var(--twb-accent); }
+  .btn.primary:hover { filter: brightness(1.06); }
+
+  section { padding: 44px 0; border-top: 1px solid var(--twb-border); }
+  section:first-of-type { border-top: none; }
+  h2 { font-size: 26px; font-weight: 740; color: var(--twb-accent); margin: 10px 0 6px; letter-spacing: -0.01em; }
+  section > .wrap > p { color: var(--twb-text-soft); max-width: 680px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 26px; }
+  .card { background: var(--twb-bg-1); border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); padding: 20px; }
+  .card h3 { font-family: var(--twb-font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--twb-accent); margin: 0 0 8px; }
+  .card p { margin: 0; font-size: 14.5px; color: var(--twb-text-soft); line-height: 1.6; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 22px; }
+  @media (max-width: 680px) { .cols { grid-template-columns: 1fr; } }
+  .cols h3 { font-size: 16px; color: var(--twb-accent-alt); margin: 0 0 8px; }
+
+  footer { border-top: 1px solid var(--twb-border); background: var(--twb-bg-1); padding: 28px 0; color: var(--twb-text-muted); font-size: 13.5px; }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <i style="background:#63f2ab"></i><i style="background:#6bdcff"></i><i style="background:#f0c674"></i><i style="background:#dce4df"></i>
+      </span>
+      <span class="name">cert-api-tester</span>
+    </div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#get">Get it</a>
+      <a href="#how">How it works</a>
+      <a href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <img src="assets/banner.svg" alt="Certificate API Tester — client-certificate (mTLS) auth from the Windows store">
+    <p class="lead">A Windows desktop API tester that authenticates to endpoints with a client certificate from your Windows certificate store — and renders whatever they return, even when you don't know the format.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest">Download for Windows</a>
+      <a class="btn" href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester">View source</a>
+    </div>
+    <p class="manifest" style="margin-top:6px"><span class="chev">&#10095;</span> SELF-CONTAINED EXE &#183; NO INSTALL &#183; NO ADMIN</p>
+  </div>
+</div>
+
+<section id="what">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> THE PROBLEM</p>
+    <h2>Client-certificate endpoints, without the file wrangling</h2>
+    <p>Some internal sites don't take a password — they ask your browser to choose a certificate and complete a mutual-TLS handshake. Most API clients want that certificate and its private key as files on disk, which enterprise and smart-card certificates deliberately don't allow. Certificate API Tester pulls the certificate straight from your Windows store and lets Windows sign the handshake, so the private key never has to leave — and never has to be exportable.</p>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> WHAT IT DOES</p>
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="card"><h3>Windows store certs</h3><p>Pick a client certificate from <code>CurrentUser\My</code> with subject, issuer, thumbprint, and expiry. Non-exportable and smart-card keys work — Windows signs the handshake.</p></div>
+      <div class="card"><h3>Full request builder</h3><p>Any method, custom headers, a request body, and a configurable timeout. Everything you need to poke an unfamiliar endpoint.</p></div>
+      <div class="card"><h3>Reads any response</h3><p>Pretty-prints JSON and XML, shows HTML/text, hex-dumps binary — and sniffs the body when the content type is missing or lying.</p></div>
+      <div class="card"><h3>Clear failures</h3><p>Tells "certificate refused" apart from "server not trusted", a network error, and a timeout — not one opaque failure.</p></div>
+      <div class="card"><h3>Built-in self-test</h3><p>One click stands up a local mutual-TLS server and proves the whole certificate path end to end — no real endpoint required.</p></div>
+      <div class="card"><h3>Portable</h3><p>A single self-contained executable. No installer, no admin rights, no runtime to install. Carry it onto an offline machine.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="get">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> GET IT</p>
+    <h2>Download or build</h2>
+    <div class="cols">
+      <div>
+        <h3>Download</h3>
+        <p>Grab <code>ApiTester.App.exe</code> from the <a href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest">latest release</a> and double-click it. No install, no admin — copy it anywhere, including onto an offline machine.</p>
+      </div>
+      <div>
+        <h3>Build from source</h3>
+        <pre><code>dotnet build
+dotnet test --filter "Category!=StoreRoundTrip"
+dotnet run --project src/ApiTester.App
+
+# portable exe:
+dotnet publish src/ApiTester.App -c Release \
+  -r win-x64 --self-contained -o publish</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="offline">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> AIR-GAPPED</p>
+    <h2>Built for disconnected networks</h2>
+    <p>The released executable is self-contained, so running it offline is just copying a file. To build it on your own disconnected CI, the repository ships a <code>.gitlab-ci.yml</code> for a self-hosted GitLab: it builds, tests, and packages the executable on a Windows runner, and can publish this documentation site to an internal GitLab Pages. Point NuGet at an internal mirror and no public internet is needed.</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> UNDER THE HOOD</p>
+    <h2>How it works</h2>
+    <div class="cols">
+      <div>
+        <h3>Mutual TLS</h3>
+        <p>The app builds an <code>HttpClient</code> over a <code>SocketsHttpHandler</code> and attaches your chosen certificate. During the handshake the server requests a client certificate and the app presents yours; for non-exportable keys the signing is done by Windows, so the app never sees the raw key.</p>
+      </div>
+      <div>
+        <h3>A real self-test</h3>
+        <p>The self-test generates an in-memory CA plus a server and client certificate, runs a local server that <em>requires</em> a client certificate, and drives a real request through the same code path used for live endpoints.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>MIT-licensed &#183; Windows 10/11 &#183; .NET 9</span>
+    <span>Styled with the <a href="https://github.com/Real-Fruit-Snacks/terminal-workbench-design-system">Terminal Workbench</a> design system</span>
+  </div>
+</footer>
+
+</body>
+</html>
