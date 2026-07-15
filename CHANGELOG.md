@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-14
+
+### Added
+- Faint placeholder / example text in the input fields (website, URL, certificate filter, header
+  name/value, body, and auth) and guidance hints in the empty response tabs, to help first-time use.
+
 ## [1.7.0] - 2026-07-14
 
 ### Added
@@ -89,6 +95,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.8.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.8.0
 [1.7.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.7.0
 [1.6.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.6.0
 [1.5.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.5.0

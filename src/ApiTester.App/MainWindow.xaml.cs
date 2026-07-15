@@ -54,6 +54,7 @@ public partial class MainWindow : Window
         SelectCertByThumbprint(_state.LastCertThumbprint);
         RefreshSavedBases();
         RefreshHistoryList();
+        ShowPrettyHint();
 
         PreviewKeyDown += Window_PreviewKeyDown;
     }
@@ -579,12 +580,25 @@ public partial class MainWindow : Window
 
     private void ClearResponse()
     {
-        PrettyRich.Document = new System.Windows.Documents.FlowDocument();
+        ShowPrettyHint();
         RawBox.Text = "";
         ResponseHeadersBox.Text = "";
         DiagnosticsBox.Text = "";
         _lastResponse = null;
         _lastRawText = "";
+    }
+
+    private void ShowPrettyHint()
+    {
+        var run = new System.Windows.Documents.Run("The formatted response appears here after you send a request.")
+        {
+            Foreground = (System.Windows.Media.Brush)FindResource("Text.Faint")
+        };
+        PrettyRich.Document = new System.Windows.Documents.FlowDocument(new System.Windows.Documents.Paragraph(run))
+        {
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            FontSize = 12.5
+        };
     }
 
     private void SelectMethod(string method)
