@@ -1,15 +1,15 @@
-# GitLab CI for building Certificate API Tester on a self-hosted / offline GitLab.
+# GitLab CI for building Certificate API Tester on a self-hosted GitLab.
 #
 # Why Windows: the desktop app is WPF (net9.0-windows) and can only be built on
 # Windows, so the build/publish jobs need a runner tagged `windows` that has the
 # .NET 9 SDK installed. The docs `pages` job is platform-agnostic.
 #
-# Fully air-gapped (no internet) checklist:
+# Self-hosted runner notes:
 #   1. Use a runner image that already contains the .NET 9 SDK.
-#   2. Commit a nuget.config whose <packageSources> points only at your internal
-#      mirror, and set NUGET_PACKAGES (below) so restore reads from the cache.
-#   3. Mirror the alpine image used by the pages job into your internal registry
-#      (or swap it for any image you already host).
+#   2. To restore from your own package feed, commit a nuget.config whose
+#      <packageSources> points at your internal mirror; NUGET_PACKAGES (below)
+#      caches the restored packages between runs.
+#   3. Mirror or swap the alpine image used by the pages job for one you host.
 
 stages:
   - build

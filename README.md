@@ -22,7 +22,7 @@ Some internal sites and APIs don't take a password — they ask your browser to 
 
 Certificate API Tester talks to those endpoints directly. You pick a certificate from your Windows store, compose a request, and send it — the operating system performs the signing during the TLS handshake, so the private key never has to leave the store (and never has to be exportable). Because you often only know the endpoint and not the shape of what comes back, the response viewer figures out the format for you and pretty-prints it.
 
-It runs as a single self-contained `.exe` — no installer, no admin rights, no .NET runtime required on the machine — so it's easy to carry onto a locked-down or air-gapped workstation.
+It runs as a single self-contained `.exe` with no external dependencies — no installer, no admin rights, and no .NET runtime required on the machine. Copy the file and run it.
 
 ## Features
 
@@ -42,7 +42,7 @@ It runs as a single self-contained `.exe` — no installer, no admin rights, no 
 
 ## Download
 
-Grab `ApiTester.App.exe` from the [latest release](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) and double-click it. There is no installer and it needs no admin rights — copy it wherever you like, including onto an offline machine.
+Grab `ApiTester.App.exe` from the [latest release](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) and double-click it. There is no installer and it needs no admin rights — copy it wherever you like and run it.
 
 ## Build from source
 
@@ -64,12 +64,10 @@ dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publi
 
 > The runtime-identifier and self-contained flags live on the publish command, not in the project file, so everyday `dotnet build` / `dotnet test` stay fast and framework-dependent.
 
-## Offline / air-gapped hosting
+## No external dependencies
 
-This tool is built for exactly the kind of environment where certificate auth is common — internal, sometimes disconnected networks.
-
-- **Running offline:** the released `ApiTester.App.exe` is self-contained. Copy it to the target machine; it needs no internet, no install, and no pre-existing .NET runtime.
-- **Building offline on your own CI:** the repository includes a [`.gitlab-ci.yml`](.gitlab-ci.yml) so a self-hosted GitLab instance can build, test, and package the executable without reaching the public internet. It expects a runner image that already has the .NET 9 SDK and, for a fully disconnected build, a local NuGet mirror (set `NUGET_PACKAGES` / a `nuget.config` source to your internal feed). The same file can publish the documentation site to GitLab Pages on an internal instance.
+- **Running it:** the released `ApiTester.App.exe` is a self-contained single file. Copy it to any Windows 10/11 machine and run it — no installer, no admin rights, and no pre-existing .NET runtime.
+- **Building it on your own CI:** the repository includes a [`.gitlab-ci.yml`](.gitlab-ci.yml) so a self-hosted GitLab instance can build, test, and package the executable on a Windows runner, and optionally publish this documentation site to GitLab Pages. Point NuGet at your own package mirror if you use one.
 
 ## How it works
 
@@ -87,7 +85,7 @@ windows-cert-api-tester/
 ├── tests/
 │   └── ApiTester.Tests/    Unit tests + an end-to-end mutual-TLS integration test
 ├── .github/workflows/      Build/test CI and the release pipeline
-├── .gitlab-ci.yml          Offline / self-hosted build + Pages
+├── .gitlab-ci.yml          Self-hosted GitLab build + Pages
 └── docs/                   Documentation site and artwork
 ```
 

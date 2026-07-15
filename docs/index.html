@@ -125,7 +125,7 @@
       <div class="card"><h3>Reads any response</h3><p>Pretty-prints JSON and XML, shows HTML/text, hex-dumps binary — and sniffs the body when the content type is missing or lying.</p></div>
       <div class="card"><h3>Clear failures</h3><p>Tells "certificate refused" apart from "server not trusted", a network error, and a timeout — not one opaque failure.</p></div>
       <div class="card"><h3>Built-in self-test</h3><p>One click stands up a local mutual-TLS server and proves the whole certificate path end to end — no real endpoint required.</p></div>
-      <div class="card"><h3>Portable</h3><p>A single self-contained executable. No installer, no admin rights, no runtime to install. Carry it onto an offline machine.</p></div>
+      <div class="card"><h3>Portable</h3><p>A single self-contained executable with no external dependencies. No installer, no admin rights, no runtime to install — copy the file and run it.</p></div>
     </div>
   </div>
 </section>
@@ -137,7 +137,7 @@
     <div class="cols">
       <div>
         <h3>Download</h3>
-        <p>Grab <code>ApiTester.App.exe</code> from the <a href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest">latest release</a> and double-click it. No install, no admin — copy it anywhere, including onto an offline machine.</p>
+        <p>Grab <code>ApiTester.App.exe</code> from the <a href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest">latest release</a> and double-click it. No install, no admin — copy it anywhere and run it.</p>
       </div>
       <div>
         <h3>Build from source</h3>
@@ -153,11 +153,11 @@ dotnet publish src/ApiTester.App -c Release \
   </div>
 </section>
 
-<section id="offline">
+<section id="nodeps">
   <div class="wrap">
-    <p class="manifest"><span class="chev">&#10095;</span> AIR-GAPPED</p>
-    <h2>Built for disconnected networks</h2>
-    <p>The released executable is self-contained, so running it offline is just copying a file. To build it on your own disconnected CI, the repository ships a <code>.gitlab-ci.yml</code> for a self-hosted GitLab: it builds, tests, and packages the executable on a Windows runner, and can publish this documentation site to an internal GitLab Pages. Point NuGet at an internal mirror and no public internet is needed.</p>
+    <p class="manifest"><span class="chev">&#10095;</span> NO DEPENDENCIES</p>
+    <h2>A single self-contained executable</h2>
+    <p>The released executable bundles the .NET runtime, so running it is just copying one file to any Windows 10/11 machine — no installer, no admin rights, and nothing to install first. To build it on your own infrastructure, the repository ships a <code>.gitlab-ci.yml</code> for a self-hosted GitLab that builds, tests, and packages the executable on a Windows runner and can publish this documentation site to GitLab Pages.</p>
   </div>
 </section>
 
