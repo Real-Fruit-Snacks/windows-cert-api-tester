@@ -1,0 +1,7 @@
+# Normalize line endings across platforms
+* text=auto
+
+# Binary assets should never be normalized
+*.png binary
+*.ico binary
+*.jpg binary
