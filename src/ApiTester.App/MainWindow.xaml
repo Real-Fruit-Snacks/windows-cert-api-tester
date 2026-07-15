@@ -98,7 +98,7 @@
                            VerticalAlignment="Center" Width="92"/>
                 <ComboBox x:Name="SavedBasesCombo" DockPanel.Dock="Right" Width="190" Margin="8,0,0,0"
                           SelectionChanged="SavedBasesCombo_SelectionChanged"/>
-                <Button x:Name="ForgetBaseButton" DockPanel.Dock="Right" Content="Forget" Width="74"
+                <Button x:Name="ForgetBaseButton" DockPanel.Dock="Right" Content="Forget" Width="74" Margin="8,0,0,0"
                         Click="ForgetBaseButton_Click"/>
                 <TextBox x:Name="BaseUrlBox" VerticalContentAlignment="Center"
                          Tag="https://internal.corp   (optional base URL)"

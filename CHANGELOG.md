@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-07-14
+
+### Changed
+- New application icon — a clean, bold padlock — replacing the busier previous design so it stays
+  crisp and professional at small (taskbar) sizes.
+- Added spacing between the website field and the Forget button so they no longer crowd.
+
 ## [1.8.0] - 2026-07-14
 
 ### Added
@@ -95,6 +102,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.9.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.9.0
 [1.8.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.8.0
 [1.7.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.7.0
 [1.6.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.6.0
