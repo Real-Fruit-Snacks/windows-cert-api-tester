@@ -1,0 +1,59 @@
+# GitLab CI for building Certificate API Tester on a self-hosted / offline GitLab.
+#
+# Why Windows: the desktop app is WPF (net9.0-windows) and can only be built on
+# Windows, so the build/publish jobs need a runner tagged `windows` that has the
+# .NET 9 SDK installed. The docs `pages` job is platform-agnostic.
+#
+# Fully air-gapped (no internet) checklist:
+#   1. Use a runner image that already contains the .NET 9 SDK.
+#   2. Commit a nuget.config whose <packageSources> points only at your internal
+#      mirror, and set NUGET_PACKAGES (below) so restore reads from the cache.
+#   3. Mirror the alpine image used by the pages job into your internal registry
+#      (or swap it for any image you already host).
+
+stages:
+  - build
+  - package
+  - pages
+
+variables:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+
+build-test:
+  stage: build
+  tags: [windows]
+  script:
+    - dotnet restore
+    - dotnet build --configuration Release --no-restore -warnaserror
+    - dotnet test --configuration Release --no-build --filter "Category!=StoreRoundTrip"
+  cache:
+    key: nuget
+    paths:
+      - .nuget/packages
+
+publish-exe:
+  stage: package
+  tags: [windows]
+  needs: [build-test]
+  script:
+    - dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publish
+  artifacts:
+    name: "cert-api-tester-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - publish/ApiTester.App.exe
+    expire_in: 30 days
+
+# Publishes the documentation site to your internal GitLab Pages instance.
+pages:
+  stage: pages
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    - cp -r docs/. public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

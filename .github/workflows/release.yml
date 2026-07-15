@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish portable exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Test
+        run: dotnet test --configuration Release --filter "Category!=StoreRoundTrip"
+
+      - name: Publish self-contained single-file exe
+        run: dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publish
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        shell: bash
+        run: |
+          gh release create "$TAG" \
+            "publish/ApiTester.App.exe#Certificate API Tester (Windows x64, self-contained)" \
+            --title "Certificate API Tester $TAG" \
+            --generate-notes
