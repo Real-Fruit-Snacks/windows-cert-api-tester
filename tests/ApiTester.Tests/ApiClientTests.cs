@@ -27,6 +27,13 @@ public class ApiClientTests
         Assert.Equal(200, resp.StatusCode);
         Assert.Contains("hello", Encoding.UTF8.GetString(resp.Body));
         Assert.True(resp.Elapsed > TimeSpan.Zero);
+
+        // Connection diagnostics are captured.
+        Assert.NotNull(resp.Connection);
+        Assert.StartsWith("TLS", resp.Connection!.TlsProtocol);
+        Assert.True(resp.Connection.ClientCertificateSent);
+        Assert.Contains("localhost", resp.Connection.ServerCertificateSubject);
+        Assert.NotEmpty(resp.Connection.ServerCertificateChain);
     }
 
     [Fact]
