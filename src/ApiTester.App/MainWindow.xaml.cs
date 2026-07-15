@@ -28,6 +28,24 @@ public partial class MainWindow : Window
         NativeTheme.ApplyDarkTitleBar(this);
     }
 
+    private void MinButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaxButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        bool maximized = WindowState == WindowState.Maximized;
+        MaxButton.Content = maximized ? "" : ""; // restore / maximize glyph (Segoe MDL2 Assets)
+        MaxButton.ToolTip = maximized ? "Restore" : "Maximize";
+        // A borderless (WindowStyle=None) window clips its content under the resize
+        // border when maximized; inset the content to compensate.
+        RootContainer.Margin = maximized ? new Thickness(7) : new Thickness(0);
+    }
+
     private const string NoCertOption = "— no certificate —";
 
     private void LoadCertificates()

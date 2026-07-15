@@ -1,28 +1,47 @@
 <Window x:Class="ApiTester.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Certificate API Tester" Height="740" Width="1140" MinWidth="900"
+        Title="Certificate API Tester" Height="740" Width="1140" MinWidth="900" MinHeight="560"
+        WindowStyle="None"
         Background="{StaticResource Bg.Window}"
         Foreground="{StaticResource Text.Soft}"
         FontFamily="{StaticResource Mono}"
         FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal"
         UseLayoutRounding="True">
-    <DockPanel>
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="44" ResizeBorderThickness="6" CornerRadius="0"
+                      GlassFrameThickness="1" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <DockPanel x:Name="RootContainer">
 
         <!-- ============ header bar ============ -->
-        <Border DockPanel.Dock="Top" Background="{StaticResource Bg.Panel}"
-                BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="14,11">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
-                           Foreground="{StaticResource Text.Faint}" FontSize="11" Text="WINDOWS &#183; .NET 9 &#183; mTLS"/>
-                <StackPanel Orientation="Horizontal">
+        <Border DockPanel.Dock="Top" Height="44" Background="{StaticResource Bg.Panel}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
                     <TextBlock Text="&#x276F;" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"
                                Foreground="{StaticResource Accent}"/>
                     <TextBlock Text="CERTIFICATE API TESTER" VerticalAlignment="Center" Margin="9,0,0,0"
                                FontWeight="Bold" FontSize="13" Foreground="{StaticResource Text.Normal}"/>
                 </StackPanel>
-            </DockPanel>
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0"
+                           Foreground="{StaticResource Text.Faint}" FontSize="11" Text="WINDOWS &#183; .NET 9 &#183; mTLS"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinButton" Style="{StaticResource CaptionButton}" Height="44"
+                            Content="&#xE921;" Click="MinButton_Click" ToolTip="Minimize"/>
+                    <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}" Height="44"
+                            Content="&#xE922;" Click="MaxButton_Click" ToolTip="Maximize"/>
+                    <Button x:Name="CloseButton" Style="{StaticResource CaptionClose}" Height="44"
+                            Content="&#xE8BB;" Click="CloseButton_Click" ToolTip="Close"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- ============ body ============ -->
