@@ -16,6 +16,7 @@
     <SolidColorBrush x:Key="Text.Muted"  Color="#879994"/>
     <SolidColorBrush x:Key="Text.Faint"  Color="#63736f"/>
     <SolidColorBrush x:Key="Text.OnAccent" Color="#07100d"/>
+    <SolidColorBrush x:Key="Red"         Color="#ff6e7a"/>
 
     <FontFamily x:Key="Mono">Cascadia Code, Consolas, Courier New</FontFamily>
 
@@ -349,6 +350,75 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="#e81123"/>
                             <Setter Property="Foreground" Value="#ffffff"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============ ListBox (history) ============ -->
+    <Style TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Soft}"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+    </Style>
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource Text.Soft}"/>
+        <Setter Property="Padding" Value="10,7"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="bd" Background="Transparent" BorderThickness="2,0,0,0"
+                            BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource Bg.Raised}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="#1b63f2ab"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============ RichTextBox (highlighted response) ============ -->
+    <Style TargetType="RichTextBox">
+        <Setter Property="Background" Value="{StaticResource Bg.Panel}"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Soft}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="10"/>
+        <Setter Property="FontFamily" Value="Consolas"/>
+        <Setter Property="CaretBrush" Value="{StaticResource Accent}"/>
+        <Setter Property="SelectionBrush" Value="{StaticResource Accent}"/>
+    </Style>
+
+    <!-- ============ Small icon button ============ -->
+    <Style x:Key="MiniButton" TargetType="Button">
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Muted}"/>
+        <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource Bg.Raised}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Red}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

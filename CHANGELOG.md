@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-14
+
+### Added
+- **Request history** — a sidebar of recent requests (persisted); click one to reload it in full.
+- **Connection diagnostics** — a Diagnostics tab and status-line summary showing the negotiated TLS
+  version and cipher, whether the client certificate was actually presented, and the server
+  certificate (subject, issuer, thumbprint, expiry, and chain).
+- **Syntax highlighting** for JSON and XML in the Pretty response view.
+- **Headers editor** as an enable/disable key-value grid.
+- **Auth helpers** — Bearer-token and Basic auth that generate the `Authorization` header.
+- **Request Content-Type selector** for the body.
+- **Timeout field** and a **Cancel** button for in-flight requests.
+- **Copy body** and **Copy as cURL** buttons; **Save** now suggests a file extension from the content type.
+- **Certificate filter** box for quickly finding a certificate.
+- **Keyboard shortcuts**: Ctrl+Enter / Enter to send, Ctrl+L focus URL, Ctrl+S save, Ctrl+H toggle
+  history, F5 refresh certificates, Esc cancel.
+- **Remembers** window size/position, the last certificate, the ignore-cert toggle, and the timeout.
+
 ## [1.3.0] - 2026-07-14
 
 ### Changed
@@ -46,6 +64,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.4.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.1.0
