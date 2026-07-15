@@ -1,0 +1,74 @@
+<Window x:Class="ApiTester.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows Cert API Tester" Height="720" Width="1000">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="2*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Certificate row -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+            <TextBlock Text="Certificate:" VerticalAlignment="Center" Width="80"/>
+            <ComboBox x:Name="CertCombo" Width="620" DisplayMemberPath="."/>
+            <Button x:Name="RefreshCertsButton" Content="Refresh" Width="80" Margin="8,0,0,0"
+                    Click="RefreshCertsButton_Click"/>
+            <CheckBox x:Name="IgnoreServerCertCheck" Content="Ignore server cert errors (insecure)"
+                      VerticalAlignment="Center" Margin="16,0,0,0"/>
+        </StackPanel>
+
+        <!-- Request line -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6">
+            <ComboBox x:Name="MethodCombo" Width="90" SelectedIndex="0">
+                <ComboBoxItem>GET</ComboBoxItem>
+                <ComboBoxItem>POST</ComboBoxItem>
+                <ComboBoxItem>PUT</ComboBoxItem>
+                <ComboBoxItem>PATCH</ComboBoxItem>
+                <ComboBoxItem>DELETE</ComboBoxItem>
+                <ComboBoxItem>HEAD</ComboBoxItem>
+                <ComboBoxItem>OPTIONS</ComboBoxItem>
+            </ComboBox>
+            <TextBox x:Name="UrlBox" Width="700" Margin="8,0,0,0" VerticalContentAlignment="Center"/>
+            <Button x:Name="SendButton" Content="Send" Width="90" Margin="8,0,0,0" Click="SendButton_Click"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" Text="Headers (one per line, &quot;Name: Value&quot;):" Margin="0,4,0,2"/>
+        <TextBox Grid.Row="3" x:Name="HeadersBox" AcceptsReturn="True" TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto" FontFamily="Consolas" MinHeight="60"/>
+
+        <TextBlock Grid.Row="4" Text="Body:" Margin="0,6,0,2"/>
+        <TabControl Grid.Row="5" Margin="0,0,0,6">
+            <TabItem Header="Request Body">
+                <TextBox x:Name="BodyBox" AcceptsReturn="True" TextWrapping="NoWrap"
+                         VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+            </TabItem>
+            <TabItem Header="Response (Pretty)">
+                <TextBox x:Name="PrettyBox" IsReadOnly="True" AcceptsReturn="True"
+                         VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+            </TabItem>
+            <TabItem Header="Response (Raw)">
+                <TextBox x:Name="RawBox" IsReadOnly="True" AcceptsReturn="True"
+                         VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+            </TabItem>
+            <TabItem Header="Response Headers">
+                <TextBox x:Name="ResponseHeadersBox" IsReadOnly="True" AcceptsReturn="True"
+                         VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+            </TabItem>
+        </TabControl>
+
+        <!-- Status bar + action buttons -->
+        <DockPanel Grid.Row="6">
+            <Button x:Name="SelfTestButton" Content="Run Self-Test" Width="110"
+                    DockPanel.Dock="Right" Click="SelfTestButton_Click"/>
+            <Button x:Name="SaveResponseButton" Content="Save Response…" Width="120" Margin="0,0,8,0"
+                    DockPanel.Dock="Right" Click="SaveResponseButton_Click"/>
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Text="Ready."/>
+        </DockPanel>
+    </Grid>
+</Window>
