@@ -21,6 +21,10 @@ public sealed class ApiClient
 
         var handler = new SocketsHttpHandler
         {
+            // Use the machine's configured proxy — including "Automatically detect settings"
+            // (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options —
+            // and authenticate to it with the signed-in user's Windows credentials when asked.
+            DefaultProxyCredentials = System.Net.CredentialCache.DefaultCredentials,
             SslOptions = new SslClientAuthenticationOptions
             {
                 RemoteCertificateValidationCallback = (_, cert, _, errors) =>

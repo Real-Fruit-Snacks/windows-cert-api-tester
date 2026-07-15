@@ -75,6 +75,7 @@ dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publi
 - **Authentication is mutual TLS.** The app builds an `HttpClient` over a `SocketsHttpHandler` and attaches the certificate you picked via `SslClientAuthenticationOptions.ClientCertificates`. During the handshake the server requests a client certificate and the app presents yours. For non-exportable keys (enterprise CAs, smart cards) the signing is done by Windows CNG/CryptoAPI — the application never sees the raw private key.
 - **The response is decoded defensively.** Content-type is a hint, not a guarantee, so the formatter validates before it trusts and sniffs when it can't.
 - **The self-test is real.** It generates an in-memory CA plus a server and client certificate, runs a `TcpListener` + `SslStream` server that *requires* a client certificate, and drives a real request through the same code path the app uses for live endpoints.
+- **Your proxy is respected.** Requests follow the machine's configured proxy — including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC file) from Internet Options — and authenticate to it with your Windows credentials when the proxy requires it.
 
 ## Project layout
 
