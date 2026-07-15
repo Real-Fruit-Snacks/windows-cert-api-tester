@@ -83,17 +83,42 @@
         <!-- ============ main area ============ -->
         <Grid Margin="14">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*" MinHeight="130"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="2*" MinHeight="170"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>                <!-- request tab strip -->
+                <RowDefinition Height="Auto"/>                <!-- website -->
+                <RowDefinition Height="Auto"/>                <!-- certificate -->
+                <RowDefinition Height="Auto"/>                <!-- request line -->
+                <RowDefinition Height="*" MinHeight="130"/>   <!-- request config -->
+                <RowDefinition Height="Auto"/>                <!-- splitter -->
+                <RowDefinition Height="2*" MinHeight="170"/>  <!-- response -->
+                <RowDefinition Height="Auto"/>                <!-- status -->
             </Grid.RowDefinitions>
 
+            <!-- request tab strip -->
+            <DockPanel Grid.Row="0" Margin="0,0,0,0">
+                <Button x:Name="NewTabButton" DockPanel.Dock="Right" Content="&#xFF0B;" Width="34"
+                        VerticalAlignment="Bottom" Margin="4,0,0,0" Click="NewTabButton_Click"
+                        ToolTip="New request tab (Ctrl+T)"/>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ListBox x:Name="TabStrip" Style="{StaticResource TabStripList}" VerticalAlignment="Bottom"
+                             SelectionChanged="TabStrip_SelectionChanged"
+                             ItemContainerStyle="{StaticResource TabStripItem}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="12,6,7,6">
+                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" MaxWidth="190"
+                                               TextTrimming="CharacterEllipsis" Foreground="{StaticResource Text.Soft}"/>
+                                    <Button Content="&#x2715;" Tag="{Binding}" Click="CloseTab_Click"
+                                            Style="{StaticResource MiniButton}" Width="20" Height="20" Margin="9,0,0,0"
+                                            FontSize="11" ToolTip="Close tab (Ctrl+W)"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </ScrollViewer>
+            </DockPanel>
+
             <!-- website (base URL) row -->
-            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+            <DockPanel Grid.Row="1" Margin="0,0,0,8">
                 <TextBlock Text="WEBSITE" Style="{StaticResource Caption}" DockPanel.Dock="Left"
                            VerticalAlignment="Center" Width="92"/>
                 <ComboBox x:Name="SavedBasesCombo" DockPanel.Dock="Right" Width="190" Margin="8,0,0,0"
@@ -106,7 +131,7 @@
             </DockPanel>
 
             <!-- cert row -->
-            <DockPanel Grid.Row="1" Margin="0,0,0,8">
+            <DockPanel Grid.Row="2" Margin="0,0,0,8">
                 <TextBlock Text="CERTIFICATE" Style="{StaticResource Caption}" DockPanel.Dock="Left"
                            VerticalAlignment="Center" Width="92"/>
                 <CheckBox x:Name="IgnoreServerCertCheck" DockPanel.Dock="Right"
@@ -119,8 +144,9 @@
             </DockPanel>
 
             <!-- request line -->
-            <DockPanel Grid.Row="2" Margin="0,0,0,8">
-                <ComboBox x:Name="MethodCombo" DockPanel.Dock="Left" Width="92" SelectedIndex="0" Margin="0,0,8,0">
+            <DockPanel Grid.Row="3" Margin="0,0,0,8">
+                <ComboBox x:Name="MethodCombo" DockPanel.Dock="Left" Width="92" SelectedIndex="0" Margin="0,0,8,0"
+                          SelectionChanged="MethodCombo_SelectionChanged">
                     <ComboBoxItem>GET</ComboBoxItem>
                     <ComboBoxItem>POST</ComboBoxItem>
                     <ComboBoxItem>PUT</ComboBoxItem>
@@ -140,12 +166,42 @@
                     <TextBlock Text="s" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{StaticResource Text.Muted}"/>
                 </StackPanel>
                 <TextBox x:Name="UrlBox" VerticalContentAlignment="Center" KeyDown="UrlBox_KeyDown"
+                         TextChanged="UrlBox_TextChanged" LostFocus="UrlBox_LostFocus"
                          Tag="/api/resource   or a full https://… URL"
                          ToolTip="Path appended to the website above (e.g. /api/thing), or a full URL if no website is set."/>
             </DockPanel>
 
             <!-- request config tabs -->
-            <TabControl Grid.Row="3">
+            <TabControl Grid.Row="4">
+                <TabItem Header="Params">
+                    <DockPanel Margin="2">
+                        <Button DockPanel.Dock="Bottom" x:Name="AddParamButton" Content="+ Add parameter" Width="140"
+                                HorizontalAlignment="Left" Margin="8" Click="AddParamButton_Click"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="ParamsItems" Margin="8,8,8,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="1.4*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBox Grid.Column="1" Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="key" VerticalContentAlignment="Center" ToolTip="Parameter name"/>
+                                            <TextBox Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="value" Margin="6,0,0,0" VerticalContentAlignment="Center" ToolTip="Parameter value"/>
+                                            <Button Grid.Column="3" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
+                                                    Content="&#x2715;" Tag="{Binding}" Click="RemoveParamButton_Click" ToolTip="Remove"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
                 <TabItem Header="Headers">
                     <DockPanel Margin="2">
                         <Button DockPanel.Dock="Bottom" x:Name="AddHeaderButton" Content="+ Add header" Width="120"
@@ -222,11 +278,11 @@
                 </TabItem>
             </TabControl>
 
-            <GridSplitter Grid.Row="4" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
+            <GridSplitter Grid.Row="5" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
                           VerticalAlignment="Center"/>
 
             <!-- response -->
-            <DockPanel Grid.Row="5">
+            <DockPanel Grid.Row="6">
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
                     <TextBlock Text="RESPONSE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -262,7 +318,7 @@
             </DockPanel>
 
             <!-- status bar -->
-            <Border Grid.Row="6" Margin="0,8,0,0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
+            <Border Grid.Row="7" Margin="0,8,0,0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
                     BorderThickness="1" CornerRadius="6" Padding="12,8">
                 <DockPanel>
                     <Button x:Name="SelfTestButton" Content="Run Self-Test" Width="118"

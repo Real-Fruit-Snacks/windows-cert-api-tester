@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-07-15
+
+### Added
+- **Request tabs** — keep several requests open at once, each with its own website, method,
+  parameters, headers, body, auth, certificate, and response. New tab with the `＋` button or
+  Ctrl+T; close with the tab's `✕`, middle-click, or Ctrl+W. Open tabs are remembered between
+  sessions.
+- **Query-parameter editor** — a new Params tab with an enable/key/value grid. Typing a `?query`
+  in the URL box splits it into the grid; the grid is recombined into the URL when the request is
+  sent. Values are percent-encoded correctly.
+
 ## [1.9.0] - 2026-07-14
 
 ### Changed
@@ -102,6 +113,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.10.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.10.0
 [1.9.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.9.0
 [1.8.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.8.0
 [1.7.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.7.0

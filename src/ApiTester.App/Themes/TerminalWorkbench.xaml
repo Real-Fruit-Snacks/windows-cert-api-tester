@@ -398,6 +398,38 @@
         </Setter>
     </Style>
 
+    <!-- ============ Request tab strip ============ -->
+    <Style x:Key="TabStripList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="TabStripItem" TargetType="ListBoxItem">
+        <Setter Property="Margin" Value="0,0,3,0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="bd" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
+                            BorderThickness="1,2,1,0" CornerRadius="7,7,0,0">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource Bg.Raised}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource Bg.Raised}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============ RichTextBox (highlighted response) ============ -->
     <Style TargetType="RichTextBox">
         <Setter Property="Background" Value="{StaticResource Bg.Panel}"/>

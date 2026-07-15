@@ -24,6 +24,9 @@ public sealed class AppState
 
     public List<HistoryEntry> History { get; set; } = new();
 
+    public List<RequestModel> Tabs { get; set; } = new();
+    public int ActiveTabIndex { get; set; }
+
     private static string FilePath
     {
         get
@@ -79,6 +82,7 @@ public sealed class HistoryEntry
     public string Method { get; set; } = "GET";
     public string? BaseUrl { get; set; }
     public string Url { get; set; } = "";           // the path/rest typed in the URL box
+    public List<ParamRow> Params { get; set; } = new();
     public List<HeaderRow> Headers { get; set; } = new();
     public string? Body { get; set; }
     public string ContentType { get; set; } = "application/json";
@@ -109,11 +113,32 @@ public sealed class HistoryEntry
         Uri.TryCreate(EffectiveUrl, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Host}" : "";
 }
 
-public sealed class HeaderRow
+public sealed class HeaderRow : System.ComponentModel.INotifyPropertyChanged
 {
-    public bool Enabled { get; set; } = true;
-    public string Name { get; set; } = "";
-    public string Value { get; set; } = "";
+    private bool _enabled = true;
+    private string _name = "";
+    private string _value = "";
+
+    public bool Enabled { get => _enabled; set { _enabled = value; Raise(nameof(Enabled)); } }
+    public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
+    public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
+}
+
+public sealed class ParamRow : System.ComponentModel.INotifyPropertyChanged
+{
+    private bool _enabled = true;
+    private string _key = "";
+    private string _value = "";
+
+    public bool Enabled { get => _enabled; set { _enabled = value; Raise(nameof(Enabled)); } }
+    public string Key { get => _key; set { _key = value; Raise(nameof(Key)); } }
+    public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
 }
 
 /// <summary>A stored snapshot of the response for a history entry.</summary>

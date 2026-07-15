@@ -20,7 +20,11 @@ public partial class MainWindow : Window
     private readonly ApiClient _apiClient = new();
     private readonly ResponseFormatter _formatter = new();
     private readonly AppState _state = AppState.Load();
-    private readonly ObservableCollection<HeaderRow> _headerRows = new();
+
+    private readonly ObservableCollection<RequestTab> _tabs = new();
+    private RequestTab? _loadedTab;   // the tab currently loaded into the editor controls
+    private bool _switching;          // guards re-entrancy during tab switches
+    private bool _loading;            // true while pushing a model into the controls
 
     private IReadOnlyList<CertificateInfo> _certs = new List<CertificateInfo>();
     private List<CertOption> _allOptions = new();
@@ -32,13 +36,14 @@ public partial class MainWindow : Window
 
     private sealed record CertOption(string Label, X509Certificate2? Cert, string? Thumbprint);
 
+    private RequestTab? ActiveTab => TabStrip.SelectedItem as RequestTab;
+    private RequestModel? ActiveRequest => ActiveTab?.Request;
+
     public MainWindow()
     {
         InitializeComponent();
 
-        HeadersItems.ItemsSource = _headerRows;
-
-        // Restore persisted window/request settings.
+        // Restore persisted window bounds.
         if (_state.WindowWidth is > 400) Width = _state.WindowWidth.Value;
         if (_state.WindowHeight is > 300) Height = _state.WindowHeight.Value;
         if (_state.WindowLeft is { } l && _state.WindowTop is { } t && IsOnScreen(l, t))
@@ -46,15 +51,12 @@ public partial class MainWindow : Window
             Left = l; Top = t;
             WindowStartupLocation = WindowStartupLocation.Manual;
         }
-        IgnoreServerCertCheck.IsChecked = _state.IgnoreServerCertErrors;
-        TimeoutBox.Text = _state.TimeoutSeconds.ToString();
-        BaseUrlBox.Text = _state.LastBaseUrl ?? "";
 
         LoadCertificates();
         SelectCertByThumbprint(_state.LastCertThumbprint);
         RefreshSavedBases();
         RefreshHistoryList();
-        ShowPrettyHint();
+        InitializeTabs();
 
         PreviewKeyDown += Window_PreviewKeyDown;
     }
@@ -68,16 +70,24 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        if (ActiveRequest is { } active) CaptureControlsInto(active);
+
         if (WindowState == WindowState.Normal)
         {
             _state.WindowLeft = Left; _state.WindowTop = Top;
             _state.WindowWidth = Width; _state.WindowHeight = Height;
         }
         _state.WindowMaximized = WindowState == WindowState.Maximized;
-        _state.LastCertThumbprint = SelectedThumbprint();
-        _state.IgnoreServerCertErrors = IgnoreServerCertCheck.IsChecked == true;
-        _state.TimeoutSeconds = ParseTimeout();
-        _state.LastBaseUrl = string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? null : BaseUrlBox.Text.Trim();
+
+        _state.Tabs = _tabs.Select(t => t.Request).ToList();
+        _state.ActiveTabIndex = Math.Max(0, TabStrip.SelectedIndex);
+
+        // Keep the single-value globals in step with the active tab for first-launch continuity.
+        _state.LastCertThumbprint = ActiveRequest?.CertThumbprint;
+        _state.IgnoreServerCertErrors = ActiveRequest?.IgnoreServerCert ?? false;
+        _state.TimeoutSeconds = ActiveRequest?.TimeoutSeconds ?? 100;
+        _state.LastBaseUrl = string.IsNullOrWhiteSpace(ActiveRequest?.BaseUrl) ? null : ActiveRequest!.BaseUrl!.Trim();
+
         _state.Save();
         base.OnClosing(e);
     }
@@ -109,6 +119,138 @@ public partial class MainWindow : Window
 
     private void ToggleHistory() =>
         HistoryPanel.Visibility = HistoryPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+
+    // ---------- tabs ----------
+
+    private void InitializeTabs()
+    {
+        IEnumerable<RequestModel> models = _state.Tabs.Count > 0
+            ? _state.Tabs
+            : new[]
+            {
+                new RequestModel
+                {
+                    IgnoreServerCert = _state.IgnoreServerCertErrors,
+                    TimeoutSeconds = _state.TimeoutSeconds,
+                    BaseUrl = _state.LastBaseUrl ?? "",
+                    CertThumbprint = _state.LastCertThumbprint
+                }
+            };
+
+        foreach (var m in models) _tabs.Add(new RequestTab(m));
+        TabStrip.ItemsSource = _tabs;
+        TabStrip.SelectedIndex = Math.Clamp(_state.ActiveTabIndex, 0, _tabs.Count - 1);
+    }
+
+    private void TabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_switching) return;
+        if (TabStrip.SelectedItem is not RequestTab newTab) return; // transient -1 during removal
+        _switching = true;
+        try
+        {
+            if (_loadedTab is { } old && !ReferenceEquals(old, newTab)) CaptureControlsInto(old.Request);
+            LoadIntoControls(newTab.Request);
+            _loadedTab = newTab;
+            ShowTabResponse(newTab);
+        }
+        finally { _switching = false; }
+    }
+
+    private void NewTabButton_Click(object sender, RoutedEventArgs e) => AddNewTab();
+
+    private RequestTab AddNewTab()
+    {
+        var m = new RequestModel
+        {
+            // Inherit the current base URL / cert / timeout so a new tab is ready to use.
+            BaseUrl = ActiveRequest?.BaseUrl,
+            CertThumbprint = ActiveRequest?.CertThumbprint,
+            IgnoreServerCert = ActiveRequest?.IgnoreServerCert ?? false,
+            TimeoutSeconds = ActiveRequest?.TimeoutSeconds ?? 100
+        };
+        var tab = new RequestTab(m);
+        _tabs.Add(tab);
+        TabStrip.SelectedItem = tab;
+        UrlBox.Focus();
+        return tab;
+    }
+
+    private void CloseTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: RequestTab tab }) CloseTab(tab);
+    }
+
+    private void CloseTab(RequestTab tab)
+    {
+        int idx = _tabs.IndexOf(tab);
+        if (idx < 0) return;
+        bool closingActive = ReferenceEquals(tab, ActiveTab);
+        if (ReferenceEquals(tab, _loadedTab)) _loadedTab = null; // do not capture a tab we're discarding
+
+        _tabs.Remove(tab);
+        if (_tabs.Count == 0) _tabs.Add(new RequestTab(new RequestModel()));
+
+        if (closingActive)
+            TabStrip.SelectedIndex = Math.Clamp(idx, 0, _tabs.Count - 1);
+    }
+
+    /// <summary>Push a request model's values into the editor controls.</summary>
+    private void LoadIntoControls(RequestModel m)
+    {
+        _loading = true;
+        try
+        {
+            SelectMethod(m.Method);
+            BaseUrlBox.Text = m.BaseUrl ?? "";
+            UrlBox.Text = m.Path;
+            HeadersItems.ItemsSource = m.Headers;
+            ParamsItems.ItemsSource = m.QueryParams;
+            BodyBox.Text = m.Body ?? "";
+            SelectContentType(m.ContentType);
+            AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 1, "Basic" => 2, _ => 0 };
+            BearerTokenBox.Text = m.AuthType == "Bearer" ? m.AuthSecret ?? "" : "";
+            BasicUserBox.Text = m.AuthUser ?? "";
+            BasicPassBox.Text = m.AuthType == "Basic" ? m.AuthSecret ?? "" : "";
+            IgnoreServerCertCheck.IsChecked = m.IgnoreServerCert;
+            TimeoutBox.Text = m.TimeoutSeconds.ToString();
+            SelectCertByThumbprint(m.CertThumbprint);
+        }
+        finally { _loading = false; }
+    }
+
+    /// <summary>Read the editor controls back into a request model.</summary>
+    private void CaptureControlsInto(RequestModel m)
+    {
+        m.Method = SelectedMethod();
+        m.BaseUrl = BaseUrlBox.Text;
+
+        // Fold any query typed straight into the URL box into the parameter grid.
+        var (path, typedQuery) = RequestUrl.SplitForEditing(UrlBox.Text.Trim());
+        m.Path = path;
+        if (typedQuery.Count > 0)
+        {
+            m.QueryParams.Clear();
+            foreach (var kv in typedQuery) m.QueryParams.Add(new ParamRow { Key = kv.Key, Value = kv.Value });
+        }
+
+        m.Body = BodyBox.Text;
+        m.ContentType = SelectedContentType();
+        m.AuthType = AuthTypeCombo.SelectedIndex switch { 1 => "Bearer", 2 => "Basic", _ => "None" };
+        m.AuthUser = BasicUserBox.Text;
+        m.AuthSecret = AuthTypeCombo.SelectedIndex == 1 ? BearerTokenBox.Text : BasicPassBox.Text;
+        m.CertThumbprint = SelectedThumbprint();
+        m.IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true;
+        m.TimeoutSeconds = ParseTimeout();
+        // Headers and QueryParams edited in the grids are the model's own collections — already current.
+    }
+
+    private void ShowTabResponse(RequestTab tab)
+    {
+        if (tab.LastResponse is { } r) RenderResponse(r);
+        else if (tab.Snapshot is { } s) RenderSnapshot(s, fromHistory: false);
+        else ClearResponse();
+    }
 
     // ---------- certificates ----------
 
@@ -205,15 +347,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private string EffectiveUrl() => UrlHelper.Combine(BaseUrlBox.Text, UrlBox.Text);
+    // ---------- headers / params / auth ----------
 
-    // ---------- headers / auth ----------
-
-    private void AddHeaderButton_Click(object sender, RoutedEventArgs e) => _headerRows.Add(new HeaderRow());
+    private void AddHeaderButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.Headers.Add(new HeaderRow());
 
     private void RemoveHeaderButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: HeaderRow row }) _headerRows.Remove(row);
+        if (sender is Button { Tag: HeaderRow row }) ActiveRequest?.Headers.Remove(row);
+    }
+
+    private void AddParamButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.QueryParams.Add(new ParamRow());
+
+    private void RemoveParamButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: ParamRow row }) ActiveRequest?.QueryParams.Remove(row);
     }
 
     private void AuthTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -233,18 +380,19 @@ public partial class MainWindow : Window
 
     private List<KeyValuePair<string, string>> BuildHeaders()
     {
+        var m = ActiveRequest!;
         var headers = new List<KeyValuePair<string, string>>();
-        foreach (var h in _headerRows)
+        foreach (var h in m.Headers)
             if (h.Enabled && !string.IsNullOrWhiteSpace(h.Name))
                 headers.Add(new KeyValuePair<string, string>(h.Name.Trim(), h.Value ?? ""));
 
-        switch (AuthTypeCombo.SelectedIndex)
+        switch (m.AuthType)
         {
-            case 1 when !string.IsNullOrWhiteSpace(BearerTokenBox.Text):
-                headers.Add(new KeyValuePair<string, string>("Authorization", "Bearer " + BearerTokenBox.Text.Trim()));
+            case "Bearer" when !string.IsNullOrWhiteSpace(m.AuthSecret):
+                headers.Add(new KeyValuePair<string, string>("Authorization", "Bearer " + m.AuthSecret!.Trim()));
                 break;
-            case 2:
-                var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{BasicUserBox.Text}:{BasicPassBox.Text}"));
+            case "Basic":
+                var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{m.AuthUser}:{m.AuthSecret}"));
                 headers.Add(new KeyValuePair<string, string>("Authorization", "Basic " + basic));
                 break;
         }
@@ -253,19 +401,18 @@ public partial class MainWindow : Window
 
     private ApiRequest BuildRequest()
     {
-        var method = ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!;
-        var body = string.IsNullOrEmpty(BodyBox.Text) ? null : BodyBox.Text;
-        var ct = (ContentTypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString();
-        string? contentType = body is not null && ct is not null && ct != "(none)" ? ct : null;
+        var m = ActiveRequest!;
+        var body = string.IsNullOrEmpty(m.Body) ? null : m.Body;
+        string? contentType = body is not null && m.ContentType != "(none)" ? m.ContentType : null;
 
         return new ApiRequest
         {
-            Method = new HttpMethod(method),
-            Url = EffectiveUrl(),
+            Method = new HttpMethod(m.Method),
+            Url = m.EffectiveUrl(),
             Headers = BuildHeaders(),
             Body = body,
             ContentType = contentType,
-            Timeout = TimeSpan.FromSeconds(ParseTimeout())
+            Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
     }
 
@@ -274,7 +421,9 @@ public partial class MainWindow : Window
     private async System.Threading.Tasks.Task SendRequestAsync()
     {
         if (!SendButton.IsEnabled) return;
-        if (string.IsNullOrWhiteSpace(EffectiveUrl())) { StatusText.Text = "Enter a URL."; return; }
+        if (ActiveRequest is not { } model) return;
+        CaptureControlsInto(model);
+        if (string.IsNullOrWhiteSpace(model.EffectiveUrl())) { StatusText.Text = "Enter a URL."; return; }
         SaveBaseUrl();
 
         var cert = SelectedCert();
@@ -286,8 +435,14 @@ public partial class MainWindow : Window
         try
         {
             var response = await _apiClient.SendAsync(
-                request, cert, IgnoreServerCertCheck.IsChecked == true, cancellationToken: _cts.Token);
+                request, cert, model.IgnoreServerCert, cancellationToken: _cts.Token);
             RenderResponse(response);
+            if (ActiveTab is { } tab)
+            {
+                tab.LastResponse = response;
+                tab.LastRawText = _lastRawText;
+                tab.Snapshot = BuildSnapshot(response);
+            }
             AddToHistory(response);
         }
         finally
@@ -375,7 +530,9 @@ public partial class MainWindow : Window
 
     private void CopyCurlButton_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(EffectiveUrl())) { StatusText.Text = "Enter a URL first."; return; }
+        if (ActiveRequest is not { } model) return;
+        CaptureControlsInto(model);
+        if (string.IsNullOrWhiteSpace(model.EffectiveUrl())) { StatusText.Text = "Enter a URL first."; return; }
         TrySetClipboard(BuildCurl(), "Copied cURL command.");
     }
 
@@ -387,18 +544,17 @@ public partial class MainWindow : Window
 
     private string BuildCurl()
     {
-        var method = ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!;
+        var m = ActiveRequest!;
         var sb = new StringBuilder();
-        sb.Append("curl -X ").Append(method).Append(" \"").Append(EffectiveUrl()).Append('"');
+        sb.Append("curl -X ").Append(m.Method).Append(" \"").Append(m.EffectiveUrl()).Append('"');
         foreach (var h in BuildHeaders())
             sb.Append(" \\\n  -H \"").Append(h.Key).Append(": ").Append(h.Value.Replace("\"", "\\\"")).Append('"');
-        var thumb = SelectedThumbprint();
-        if (thumb is not null)
-            sb.Append(" \\\n  --cert \"").Append(thumb).Append("\"   # client cert from the Windows store (curl built with Schannel)");
-        if (IgnoreServerCertCheck.IsChecked == true)
+        if (m.CertThumbprint is not null)
+            sb.Append(" \\\n  --cert \"").Append(m.CertThumbprint).Append("\"   # client cert from the Windows store (curl built with Schannel)");
+        if (m.IgnoreServerCert)
             sb.Append(" \\\n  -k");
-        if (!string.IsNullOrEmpty(BodyBox.Text))
-            sb.Append(" \\\n  --data \"").Append(BodyBox.Text.Replace("\"", "\\\"")).Append('"');
+        if (!string.IsNullOrEmpty(m.Body))
+            sb.Append(" \\\n  --data \"").Append(m.Body.Replace("\"", "\\\"")).Append('"');
         return sb.ToString();
     }
 
@@ -447,23 +603,8 @@ public partial class MainWindow : Window
 
     private void AddToHistory(ApiResponse response)
     {
-        var entry = new HistoryEntry
-        {
-            Method = ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!,
-            BaseUrl = string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? null : BaseUrlBox.Text.Trim(),
-            Url = UrlBox.Text.Trim(),
-            Headers = _headerRows.Select(h => new HeaderRow { Enabled = h.Enabled, Name = h.Name, Value = h.Value }).ToList(),
-            Body = string.IsNullOrEmpty(BodyBox.Text) ? null : BodyBox.Text,
-            ContentType = (ContentTypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "application/json",
-            AuthType = AuthTypeCombo.SelectedIndex switch { 1 => "Bearer", 2 => "Basic", _ => "None" },
-            AuthUser = BasicUserBox.Text,
-            AuthSecret = AuthTypeCombo.SelectedIndex == 1 ? BearerTokenBox.Text : BasicPassBox.Text,
-            CertThumbprint = SelectedThumbprint(),
-            IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true,
-            TimeoutSeconds = ParseTimeout(),
-            StatusCode = response.StatusCode,
-            Response = BuildSnapshot(response)
-        };
+        if (ActiveRequest is not { } model) return;
+        var entry = model.ToHistoryEntry(response.StatusCode, BuildSnapshot(response));
         _state.History.RemoveAll(h => h.Method == entry.Method && h.EffectiveUrl == entry.EffectiveUrl);
         _state.History.Insert(0, entry);
         if (_state.History.Count > 30) _state.History.RemoveRange(30, _state.History.Count - 30);
@@ -510,34 +651,27 @@ public partial class MainWindow : Window
 
     private void LoadEntry(HistoryEntry entry)
     {
-        // Fully replace the current request with the stored one.
-        BaseUrlBox.Text = entry.BaseUrl ?? "";
-        SelectMethod(entry.Method);
-        UrlBox.Text = entry.Url;
+        if (ActiveTab is not { } tab) return;
 
-        _headerRows.Clear();
-        foreach (var h in entry.Headers)
-            _headerRows.Add(new HeaderRow { Enabled = h.Enabled, Name = h.Name, Value = h.Value });
+        // Replace the active tab's request with the stored one (kept as the same instance).
+        _loading = true;
+        try { tab.Request.LoadFrom(entry); }
+        finally { _loading = false; }
 
-        BodyBox.Text = entry.Body ?? "";
-        SelectContentType(entry.ContentType);
+        LoadIntoControls(tab.Request);
+        tab.UpdateTitle();
 
-        AuthTypeCombo.SelectedIndex = entry.AuthType switch { "Bearer" => 1, "Basic" => 2, _ => 0 };
-        BearerTokenBox.Text = entry.AuthType == "Bearer" ? entry.AuthSecret ?? "" : "";
-        BasicUserBox.Text = entry.AuthUser ?? "";
-        BasicPassBox.Text = entry.AuthType == "Basic" ? entry.AuthSecret ?? "" : "";
-
-        IgnoreServerCertCheck.IsChecked = entry.IgnoreServerCert;
-        TimeoutBox.Text = entry.TimeoutSeconds.ToString();
-        SelectCertByThumbprint(entry.CertThumbprint);
-
-        // Restore that request's own response.
-        if (entry.Response is not null) RenderSnapshot(entry.Response);
+        // Restore that request's own response into this tab.
+        tab.LastResponse = null;
+        tab.LastRawText = "";
+        tab.Snapshot = entry.Response;
+        if (entry.Response is not null) RenderSnapshot(entry.Response, fromHistory: true);
         else ClearResponse();
     }
 
-    private void RenderSnapshot(ResponseSnapshot s)
+    private void RenderSnapshot(ResponseSnapshot s, bool fromHistory)
     {
+        var suffix = fromHistory ? "   (from history)" : "";
         DiagnosticsBox.Text = s.Diagnostics ?? "No connection details available.";
 
         if (s.ErrorMessage is not null)
@@ -547,7 +681,7 @@ public partial class MainWindow : Window
             SetPretty(s.ErrorMessage, BodyKind.Text);
             RawBox.Text = s.ErrorMessage;
             ResponseHeadersBox.Text = "";
-            StatusText.Text = $"Error [{s.ErrorKind}]: {s.ErrorMessage}   (from history)";
+            StatusText.Text = $"Error [{s.ErrorKind}]: {s.ErrorMessage}{suffix}";
             return;
         }
 
@@ -564,7 +698,7 @@ public partial class MainWindow : Window
 
         if (s.BodyTruncated)
         {
-            SetPretty("(the response body was too large to keep in history — re-send to see it)", BodyKind.Text);
+            SetPretty("(the response body was too large to keep — re-send to see it)", BodyKind.Text);
             _lastRawText = "";
         }
         else
@@ -575,7 +709,7 @@ public partial class MainWindow : Window
         }
         RawBox.Text = _lastRawText;
         ResponseHeadersBox.Text = string.Join("\n", recon.Headers.Select(h => $"{h.Key}: {h.Value}"));
-        StatusText.Text = $"{s.StatusCode} {s.ReasonPhrase}  •  {s.Body.Length} bytes  •  {s.ElapsedMs:F0} ms   (from history)";
+        StatusText.Text = $"{s.StatusCode} {s.ReasonPhrase}  •  {s.Body.Length} bytes  •  {s.ElapsedMs:F0} ms{suffix}";
     }
 
     private void ClearResponse()
@@ -601,6 +735,11 @@ public partial class MainWindow : Window
         };
     }
 
+    private string SelectedMethod() => ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!;
+
+    private string SelectedContentType() =>
+        (ContentTypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "application/json";
+
     private void SelectMethod(string method)
     {
         foreach (ComboBoxItem item in MethodCombo.Items)
@@ -611,6 +750,37 @@ public partial class MainWindow : Window
     {
         foreach (ComboBoxItem item in ContentTypeCombo.Items)
             if ((item.Content?.ToString() ?? "") == contentType) { ContentTypeCombo.SelectedItem = item; return; }
+    }
+
+    // ---------- URL / method live edits ----------
+
+    private void MethodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || ActiveRequest is null) return;
+        ActiveRequest.Method = SelectedMethod();
+    }
+
+    private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loading || ActiveRequest is null) return;
+        ActiveRequest.Path = UrlBox.Text; // keeps the tab title in step as you type
+    }
+
+    private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading || ActiveRequest is null) return;
+        if (!UrlBox.Text.Contains('?')) return;
+
+        var (path, ps) = RequestUrl.SplitForEditing(UrlBox.Text.Trim());
+        _loading = true;
+        try
+        {
+            UrlBox.Text = path;
+            ActiveRequest.Path = path;
+            ActiveRequest.QueryParams.Clear();
+            foreach (var kv in ps) ActiveRequest.QueryParams.Add(new ParamRow { Key = kv.Key, Value = kv.Value });
+        }
+        finally { _loading = false; }
     }
 
     // ---------- keyboard ----------
@@ -631,6 +801,8 @@ public partial class MainWindow : Window
         else if (ctrl && e.Key == Key.L) { e.Handled = true; UrlBox.Focus(); UrlBox.SelectAll(); }
         else if (ctrl && e.Key == Key.S) { e.Handled = true; SaveResponse(); }
         else if (ctrl && e.Key == Key.H) { e.Handled = true; ToggleHistory(); }
+        else if (ctrl && e.Key == Key.T) { e.Handled = true; AddNewTab(); }
+        else if (ctrl && e.Key == Key.W) { e.Handled = true; if (ActiveTab is { } t) CloseTab(t); }
         else if (e.Key == Key.F5) { e.Handled = true; LoadCertificates(); }
         else if (e.Key == Key.Escape && CancelButton.IsEnabled) { e.Handled = true; _cts?.Cancel(); }
     }
