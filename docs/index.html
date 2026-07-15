@@ -31,7 +31,7 @@
   pre { font-family: var(--twb-font-mono); font-size: 13.5px; line-height: 1.62; background: var(--twb-bg-2);
     border: 1px solid var(--twb-border); border-radius: var(--twb-radius-m); padding: 16px 18px; overflow-x: auto; color: var(--twb-text-soft); }
   pre code { background: none; border: none; padding: 0; color: inherit; }
-  .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
   .manifest { font-family: var(--twb-font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.09em;
     text-transform: uppercase; color: var(--twb-text-muted); }
   .manifest .chev { color: var(--twb-accent); }
@@ -47,20 +47,22 @@
   header.site nav a:hover { color: var(--twb-text-normal); }
 
   .hero { text-align: center; padding: 56px 0 8px; }
-  .hero img { width: 100%; max-width: 820px; height: auto; border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); }
-  .hero p.lead { font-size: 18px; color: var(--twb-text-soft); max-width: 640px; margin: 26px auto 0; }
+  .hero img.banner { width: 100%; max-width: 820px; height: auto; border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); }
+  .hero p.lead { font-size: 18px; color: var(--twb-text-soft); max-width: 660px; margin: 26px auto 0; }
   .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 28px 0 8px; }
   .btn { font-family: var(--twb-font-mono); font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
     padding: 11px 20px; border-radius: var(--twb-radius-m); border: 1px solid var(--twb-border-strong);
     color: var(--twb-text-normal); background: var(--twb-bg-2); cursor: pointer; }
-  .btn:hover { border-color: var(--twb-accent); color: var(--twb-text-normal); }
+  .btn:hover { border-color: var(--twb-accent); }
   .btn.primary { background: var(--twb-accent); color: var(--twb-text-on-accent); border-color: var(--twb-accent); }
   .btn.primary:hover { filter: brightness(1.06); }
 
+  .shot { max-width: 960px; margin: 40px auto 0; padding: 0 24px; }
+  .shot img { width: 100%; height: auto; border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); display: block; }
+
   section { padding: 44px 0; border-top: 1px solid var(--twb-border); }
-  section:first-of-type { border-top: none; }
   h2 { font-size: 26px; font-weight: 740; color: var(--twb-accent); margin: 10px 0 6px; letter-spacing: -0.01em; }
-  section > .wrap > p { color: var(--twb-text-soft); max-width: 680px; }
+  section > .wrap > p { color: var(--twb-text-soft); max-width: 700px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 26px; }
   .card { background: var(--twb-bg-1); border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); padding: 20px; }
@@ -71,6 +73,10 @@
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 22px; }
   @media (max-width: 680px) { .cols { grid-template-columns: 1fr; } }
   .cols h3 { font-size: 16px; color: var(--twb-accent-alt); margin: 0 0 8px; }
+
+  table.keys { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 14.5px; }
+  table.keys td { border-bottom: 1px solid var(--twb-border); padding: 9px 6px; color: var(--twb-text-soft); }
+  table.keys td.k { font-family: var(--twb-font-mono); color: var(--twb-accent-alt); white-space: nowrap; width: 40%; }
 
   footer { border-top: 1px solid var(--twb-border); background: var(--twb-bg-1); padding: 28px 0; color: var(--twb-text-muted); font-size: 13.5px; }
   footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
@@ -97,7 +103,7 @@
 
 <div class="hero">
   <div class="wrap">
-    <img src="assets/banner.svg" alt="Certificate API Tester — client-certificate (mTLS) auth from the Windows store">
+    <img class="banner" src="assets/banner.svg" alt="Certificate API Tester — client-certificate (mTLS) auth from the Windows store">
     <p class="lead">A Windows desktop API tester that authenticates to endpoints with a client certificate from your Windows certificate store — and renders whatever they return, even when you don't know the format.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest">Download for Windows</a>
@@ -107,11 +113,15 @@
   </div>
 </div>
 
+<div class="shot">
+  <img src="assets/screenshot.png" alt="Certificate API Tester with a JSON response and connection diagnostics">
+</div>
+
 <section id="what">
   <div class="wrap">
     <p class="manifest"><span class="chev">&#10095;</span> THE PROBLEM</p>
     <h2>Client-certificate endpoints, without the file wrangling</h2>
-    <p>Some internal sites don't take a password — they ask your browser to choose a certificate and complete a mutual-TLS handshake. Most API clients want that certificate and its private key as files on disk, which enterprise and smart-card certificates deliberately don't allow. Certificate API Tester pulls the certificate straight from your Windows store and lets Windows sign the handshake, so the private key never has to leave — and never has to be exportable.</p>
+    <p>Some internal sites don't take a password — they ask your browser to choose a certificate and complete a mutual-TLS handshake. Most API clients want that certificate and its private key as files on disk, which enterprise and smart-card certificates deliberately don't allow. Certificate API Tester pulls the certificate straight from your Windows store and lets Windows sign the handshake, so the private key never has to leave — and never has to be exportable. The certificate is optional, so it also works as a general-purpose API client.</p>
   </div>
 </section>
 
@@ -120,13 +130,16 @@
     <p class="manifest"><span class="chev">&#10095;</span> WHAT IT DOES</p>
     <h2>Features</h2>
     <div class="grid">
-      <div class="card"><h3>Windows store certs</h3><p>Pick a client certificate from <code>CurrentUser\My</code> with subject, issuer, thumbprint, and expiry. Non-exportable and smart-card keys work — Windows signs the handshake.</p></div>
-      <div class="card"><h3>Certificate optional</h3><p>The cert is opt-in — leave it on “no certificate” to send an ordinary request. It doubles as a general API tester for endpoints that don't require mutual TLS.</p></div>
-      <div class="card"><h3>Full request builder</h3><p>Any method, custom headers, a request body, and a configurable timeout. Everything you need to poke an unfamiliar endpoint.</p></div>
-      <div class="card"><h3>Reads any response</h3><p>Pretty-prints JSON and XML, shows HTML/text, hex-dumps binary — and sniffs the body when the content type is missing or lying.</p></div>
-      <div class="card"><h3>Clear failures</h3><p>Tells "certificate refused" apart from "server not trusted", a network error, and a timeout — not one opaque failure.</p></div>
+      <div class="card"><h3>Windows store certs</h3><p>Pick a client certificate from <code>CurrentUser\My</code> with subject, issuer, thumbprint, expiry, and a filter box. Non-exportable and smart-card keys work — Windows signs the handshake.</p></div>
+      <div class="card"><h3>Certificate optional</h3><p>Leave it on &ldquo;no certificate&rdquo; to send an ordinary request. It doubles as a general API tester for endpoints that don't require mutual TLS.</p></div>
+      <div class="card"><h3>Full request builder</h3><p>Any method, a key-value headers grid, Bearer/Basic auth helpers, a body with a content-type selector, a timeout, and a Cancel button.</p></div>
+      <div class="card"><h3>Reads any response</h3><p>Pretty-prints JSON and XML with syntax highlighting, shows HTML/text, hex-dumps binary, and sniffs the body when the content type is missing or lying.</p></div>
+      <div class="card"><h3>Connection diagnostics</h3><p>See the negotiated TLS version and cipher, whether your client cert was actually presented, and the server's certificate and chain.</p></div>
+      <div class="card"><h3>Request history</h3><p>A sidebar of recent requests you can click to reload in full. The app also remembers your window, last certificate, and settings.</p></div>
+      <div class="card"><h3>Copy &amp; export</h3><p>Copy the response body, copy the request as a cURL command, and save any response with a sensible file extension.</p></div>
+      <div class="card"><h3>Clear failures</h3><p>Tells &ldquo;certificate refused&rdquo; apart from &ldquo;server not trusted&rdquo;, a network error, and a timeout — with an off-by-default insecure bypass for private CAs.</p></div>
+      <div class="card"><h3>Honors your proxy</h3><p>Follows the machine's proxy, including WPAD auto-detect and a PAC script from Internet Options, authenticating with your Windows credentials.</p></div>
       <div class="card"><h3>Built-in self-test</h3><p>One click stands up a local mutual-TLS server and proves the whole certificate path end to end — no real endpoint required.</p></div>
-      <div class="card"><h3>Portable</h3><p>A single self-contained executable with no external dependencies. No installer, no admin rights, no runtime to install — copy the file and run it.</p></div>
     </div>
   </div>
 </section>
@@ -154,6 +167,21 @@ dotnet publish src/ApiTester.App -c Release \
   </div>
 </section>
 
+<section id="shortcuts">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> KEYBOARD</p>
+    <h2>Shortcuts</h2>
+    <table class="keys">
+      <tr><td class="k">Ctrl+Enter / Enter in URL</td><td>Send the request</td></tr>
+      <tr><td class="k">Esc</td><td>Cancel an in-flight request</td></tr>
+      <tr><td class="k">Ctrl+L</td><td>Focus the URL box</td></tr>
+      <tr><td class="k">Ctrl+S</td><td>Save the response</td></tr>
+      <tr><td class="k">Ctrl+H</td><td>Toggle the history sidebar</td></tr>
+      <tr><td class="k">F5</td><td>Refresh the certificate list</td></tr>
+    </table>
+  </div>
+</section>
+
 <section id="nodeps">
   <div class="wrap">
     <p class="manifest"><span class="chev">&#10095;</span> NO DEPENDENCIES</p>
@@ -172,8 +200,16 @@ dotnet publish src/ApiTester.App -c Release \
         <p>The app builds an <code>HttpClient</code> over a <code>SocketsHttpHandler</code> and attaches your chosen certificate. During the handshake the server requests a client certificate and the app presents yours; for non-exportable keys the signing is done by Windows, so the app never sees the raw key.</p>
       </div>
       <div>
+        <h3>Live diagnostics</h3>
+        <p>For direct connections the app performs the TLS handshake itself, so it can report the negotiated protocol and cipher and whether your certificate was actually presented. The server certificate and chain are always captured.</p>
+      </div>
+      <div>
         <h3>A real self-test</h3>
         <p>The self-test generates an in-memory CA plus a server and client certificate, runs a local server that <em>requires</em> a client certificate, and drives a real request through the same code path used for live endpoints.</p>
+      </div>
+      <div>
+        <h3>Your proxy, your rules</h3>
+        <p>Requests follow the machine's configured proxy — WPAD auto-detect and a PAC script from Internet Options — and authenticate to it with your Windows credentials when the proxy requires it.</p>
       </div>
     </div>
   </div>

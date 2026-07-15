@@ -20,23 +20,28 @@
 
 Some internal sites and APIs don't take a password — they ask your browser to "choose a certificate," then complete a mutual-TLS handshake with a client certificate issued to you and stored in your Windows certificate store. Testing those endpoints from a normal API client is awkward: most tools want the certificate and its private key as files on disk, which enterprise and smart-card certificates deliberately don't allow.
 
-Certificate API Tester talks to those endpoints directly. You pick a certificate from your Windows store, compose a request, and send it — the operating system performs the signing during the TLS handshake, so the private key never has to leave the store (and never has to be exportable). Because you often only know the endpoint and not the shape of what comes back, the response viewer figures out the format for you and pretty-prints it.
+Certificate API Tester talks to those endpoints directly. You pick a certificate from your Windows store, compose a request, and send it — the operating system performs the signing during the TLS handshake, so the private key never has to leave the store (and never has to be exportable). Because you often only know the endpoint and not the shape of what comes back, the response viewer figures out the format for you and pretty-prints it. And because the certificate is optional, it doubles as a general-purpose API client for anything else.
 
 It runs as a single self-contained `.exe` with no external dependencies — no installer, no admin rights, and no .NET runtime required on the machine. Copy the file and run it.
 
+<div align="center">
+  <img alt="Certificate API Tester screenshot" src="docs/assets/screenshot.png" width="900" />
+</div>
+
 ## Features
 
-- **Pick a client certificate from the Windows store** — lists certificates in `CurrentUser\My` (optionally `LocalMachine\My`) with subject, issuer, thumbprint, and expiry, and flags the ones actually meant for client authentication. The private key is never exported; Windows signs the handshake, so smart-card and non-exportable certificates work.
-- **Certificate optional — a general API tester too** — the certificate is opt-in. Leave the picker on **"— no certificate —"** (the default) to send an ordinary request, so it works just as well against endpoints that don't require mutual TLS, or to test the no-certificate path of ones that make it optional.
-- **Full request builder** — method (GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS), URL, an enable/disable key-value headers grid, Bearer/Basic auth helpers, a body with a content-type selector, and a configurable timeout with a Cancel button.
-- **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML (with syntax highlighting), shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers / Diagnostics views are always available.
-- **Connection diagnostics** — see the negotiated TLS version and cipher, whether your client certificate was actually presented, and the server's certificate (subject, issuer, thumbprint, expiry, and chain).
-- **Request history** — a sidebar of recent requests you can click to reload in full; the app also remembers your window, last certificate, and settings between runs. Copy the response, or copy the request **as cURL**.
-- **Clear failure messages** — distinguishes "server refused the certificate," "the server's own certificate isn't trusted," a network/DNS error, and a timeout, instead of one opaque failure.
-- **Reach internal sites behind a private CA** — an explicit, off-by-default *Ignore server certificate errors* toggle (clearly labelled insecure) lets you connect to sites whose server certificate chains to an internal CA.
-- **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine, generates a throwaway certificate, and proves the whole certificate-authentication path works end to end — **no real endpoint required.** This is the answer to "how do I know it works before I try it against the real thing?"
-- **Save any response to a file**, including binary payloads.
-- **Portable** — ships as one self-contained single-file executable.
+- **Pick a client certificate from the Windows store** — lists certificates in `CurrentUser\My` (optionally `LocalMachine\My`) with subject, issuer, thumbprint, and expiry, flags the ones meant for client authentication, and has a filter box for finding one quickly. The private key is never exported; Windows signs the handshake, so smart-card and non-exportable certificates work.
+- **Certificate optional — a general API tester too** — leave the picker on **"— no certificate —"** (the default) to send an ordinary request, so it works just as well against endpoints that don't require mutual TLS.
+- **Full request builder** — method (GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS), URL, an enable/disable key-value **headers grid**, **Bearer/Basic auth** helpers, a request body with a **content-type selector**, a **timeout** field, and a **Cancel** button for in-flight requests.
+- **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML with **syntax highlighting**, shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers / Diagnostics views are always available.
+- **Connection diagnostics** — see the negotiated **TLS version and cipher**, whether your client certificate was **actually presented** to the server, and the server's certificate (subject, issuer, thumbprint, expiry, and chain).
+- **Request history** — a sidebar of recent requests; click one to reload it in full. The app also remembers your window, last certificate, and settings between runs.
+- **Copy & export** — copy the response body, copy the request **as a cURL command**, and save any response (including binary) with a sensible file extension.
+- **Clear failure messages** — distinguishes "server refused the certificate," "the server's own certificate isn't trusted," a network/DNS error, and a timeout.
+- **Reach internal sites behind a private CA** — an explicit, off-by-default *Ignore server certificate errors* toggle (clearly labelled insecure).
+- **Honors your proxy** — follows the machine's configured proxy, including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options, authenticating with your Windows credentials when required.
+- **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine and proves the whole certificate-authentication path end to end, **no real endpoint required.**
+- **Keyboard-friendly and portable** — shortcuts for everything (below), a fully themed dark UI, and a single self-contained executable.
 
 ## Requirements
 
@@ -47,15 +52,41 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 
 Grab `ApiTester.App.exe` from the [latest release](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) and double-click it. There is no installer and it needs no admin rights — copy it wherever you like and run it.
 
+## Quick start
+
+1. **Pick a certificate** — or leave it on *"— no certificate —"* to send a plain request. Use the filter box to find one among many.
+2. **Compose the request** — choose a method, type a URL, and (optionally) add headers, a body with its content type, or Bearer/Basic auth.
+3. **Send** (or press **Ctrl+Enter**) and read the response. The **Pretty** tab highlights JSON/XML; **Diagnostics** shows the TLS and certificate details of the connection.
+
+To sanity-check the certificate path with no real endpoint, click **Run Self-Test** — it runs a full mutual-TLS round-trip against a local server on your own machine.
+
+### Endpoints to try
+
+- **Mutual TLS:** import the test client certificate from [badssl.com/download](https://badssl.com/download/) (`badssl.com-client.p12`, password `badssl.com`) into `CurrentUser\My`, select it, and hit `https://client.badssl.com/` — it returns `200` with the cert and `400` without.
+- **Server-cert toggle:** `https://self-signed.badssl.com/` fails as *ServerCertificateUntrusted* until you enable *Ignore server certificate errors*.
+- **General (no cert):** `https://httpbin.org/anything`, `https://postman-echo.com/get`, `https://jsonplaceholder.typicode.com/todos/1`.
+- **Formats:** `https://httpbin.org/xml`, `/html`, `/image/png` (binary → hex dump).
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+Enter` / `Enter` in the URL box | Send the request |
+| `Esc` | Cancel an in-flight request |
+| `Ctrl+L` | Focus the URL box |
+| `Ctrl+S` | Save the response |
+| `Ctrl+H` | Toggle the history sidebar |
+| `F5` | Refresh the certificate list |
+
 ## Build from source
 
 ```bash
 git clone https://github.com/Real-Fruit-Snacks/windows-cert-api-tester.git
 cd windows-cert-api-tester
 
-dotnet build                              # compile
-dotnet test --filter "Category!=StoreRoundTrip"   # run the unit + mTLS integration tests
-dotnet run --project src/ApiTester.App    # launch the app
+dotnet build                                       # compile
+dotnet test --filter "Category!=StoreRoundTrip"    # unit + mTLS integration tests
+dotnet run --project src/ApiTester.App             # launch the app
 ```
 
 Produce the portable single-file executable:
@@ -74,10 +105,11 @@ dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publi
 
 ## How it works
 
-- **Authentication is mutual TLS.** The app builds an `HttpClient` over a `SocketsHttpHandler` and attaches the certificate you picked via `SslClientAuthenticationOptions.ClientCertificates`. During the handshake the server requests a client certificate and the app presents yours. For non-exportable keys (enterprise CAs, smart cards) the signing is done by Windows CNG/CryptoAPI — the application never sees the raw private key.
+- **Authentication is mutual TLS.** The app builds an `HttpClient` over a `SocketsHttpHandler` and attaches the certificate you picked. During the handshake the server requests a client certificate and the app presents yours. For non-exportable keys (enterprise CAs, smart cards) the signing is done by Windows CNG/CryptoAPI — the application never sees the raw private key.
 - **The response is decoded defensively.** Content-type is a hint, not a guarantee, so the formatter validates before it trusts and sniffs when it can't.
+- **Diagnostics are captured from the live connection.** For direct connections the app performs the TLS handshake itself so it can report the negotiated protocol/cipher and whether your client certificate was actually presented; the server certificate and chain are always captured.
+- **Your proxy is respected.** Requests follow the machine's configured proxy (WPAD/PAC from Internet Options) and authenticate to it with your Windows credentials when required.
 - **The self-test is real.** It generates an in-memory CA plus a server and client certificate, runs a `TcpListener` + `SslStream` server that *requires* a client certificate, and drives a real request through the same code path the app uses for live endpoints.
-- **Your proxy is respected.** Requests follow the machine's configured proxy — including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC file) from Internet Options — and authenticate to it with your Windows credentials when the proxy requires it.
 
 ## Project layout
 
@@ -99,7 +131,7 @@ The engine (`ApiTester.Core`) has no UI dependency, so every behaviour is covere
 
 - Client certificates are **never exported**; the live `X509Certificate2` is handed to the networking layer and Windows performs the signing.
 - *Ignore server certificate errors* is **off by default** and clearly labelled insecure — turn it on only for internal sites whose server certificate you trust.
-- The app makes no network calls other than the requests you send. There is no telemetry.
+- The app makes no network calls other than the requests you send. There is no telemetry. Window and request settings are stored locally under `%AppData%\CertApiTester`.
 
 ## License
 
