@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
@@ -19,6 +20,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         LoadCertificates();
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        NativeTheme.ApplyDarkTitleBar(this);
     }
 
     private const string NoCertOption = "— no certificate —";
