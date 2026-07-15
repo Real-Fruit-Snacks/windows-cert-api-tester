@@ -21,17 +21,23 @@ public partial class MainWindow : Window
         LoadCertificates();
     }
 
+    private const string NoCertOption = "— no certificate —";
+
     private void LoadCertificates()
     {
         _certs = _certService.ListClientCertificates();
-        CertCombo.ItemsSource = _certs.Select(c =>
+        var items = new List<string> { NoCertOption };
+        items.AddRange(_certs.Select(c =>
         {
             var expiry = c.IsExpired() ? " [EXPIRED]" : "";
             var eku = c.HasClientAuthEku ? "" : " (no client-auth EKU)";
             return $"{c.Subject}  —  {c.Thumbprint}{eku}{expiry}";
-        }).ToList();
-        if (_certs.Count > 0) CertCombo.SelectedIndex = 0;
-        StatusText.Text = $"{_certs.Count} certificate(s) with a private key found.";
+        }));
+        CertCombo.ItemsSource = items;
+        CertCombo.SelectedIndex = 0;
+        StatusText.Text = _certs.Count == 0
+            ? "No client certificates found — you can still test APIs that don't require one."
+            : $"{_certs.Count} certificate(s) available — pick one for mutual-TLS, or keep “no certificate”.";
     }
 
     private void RefreshCertsButton_Click(object sender, RoutedEventArgs e) => LoadCertificates();
@@ -44,9 +50,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Index 0 is the "— no certificate —" option; real certs start at index 1.
         X509Certificate2? cert = null;
-        if (CertCombo.SelectedIndex >= 0 && CertCombo.SelectedIndex < _certs.Count)
-            cert = _certs[CertCombo.SelectedIndex].Certificate;
+        int certIndex = CertCombo.SelectedIndex - 1;
+        if (certIndex >= 0 && certIndex < _certs.Count)
+            cert = _certs[certIndex].Certificate;
 
         var request = new ApiRequest
         {

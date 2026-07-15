@@ -27,6 +27,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 ## Features
 
 - **Pick a client certificate from the Windows store** — lists certificates in `CurrentUser\My` (optionally `LocalMachine\My`) with subject, issuer, thumbprint, and expiry, and flags the ones actually meant for client authentication. The private key is never exported; Windows signs the handshake, so smart-card and non-exportable certificates work.
+- **Certificate optional — a general API tester too** — the certificate is opt-in. Leave the picker on **"— no certificate —"** (the default) to send an ordinary request, so it works just as well against endpoints that don't require mutual TLS, or to test the no-certificate path of ones that make it optional.
 - **Full request builder** — method (GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS), URL, custom headers, and a request body, with a configurable timeout.
 - **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML, shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers views are always available.
 - **Clear failure messages** — distinguishes "server refused the certificate," "the server's own certificate isn't trusted," a network/DNS error, and a timeout, instead of one opaque failure.
