@@ -49,6 +49,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Reach internal sites behind a private CA** — an explicit, off-by-default *Ignore server certificate errors* toggle (clearly labelled insecure).
 - **Honors your proxy** — follows the machine's configured proxy, including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options, authenticating with your Windows credentials when required.
 - **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine and proves the whole certificate-authentication path end to end, **no real endpoint required.**
+- **Built-in help** — a **?** in the title bar (or **F1**) opens a Help & Reference window that walks through every feature, lists the keyboard shortcuts, and shows an About panel. It's all embedded, so it works even with no web access.
 - **Keyboard-friendly and portable** — shortcuts for everything (below), a fully themed dark UI, and a single self-contained executable.
 
 ## Screenshots
@@ -103,6 +104,7 @@ To sanity-check the certificate path with no real endpoint, click **Run Self-Tes
 | `Ctrl+T` | New request tab |
 | `Ctrl+W` | Close the current tab |
 | `F5` | Refresh the certificate list |
+| `F1` | Open the in-app help |
 
 ## Build from source
 

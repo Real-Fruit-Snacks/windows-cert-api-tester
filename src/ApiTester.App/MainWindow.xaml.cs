@@ -138,6 +138,14 @@ public partial class MainWindow : Window
 
     private void HistoryToggle_Click(object sender, RoutedEventArgs e) => ToggleHistory();
 
+    private void HelpButton_Click(object sender, RoutedEventArgs e) => ShowHelp();
+
+    private void ShowHelp()
+    {
+        var help = new HelpWindow { Owner = this };
+        help.ShowDialog();
+    }
+
     private void ToggleHistory() =>
         HistoryPanel.Visibility = HistoryPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
 
@@ -1197,6 +1205,7 @@ public partial class MainWindow : Window
         else if (ctrl && e.Key == Key.T) { e.Handled = true; AddNewTab(); }
         else if (ctrl && e.Key == Key.W) { e.Handled = true; if (ActiveTab is { } t) CloseTab(t); }
         else if (e.Key == Key.F5) { e.Handled = true; LoadCertificates(); }
+        else if (e.Key == Key.F1) { e.Handled = true; ShowHelp(); }
         else if (e.Key == Key.Escape && CancelButton.IsEnabled) { e.Handled = true; _cts?.Cancel(); }
     }
 

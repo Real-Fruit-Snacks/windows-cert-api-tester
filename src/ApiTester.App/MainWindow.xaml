@@ -49,6 +49,8 @@
                 </StackPanel>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top"
                             WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="HelpButton" Style="{StaticResource CaptionButton}" Height="44"
+                            Content="&#xE897;" Click="HelpButton_Click" ToolTip="Help (F1)"/>
                     <Button x:Name="MinButton" Style="{StaticResource CaptionButton}" Height="44"
                             Content="&#xE921;" Click="MinButton_Click" ToolTip="Minimize"/>
                     <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}" Height="44"

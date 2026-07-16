@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-07-15
+
+### Added
+- **In-app Help** — a **?** button in the title bar (and **F1**) opens a Help & Reference window
+  covering every part of the app: getting started, requests & tabs, certificates & mTLS,
+  collections & history, environments & variables, importing, the rendered website view, a full
+  keyboard-shortcut reference, and an About panel (version, links, privacy, license). All content
+  is built in, so it works with no web access.
+
 ## [1.13.1] - 2026-07-15
 
 ### Changed
@@ -179,6 +188,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.14.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.0
 [1.13.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.1
 [1.13.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.0
 [1.12.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.12.0
