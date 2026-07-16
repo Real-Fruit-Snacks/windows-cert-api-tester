@@ -39,7 +39,7 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <TextBlock Text="ENV" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                    <ComboBox x:Name="EnvCombo" Width="150" Height="26" SelectionChanged="EnvCombo_SelectionChanged"
+                    <ComboBox x:Name="EnvCombo" Width="188" Height="26" SelectionChanged="EnvCombo_SelectionChanged"
                               ToolTip="Active environment — its {{variables}} are substituted when you send."/>
                     <Button x:Name="ManageEnvButton" Content="Edit" Height="26" FontSize="11" Padding="9,0"
                             Margin="6,0,14,0" Click="ManageEnvButton_Click" ToolTip="Manage environments and variables"/>
@@ -133,9 +133,9 @@
                 <RowDefinition Height="Auto"/>                <!-- website -->
                 <RowDefinition Height="Auto"/>                <!-- certificate -->
                 <RowDefinition Height="Auto"/>                <!-- request line -->
-                <RowDefinition Height="*" MinHeight="130"/>   <!-- request config -->
+                <RowDefinition Height="*" MinHeight="188"/>   <!-- request config -->
                 <RowDefinition Height="Auto"/>                <!-- splitter -->
-                <RowDefinition Height="2*" MinHeight="170"/>  <!-- response -->
+                <RowDefinition Height="1.5*" MinHeight="190"/><!-- response -->
                 <RowDefinition Height="Auto"/>                <!-- status -->
             </Grid.RowDefinitions>
 
@@ -295,6 +295,7 @@
                     </DockPanel>
                 </TabItem>
                 <TabItem Header="Auth">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="12">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <TextBlock Text="TYPE" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="60"/>
@@ -321,6 +322,7 @@
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>
+                    </ScrollViewer>
                 </TabItem>
             </TabControl>
 

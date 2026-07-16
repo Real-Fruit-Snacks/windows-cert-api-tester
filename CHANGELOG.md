@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.3] - 2026-07-15
+
+### Fixed
+- The environment selector in the title bar is wider so “— no environment —” is no longer clipped.
+- Gave the request area (Params / Headers / Body / Auth) more room by default so the Basic auth
+  password field and additional parameter/header rows are no longer cut off; the Auth panel also
+  scrolls if space is tight.
+
 ## [1.11.2] - 2026-07-15
 
 ### Fixed
@@ -139,6 +147,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.11.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.3
 [1.11.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.2
 [1.11.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.1
 [1.11.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.0
