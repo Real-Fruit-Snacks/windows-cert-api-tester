@@ -6,6 +6,10 @@
         Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="0" CornerRadius="0"
+                      GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
     <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1" Padding="18">
         <StackPanel>
             <TextBlock x:Name="PromptText" Foreground="{StaticResource Text.Normal}" FontWeight="SemiBold"

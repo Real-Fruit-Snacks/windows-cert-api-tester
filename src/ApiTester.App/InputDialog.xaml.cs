@@ -14,6 +14,12 @@ public partial class InputDialog : Window
         Loaded += (_, _) => { Input.Focus(); Input.SelectAll(); };
     }
 
+    protected override void OnSourceInitialized(System.EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        NativeTheme.ApplyDarkTitleBar(this);
+    }
+
     /// <summary>Show a modal single-line prompt. Returns the entered text, or null if cancelled.</summary>
     public static string? Show(Window owner, string title, string prompt, string initial = "")
     {

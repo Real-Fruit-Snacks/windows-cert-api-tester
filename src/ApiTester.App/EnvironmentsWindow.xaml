@@ -6,6 +6,10 @@
         Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
+                      GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
     <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1">
         <DockPanel>
             <Border DockPanel.Dock="Top" Height="40" Background="{StaticResource Bg.Panel}"

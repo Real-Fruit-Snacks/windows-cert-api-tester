@@ -19,6 +19,12 @@ public partial class EnvironmentsWindow : Window
         UpdateVarsVisibility();
     }
 
+    protected override void OnSourceInitialized(System.EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        NativeTheme.ApplyDarkTitleBar(this);
+    }
+
     private ApiEnvironment? Selected => EnvList.SelectedItem as ApiEnvironment;
 
     private void EnvList_SelectionChanged(object sender, SelectionChangedEventArgs e)
