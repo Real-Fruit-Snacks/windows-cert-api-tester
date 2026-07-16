@@ -36,8 +36,16 @@
                     <TextBlock Text="CERTIFICATE API TESTER" VerticalAlignment="Center" Margin="9,0,0,0"
                                FontWeight="Bold" FontSize="13" Foreground="{StaticResource Text.Normal}"/>
                 </StackPanel>
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="0,0,16,0"
-                           Foreground="{StaticResource Text.Faint}" FontSize="11" Text="WINDOWS &#183; .NET 9 &#183; mTLS"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    <TextBlock Text="ENV" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                    <ComboBox x:Name="EnvCombo" Width="150" Height="26" SelectionChanged="EnvCombo_SelectionChanged"
+                              ToolTip="Active environment — its {{variables}} are substituted when you send."/>
+                    <Button x:Name="ManageEnvButton" Content="Edit" Height="26" FontSize="11" Padding="9,0"
+                            Margin="6,0,14,0" Click="ManageEnvButton_Click" ToolTip="Manage environments and variables"/>
+                    <TextBlock VerticalAlignment="Center" Foreground="{StaticResource Text.Faint}" FontSize="11"
+                               Text="WINDOWS &#183; .NET 9 &#183; mTLS"/>
+                </StackPanel>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="MinButton" Style="{StaticResource CaptionButton}" Height="44"
@@ -55,28 +63,66 @@
                 BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <Grid DockPanel.Dock="Top" Height="38">
-                    <TextBlock Text="HISTORY" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <Button x:Name="HistoryTabButton" Content="HISTORY" Style="{StaticResource SideTab}"
+                                Tag="active" Click="ShowHistory_Click"/>
+                        <Button x:Name="CollectionsTabButton" Content="COLLECTIONS" Style="{StaticResource SideTab}"
+                                Margin="14,0,0,0" Click="ShowCollections_Click"/>
+                    </StackPanel>
                     <Button x:Name="ClearHistoryButton" Content="Clear" Height="24" FontSize="11" Padding="10,0"
                             HorizontalAlignment="Right" Margin="0,0,10,0" Click="ClearHistoryButton_Click"/>
                 </Grid>
                 <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource Border}"/>
-                <ListBox x:Name="HistoryList" SelectionChanged="HistoryList_SelectionChanged"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Method}" FontSize="10" FontWeight="Bold"
-                                               Foreground="{StaticResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource Text.Normal}" FontSize="12"/>
+                <Grid>
+                    <ListBox x:Name="HistoryList" SelectionChanged="HistoryList_SelectionChanged"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Method}" FontSize="10" FontWeight="Bold"
+                                                   Foreground="{StaticResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource Text.Normal}" FontSize="12"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding DisplayHost}" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource Text.Faint}" FontSize="10" Margin="0,1,0,0"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding DisplayHost}" TextTrimming="CharacterEllipsis"
-                                           Foreground="{StaticResource Text.Faint}" FontSize="10" Margin="0,1,0,0"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <DockPanel x:Name="CollectionsArea" Visibility="Collapsed">
+                        <StackPanel DockPanel.Dock="Bottom" Margin="8" >
+                            <Button x:Name="SaveToCollectionButton" Content="Save current request…" Height="28"
+                                    Click="SaveToCollectionButton_Click" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="NewFolderButton" Content="+ Folder" Height="26" FontSize="11" Padding="9,0"
+                                        Click="NewFolderButton_Click"/>
+                                <Button x:Name="RenameNodeButton" Content="Rename" Height="26" FontSize="11" Padding="9,0"
+                                        Margin="6,0,0,0" Click="RenameNodeButton_Click"/>
+                                <Button x:Name="DeleteNodeButton" Content="Delete" Height="26" FontSize="11" Padding="9,0"
+                                        Margin="6,0,0,0" Click="DeleteNodeButton_Click"/>
                             </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                        </StackPanel>
+                        <TextBlock x:Name="CollectionsEmptyHint" DockPanel.Dock="Top" Margin="14,14,14,0"
+                                   Foreground="{StaticResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
+                                   Text="No saved requests yet. Send a request, then “Save current request…” to keep it here."/>
+                        <TreeView x:Name="CollectionsTree" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  MouseDoubleClick="CollectionsTree_MouseDoubleClick">
+                            <TreeView.ItemTemplate>
+                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding MethodBadge}" FontSize="10" FontWeight="Bold" MinWidth="30"
+                                                   Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text.Normal}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </HierarchicalDataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                    </DockPanel>
+                </Grid>
             </DockPanel>
         </Border>
 

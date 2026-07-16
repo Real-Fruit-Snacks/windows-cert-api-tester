@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-07-15
+
+### Added
+- **Collections** — save named requests into folders and reopen them in a tab. A
+  HISTORY / COLLECTIONS switch in the sidebar, a tree with the current request's method badge,
+  and buttons to save the current request, add a folder, rename, and delete. Double-click a
+  saved request to open it in a new tab. Collections persist between sessions.
+- **Environments & variables** — define `{{variable}}` values per environment (e.g. Dev,
+  Staging, Prod) and switch between them from the **ENV** selector in the title bar. Variables
+  are substituted in the URL, query parameters, headers, body, and auth **when you send**;
+  stored requests keep the raw `{{tokens}}`. Any token with no value is reported in the status
+  line so nothing is sent silently wrong. An Environments editor manages environments and their
+  key/value variables.
+
 ## [1.10.0] - 2026-07-15
 
 ### Added
@@ -113,6 +127,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.11.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.0
 [1.10.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.10.0
 [1.9.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.9.0
 [1.8.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.8.0

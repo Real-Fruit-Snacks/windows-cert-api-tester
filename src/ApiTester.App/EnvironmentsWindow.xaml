@@ -1,0 +1,75 @@
+<Window x:Class="ApiTester.App.EnvironmentsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Environments" Height="440" Width="640"
+        WindowStyle="None" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        FontFamily="{StaticResource Mono}" FontSize="12.5">
+    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Height="40" Background="{StaticResource Bg.Panel}"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
+                <Grid>
+                    <TextBlock Text="ENVIRONMENTS &amp; VARIABLES" Style="{StaticResource Caption}"
+                               VerticalAlignment="Center" Margin="14,0,0,0"/>
+                    <Button Content="&#x2715;" HorizontalAlignment="Right" Style="{StaticResource CaptionClose}"
+                            Height="40" Click="Close_Click"/>
+                </Grid>
+            </Border>
+
+            <Grid Margin="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="210"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- environments list -->
+                <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock DockPanel.Dock="Top" Text="ENVIRONMENTS" Style="{StaticResource Caption}" Margin="0,0,0,6"/>
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="+ New" Height="26" FontSize="11" Padding="9,0" Click="NewEnv_Click"/>
+                        <Button Content="Rename" Height="26" FontSize="11" Padding="9,0" Margin="6,0,0,0" Click="RenameEnv_Click"/>
+                        <Button Content="Delete" Height="26" FontSize="11" Padding="9,0" Margin="6,0,0,0" Click="DeleteEnv_Click"/>
+                    </StackPanel>
+                    <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6">
+                        <ListBox x:Name="EnvList" DisplayMemberPath="Name" Margin="2"
+                                 SelectionChanged="EnvList_SelectionChanged"/>
+                    </Border>
+                </DockPanel>
+
+                <!-- variables for the selected environment -->
+                <DockPanel Grid.Column="1">
+                    <TextBlock DockPanel.Dock="Top" Text="VARIABLES" Style="{StaticResource Caption}" Margin="0,0,0,6"/>
+                    <Button DockPanel.Dock="Bottom" x:Name="AddVarButton" Content="+ Add variable" Width="130"
+                            HorizontalAlignment="Left" Margin="0,8,0,0" Click="AddVar_Click"/>
+                    <TextBlock x:Name="NoEnvHint" DockPanel.Dock="Top" Foreground="{StaticResource Text.Faint}"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,20,0,0"
+                               Text="Select or create an environment, then add key/value variables. Use them anywhere as {{key}} — they are substituted when you send."/>
+                    <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="VarsItems" Margin="8">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="1.5*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="key" VerticalContentAlignment="Center" ToolTip="Variable name"/>
+                                            <TextBox Grid.Column="1" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="value" Margin="6,0,0,0" VerticalContentAlignment="Center" ToolTip="Value"/>
+                                            <Button Grid.Column="2" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
+                                                    Content="&#x2715;" Tag="{Binding}" Click="RemoveVar_Click" ToolTip="Remove"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

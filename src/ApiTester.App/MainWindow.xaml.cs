@@ -26,6 +26,11 @@ public partial class MainWindow : Window
     private bool _switching;          // guards re-entrancy during tab switches
     private bool _loading;            // true while pushing a model into the controls
 
+    private readonly ObservableCollection<CollectionNode> _collections = new();
+    private readonly ObservableCollection<ApiEnvironment> _environments = new();
+    private List<string> _unresolvedVars = new();
+    private bool _envLoading;
+
     private IReadOnlyList<CertificateInfo> _certs = new List<CertificateInfo>();
     private List<CertOption> _allOptions = new();
     private List<CertOption> _visibleOptions = new();
@@ -57,6 +62,8 @@ public partial class MainWindow : Window
         RefreshSavedBases();
         RefreshHistoryList();
         InitializeTabs();
+        InitializeCollections();
+        InitializeEnvironments();
 
         PreviewKeyDown += Window_PreviewKeyDown;
     }
@@ -81,6 +88,8 @@ public partial class MainWindow : Window
 
         _state.Tabs = _tabs.Select(t => t.Request).ToList();
         _state.ActiveTabIndex = Math.Max(0, TabStrip.SelectedIndex);
+        _state.Collections = _collections.ToList();
+        _state.Environments = _environments.ToList();
 
         // Keep the single-value globals in step with the active tab for first-launch continuity.
         _state.LastCertThumbprint = ActiveRequest?.CertThumbprint;
@@ -252,6 +261,154 @@ public partial class MainWindow : Window
         else ClearResponse();
     }
 
+    // ---------- sidebar mode ----------
+
+    private void ShowHistory_Click(object sender, RoutedEventArgs e) => SetSidebarMode(history: true);
+    private void ShowCollections_Click(object sender, RoutedEventArgs e) => SetSidebarMode(history: false);
+
+    private void SetSidebarMode(bool history)
+    {
+        HistoryList.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
+        CollectionsArea.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
+        ClearHistoryButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
+        HistoryTabButton.Tag = history ? "active" : null;
+        CollectionsTabButton.Tag = history ? null : "active";
+    }
+
+    // ---------- collections ----------
+
+    private void InitializeCollections()
+    {
+        foreach (var n in _state.Collections) _collections.Add(n);
+        CollectionsTree.ItemsSource = _collections;
+        UpdateCollectionsHint();
+    }
+
+    private void UpdateCollectionsHint() =>
+        CollectionsEmptyHint.Visibility = _collections.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The collection to add into: the selected folder, a selected request's parent, else the root.</summary>
+    private ObservableCollection<CollectionNode> TargetFolder()
+    {
+        if (CollectionsTree.SelectedItem is CollectionNode sel)
+            return sel.IsFolder ? sel.Children : FindParent(sel) ?? _collections;
+        return _collections;
+    }
+
+    private ObservableCollection<CollectionNode>? FindParent(CollectionNode target, ObservableCollection<CollectionNode>? scope = null)
+    {
+        scope ??= _collections;
+        foreach (var n in scope)
+        {
+            if (ReferenceEquals(n, target)) return scope;
+            if (n.IsFolder)
+            {
+                var r = FindParent(target, n.Children);
+                if (r is not null) return r;
+            }
+        }
+        return null;
+    }
+
+    private static RequestModel CloneRequest(RequestModel m) =>
+        RequestModel.FromHistoryEntry(m.ToHistoryEntry(null, null));
+
+    private void SaveToCollectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ActiveRequest is not { } m) return;
+        CaptureControlsInto(m);
+        var def = string.IsNullOrWhiteSpace(m.Path) ? m.Method : $"{m.Method} {m.Path}";
+        var name = InputDialog.Show(this, "Save request", "Name for this saved request", def);
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        TargetFolder().Add(new CollectionNode { Name = name, IsFolder = false, Request = CloneRequest(m) });
+        SetSidebarMode(history: false);
+        UpdateCollectionsHint();
+        StatusText.Text = $"Saved “{name}” to collections.";
+    }
+
+    private void NewFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = InputDialog.Show(this, "New folder", "Folder name", "New folder");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        TargetFolder().Add(new CollectionNode { Name = name, IsFolder = true });
+        UpdateCollectionsHint();
+    }
+
+    private void RenameNodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CollectionsTree.SelectedItem is not CollectionNode sel) { StatusText.Text = "Select a collection item to rename."; return; }
+        var name = InputDialog.Show(this, "Rename", sel.IsFolder ? "Folder name" : "Request name", sel.Name);
+        if (!string.IsNullOrWhiteSpace(name)) sel.Name = name;
+    }
+
+    private void DeleteNodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CollectionsTree.SelectedItem is not CollectionNode sel) { StatusText.Text = "Select a collection item to delete."; return; }
+        (FindParent(sel) ?? _collections).Remove(sel);
+        UpdateCollectionsHint();
+    }
+
+    private void CollectionsTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (CollectionsTree.SelectedItem is CollectionNode { IsFolder: false, Request: { } req })
+        {
+            var tab = new RequestTab(CloneRequest(req));
+            _tabs.Add(tab);
+            TabStrip.SelectedItem = tab;
+            StatusText.Text = $"Opened “{(CollectionsTree.SelectedItem as CollectionNode)!.Name}” in a new tab.";
+        }
+    }
+
+    // ---------- environments & variables ----------
+
+    private void InitializeEnvironments()
+    {
+        foreach (var env in _state.Environments) _environments.Add(env);
+        RefreshEnvCombo();
+    }
+
+    private void RefreshEnvCombo()
+    {
+        _envLoading = true;
+        var items = new List<string> { "— no environment —" };
+        items.AddRange(_environments.Select(env => string.IsNullOrWhiteSpace(env.Name) ? "(unnamed)" : env.Name));
+        EnvCombo.ItemsSource = items;
+
+        int idx = 0;
+        if (_state.ActiveEnvironmentId is { } id)
+        {
+            int found = _environments.ToList().FindIndex(env => env.Id == id);
+            if (found >= 0) idx = found + 1;
+            else _state.ActiveEnvironmentId = null; // active env was deleted
+        }
+        EnvCombo.SelectedIndex = idx;
+        _envLoading = false;
+    }
+
+    private void EnvCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_envLoading) return;
+        int i = EnvCombo.SelectedIndex;
+        if (i <= 0 || i - 1 >= _environments.Count)
+        {
+            _state.ActiveEnvironmentId = null;
+            StatusText.Text = "Environment: none.";
+        }
+        else
+        {
+            var env = _environments[i - 1];
+            _state.ActiveEnvironmentId = env.Id;
+            StatusText.Text = $"Environment: {(string.IsNullOrWhiteSpace(env.Name) ? "(unnamed)" : env.Name)}.";
+        }
+    }
+
+    private void ManageEnvButton_Click(object sender, RoutedEventArgs e)
+    {
+        new EnvironmentsWindow(_environments) { Owner = this }.ShowDialog();
+        RefreshEnvCombo();
+    }
+
     // ---------- certificates ----------
 
     private void LoadCertificates()
@@ -402,18 +559,50 @@ public partial class MainWindow : Window
     private ApiRequest BuildRequest()
     {
         var m = ActiveRequest!;
-        var body = string.IsNullOrEmpty(m.Body) ? null : m.Body;
+        var (url, headers, body, unresolved) = ResolveActive();
+        _unresolvedVars = unresolved;
         string? contentType = body is not null && m.ContentType != "(none)" ? m.ContentType : null;
 
         return new ApiRequest
         {
             Method = new HttpMethod(m.Method),
-            Url = m.EffectiveUrl(),
-            Headers = BuildHeaders(),
+            Url = url,
+            Headers = headers,
             Body = body,
             ContentType = contentType,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
+    }
+
+    /// <summary>Build the current environment's variable map.</summary>
+    private Dictionary<string, string> CurrentVars()
+    {
+        var d = new Dictionary<string, string>(StringComparer.Ordinal);
+        var env = _environments.FirstOrDefault(e => e.Id == _state.ActiveEnvironmentId);
+        if (env is not null)
+            foreach (var v in env.Variables)
+                if (!string.IsNullOrWhiteSpace(v.Key)) d[v.Key.Trim()] = v.Value ?? "";
+        return d;
+    }
+
+    /// <summary>Resolve the active request's URL, headers, and body against the current
+    /// environment's <c>{{variables}}</c>, returning any tokens that couldn't be resolved.</summary>
+    private (string Url, List<KeyValuePair<string, string>> Headers, string? Body, List<string> Unresolved) ResolveActive()
+    {
+        var m = ActiveRequest!;
+        var vars = CurrentVars();
+        var unresolved = new List<string>();
+        string R(string s)
+        {
+            var (r, u) = VariableResolver.Resolve(s ?? "", vars);
+            foreach (var x in u) if (!unresolved.Contains(x)) unresolved.Add(x);
+            return r;
+        }
+
+        var url = R(m.EffectiveUrl());
+        var headers = BuildHeaders().Select(h => new KeyValuePair<string, string>(R(h.Key), R(h.Value))).ToList();
+        var body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body);
+        return (url, headers, body, unresolved);
     }
 
     private void SendButton_Click(object sender, RoutedEventArgs e) => _ = SendRequestAsync();
@@ -437,6 +626,9 @@ public partial class MainWindow : Window
             var response = await _apiClient.SendAsync(
                 request, cert, model.IgnoreServerCert, cancellationToken: _cts.Token);
             RenderResponse(response);
+            if (_unresolvedVars.Count > 0)
+                StatusText.Text += "   ⚠ unresolved " +
+                    string.Join(", ", _unresolvedVars.Select(v => "{{" + v + "}}"));
             if (ActiveTab is { } tab)
             {
                 tab.LastResponse = response;
@@ -545,16 +737,17 @@ public partial class MainWindow : Window
     private string BuildCurl()
     {
         var m = ActiveRequest!;
+        var (url, headers, body, _) = ResolveActive();
         var sb = new StringBuilder();
-        sb.Append("curl -X ").Append(m.Method).Append(" \"").Append(m.EffectiveUrl()).Append('"');
-        foreach (var h in BuildHeaders())
+        sb.Append("curl -X ").Append(m.Method).Append(" \"").Append(url).Append('"');
+        foreach (var h in headers)
             sb.Append(" \\\n  -H \"").Append(h.Key).Append(": ").Append(h.Value.Replace("\"", "\\\"")).Append('"');
         if (m.CertThumbprint is not null)
             sb.Append(" \\\n  --cert \"").Append(m.CertThumbprint).Append("\"   # client cert from the Windows store (curl built with Schannel)");
         if (m.IgnoreServerCert)
             sb.Append(" \\\n  -k");
-        if (!string.IsNullOrEmpty(m.Body))
-            sb.Append(" \\\n  --data \"").Append(m.Body.Replace("\"", "\\\"")).Append('"');
+        if (!string.IsNullOrEmpty(body))
+            sb.Append(" \\\n  --data \"").Append(body.Replace("\"", "\\\"")).Append('"');
         return sb.ToString();
     }
 

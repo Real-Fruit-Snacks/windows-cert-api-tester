@@ -27,6 +27,10 @@ public sealed class AppState
     public List<RequestModel> Tabs { get; set; } = new();
     public int ActiveTabIndex { get; set; }
 
+    public List<CollectionNode> Collections { get; set; } = new();
+    public List<ApiEnvironment> Environments { get; set; } = new();
+    public string? ActiveEnvironmentId { get; set; }
+
     private static string FilePath
     {
         get
@@ -111,6 +115,47 @@ public sealed class HistoryEntry
     [JsonIgnore]
     public string DisplayHost =>
         Uri.TryCreate(EffectiveUrl, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Host}" : "";
+}
+
+/// <summary>A node in the collections tree: either a folder (with children) or a saved request.</summary>
+public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChanged
+{
+    private string _name = "";
+
+    public string Id { get; set; } = System.Guid.NewGuid().ToString("N");
+    public bool IsFolder { get; set; }
+    public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
+    public System.Collections.ObjectModel.ObservableCollection<CollectionNode> Children { get; set; } = new();
+    public RequestModel? Request { get; set; }   // populated when this is a saved request (not a folder)
+
+    /// <summary>Method badge shown before a saved request's name; a folder mark for folders.</summary>
+    [JsonIgnore] public string MethodBadge => IsFolder ? "▸" : Request?.Method ?? "";
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
+}
+
+/// <summary>A named environment holding <c>{{variable}}</c> values.</summary>
+public sealed class ApiEnvironment : System.ComponentModel.INotifyPropertyChanged
+{
+    private string _name = "";
+    public string Id { get; set; } = System.Guid.NewGuid().ToString("N");
+    public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
+    public System.Collections.ObjectModel.ObservableCollection<Variable> Variables { get; set; } = new();
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
+}
+
+public sealed class Variable : System.ComponentModel.INotifyPropertyChanged
+{
+    private string _key = "";
+    private string _value = "";
+    public string Key { get => _key; set { _key = value; Raise(nameof(Key)); } }
+    public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
 }
 
 public sealed class HeaderRow : System.ComponentModel.INotifyPropertyChanged
