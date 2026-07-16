@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-07-15
+
+### Changed
+- Documentation: added a screenshots gallery to the README and the documentation site, and
+  clarified that the Rendered website view uses the Microsoft Edge WebView2 runtime included
+  with Windows 11.
+
+### Internal
+- Added unit tests covering the request-model and collection mapping (cURL / OpenAPI import and
+  the history round-trip). The application binary is unchanged from 1.13.0.
+
 ## [1.13.0] - 2026-07-15
 
 ### Added
@@ -168,6 +179,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.13.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.1
 [1.13.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.0
 [1.12.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.12.0
 [1.11.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.3
