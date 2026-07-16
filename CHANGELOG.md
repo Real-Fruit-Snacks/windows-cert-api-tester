@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-07-15
+
+### Fixed
+- The Environments window's close button now shows the correct “✕” glyph instead of an empty box.
+- Text in the name prompt (new environment, new folder, rename, save request) is no longer clipped.
+
 ## [1.11.0] - 2026-07-15
 
 ### Added
@@ -127,6 +133,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.11.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.1
 [1.11.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.0
 [1.10.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.10.0
 [1.9.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.9.0
