@@ -344,7 +344,9 @@ public partial class MainWindow : Window
         var name = InputDialog.Show(this, "Save request", "Name for this saved request", def);
         if (string.IsNullOrWhiteSpace(name)) return;
 
-        TargetFolder().Add(new CollectionNode { Name = name, IsFolder = false, Request = CloneRequest(m) });
+        var node = new CollectionNode { Name = name, IsFolder = false, Request = CloneRequest(m) };
+        TargetFolder().Add(node);
+        m.SourceCollectionId = node.Id;   // future sends of this tab record the endpoint's result
         SetSidebarMode(history: false);
         UpdateCollectionsHint();
         StatusText.Text = $"Saved “{name}” to collections.";
@@ -374,13 +376,27 @@ public partial class MainWindow : Window
 
     private void CollectionsTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (CollectionsTree.SelectedItem is CollectionNode { IsFolder: false, Request: { } req })
+        if (CollectionsTree.SelectedItem is CollectionNode { IsFolder: false, Request: { } req } node)
         {
-            var tab = new RequestTab(CloneRequest(req));
+            var clone = CloneRequest(req);
+            clone.SourceCollectionId = node.Id;   // sends from this tab record the endpoint's result
+            var tab = new RequestTab(clone);
             _tabs.Add(tab);
             TabStrip.SelectedItem = tab;
-            StatusText.Text = $"Opened “{(CollectionsTree.SelectedItem as CollectionNode)!.Name}” in a new tab.";
+            StatusText.Text = $"Opened “{node.Name}” in a new tab.";
         }
+    }
+
+    /// <summary>Find a collection node by id anywhere in the tree.</summary>
+    private CollectionNode? FindNodeById(string id, ObservableCollection<CollectionNode>? scope = null)
+    {
+        scope ??= _collections;
+        foreach (var n in scope)
+        {
+            if (n.Id == id) return n;
+            if (n.IsFolder && FindNodeById(id, n.Children) is { } hit) return hit;
+        }
+        return null;
     }
 
     // ---------- environments & variables ----------
@@ -1127,6 +1143,12 @@ public partial class MainWindow : Window
                     ResponseHeaders = response.Headers?.ToList() ?? new List<KeyValuePair<string, string>>()
                 });
             }
+            // Record the outcome on the collection entry this tab came from — but only while the
+            // tab still targets that saved endpoint (same method and URL).
+            if (model.SourceCollectionId is { } srcId &&
+                FindNodeById(srcId) is { IsFolder: false, Request: { } saved } srcNode &&
+                saved.Method == model.Method && saved.EffectiveUrl() == model.EffectiveUrl())
+                srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
             AddToHistory(response);
         }
         finally

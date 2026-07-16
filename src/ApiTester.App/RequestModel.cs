@@ -21,6 +21,7 @@ public sealed class RequestModel : INotifyPropertyChanged
     private string? _certThumbprint;
     private bool _ignoreServerCert;
     private int _timeoutSeconds = 100;
+    private string? _sourceCollectionId;
 
     public string Method { get => _method; set { _method = value; Raise(nameof(Method)); } }
     public string? BaseUrl { get => _baseUrl; set { _baseUrl = value; Raise(nameof(BaseUrl)); } }
@@ -33,6 +34,14 @@ public sealed class RequestModel : INotifyPropertyChanged
     public string? CertThumbprint { get => _certThumbprint; set { _certThumbprint = value; Raise(nameof(CertThumbprint)); } }
     public bool IgnoreServerCert { get => _ignoreServerCert; set { _ignoreServerCert = value; Raise(nameof(IgnoreServerCert)); } }
     public int TimeoutSeconds { get => _timeoutSeconds; set { _timeoutSeconds = value; Raise(nameof(TimeoutSeconds)); } }
+
+    /// <summary>The collection entry this request was opened from (or saved to), so a send can
+    /// record the endpoint's last result back on that entry. Null for unlinked requests.</summary>
+    public string? SourceCollectionId
+    {
+        get => _sourceCollectionId;
+        set { _sourceCollectionId = value; Raise(nameof(SourceCollectionId)); }
+    }
 
     public ObservableCollection<HeaderRow> Headers { get; set; } = new();
     public ObservableCollection<ParamRow> QueryParams { get; set; } = new();

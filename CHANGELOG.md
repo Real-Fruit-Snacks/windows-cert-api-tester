@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-07-16
+
+### Added
+- **Known-good endpoints** — every saved request in your collections now remembers its last
+  result. Open a saved request and send it: a dot appears next to its name in the tree — **mint**
+  when the send returned a 2xx (known good), **red** when it failed or returned an error status —
+  and hovering shows when it was last checked and what it returned. Results persist between
+  sessions, and are only recorded while the tab still targets the saved endpoint (same method and
+  URL), so editing a request can't mislabel the entry it came from.
+
+### Changed
+- Tooltips throughout the app now use the dark theme instead of the light system default.
+
 ## [1.16.0] - 2026-07-16
 
 ### Changed
@@ -220,6 +233,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.17.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.17.0
 [1.16.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.16.0
 [1.15.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.15.0
 [1.14.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.1

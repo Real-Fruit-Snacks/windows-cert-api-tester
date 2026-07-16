@@ -197,4 +197,68 @@ public class CollectionNodeTests
         var leaf = Assert.Single(node.Children);
         Assert.Equal("POST /things", leaf.Name);
     }
+
+    [Fact]
+    public void RecordResult_marks_2xx_as_known_good()
+    {
+        var node = new CollectionNode { Name = "Health", IsFolder = false, Request = new RequestModel() };
+        Assert.False(node.HasResult);
+        Assert.Equal("Never sent", node.StatusSummary);
+
+        node.RecordResult(200, new DateTime(2026, 7, 16, 12, 0, 0, DateTimeKind.Utc));
+
+        Assert.True(node.HasResult);
+        Assert.True(node.IsKnownGood);
+        Assert.Contains("200", node.StatusSummary);
+        Assert.Contains("known good", node.StatusSummary);
+    }
+
+    [Fact]
+    public void RecordResult_marks_failures_and_non_2xx_as_not_known_good()
+    {
+        var node = new CollectionNode { IsFolder = false, Request = new RequestModel() };
+
+        node.RecordResult(404, DateTime.UtcNow);
+        Assert.True(node.HasResult);
+        Assert.False(node.IsKnownGood);
+        Assert.Contains("404", node.StatusSummary);
+
+        node.RecordResult(null, DateTime.UtcNow);   // failed without a response
+        Assert.True(node.HasResult);
+        Assert.False(node.IsKnownGood);
+        Assert.Contains("failed", node.StatusSummary);
+    }
+
+    [Fact]
+    public void Folders_have_no_status_summary()
+    {
+        Assert.Null(new CollectionNode { IsFolder = true, Name = "F" }.StatusSummary);
+    }
+
+    [Fact]
+    public void Last_result_survives_a_json_round_trip()
+    {
+        var node = new CollectionNode { Name = "Health", IsFolder = false, Request = new RequestModel() };
+        var when = new DateTime(2026, 7, 16, 12, 0, 0, DateTimeKind.Utc);
+        node.RecordResult(503, when);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(node);
+        var back = System.Text.Json.JsonSerializer.Deserialize<CollectionNode>(json)!;
+
+        Assert.Equal(503, back.LastStatusCode);
+        Assert.Equal(when, back.LastCheckedUtc);
+        Assert.True(back.HasResult);
+        Assert.False(back.IsKnownGood);
+    }
+
+    [Fact]
+    public void Source_collection_link_survives_a_json_round_trip()
+    {
+        var m = new RequestModel { Method = "GET", Path = "/health", SourceCollectionId = "abc123" };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(m);
+        var back = System.Text.Json.JsonSerializer.Deserialize<RequestModel>(json)!;
+
+        Assert.Equal("abc123", back.SourceCollectionId);
+    }
 }

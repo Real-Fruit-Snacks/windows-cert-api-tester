@@ -122,12 +122,68 @@ public sealed class HistoryEntry
 public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChanged
 {
     private string _name = "";
+    private int? _lastStatusCode;
+    private DateTime? _lastCheckedUtc;
 
     public string Id { get; set; } = System.Guid.NewGuid().ToString("N");
     public bool IsFolder { get; set; }
     public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
     public System.Collections.ObjectModel.ObservableCollection<CollectionNode> Children { get; set; } = new();
     public RequestModel? Request { get; set; }   // populated when this is a saved request (not a folder)
+
+    /// <summary>The status code the last send of this saved request returned (null if it failed
+    /// without a response, or if it has never been sent — see <see cref="LastCheckedUtc"/>).</summary>
+    public int? LastStatusCode
+    {
+        get => _lastStatusCode;
+        set { _lastStatusCode = value; RaiseStatus(); }
+    }
+
+    /// <summary>When this saved request was last sent (UTC); null if never.</summary>
+    public DateTime? LastCheckedUtc
+    {
+        get => _lastCheckedUtc;
+        set { _lastCheckedUtc = value; RaiseStatus(); }
+    }
+
+    /// <summary>Record the outcome of sending this saved request.</summary>
+    public void RecordResult(int? statusCode, DateTime utcNow)
+    {
+        _lastStatusCode = statusCode;
+        _lastCheckedUtc = utcNow;
+        RaiseStatus();
+    }
+
+    /// <summary>Known good: the last send returned a 2xx.</summary>
+    [JsonIgnore] public bool IsKnownGood => LastStatusCode is >= 200 and < 300;
+
+    /// <summary>Whether this saved request has ever been sent.</summary>
+    [JsonIgnore] public bool HasResult => LastCheckedUtc is not null;
+
+    /// <summary>Tooltip for the status dot, e.g. "Last checked 2026-07-16 14:02 — 200 (known good)".</summary>
+    [JsonIgnore]
+    public string? StatusSummary
+    {
+        get
+        {
+            if (IsFolder) return null;
+            if (LastCheckedUtc is not { } utc) return "Never sent";
+            string when = utc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+            string outcome = LastStatusCode is { } c
+                ? $"{c}{(IsKnownGood ? " (known good)" : "")}"
+                : "failed (no response)";
+            return $"Last checked {when} — {outcome}";
+        }
+    }
+
+    private void RaiseStatus()
+    {
+        Raise(nameof(LastStatusCode));
+        Raise(nameof(LastCheckedUtc));
+        Raise(nameof(IsKnownGood));
+        Raise(nameof(HasResult));
+        Raise(nameof(StatusSummary));
+    }
 
     /// <summary>Method badge shown before a saved request's name; a folder mark for folders.</summary>
     [JsonIgnore] public string MethodBadge => IsFolder ? "▸" : Request?.Method ?? "";

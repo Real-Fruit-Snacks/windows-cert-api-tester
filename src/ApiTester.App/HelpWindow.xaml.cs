@@ -203,7 +203,8 @@ public partial class HelpWindow : Window
             "“Save current request…” stores the active request under a name.",
             "“+ Folder” groups saved requests; drag isn't needed — save into the selected folder.",
             "Double-click a saved request to open it in a new tab. Rename or Delete with the buttons.",
-            "Collections persist between sessions."),
+            "Each saved request remembers its last result: after you send it, a dot appears next to its name — mint when the last send returned a 2xx (known good), red when it failed or returned an error status. Hover the entry for when it was last checked and what it returned.",
+            "Collections persist between sessions, including each request's last result."),
         Sub("HISTORY"),
         P("History lists your recent requests, labelled by path with the host beneath. Click one to reload the entire request — website, certificate, headers, auth, timeout, and body — and the response it returned. The app also remembers your window, last certificate, and settings between runs."));
 
