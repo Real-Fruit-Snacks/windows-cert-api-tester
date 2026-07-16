@@ -51,6 +51,22 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine and proves the whole certificate-authentication path end to end, **no real endpoint required.**
 - **Keyboard-friendly and portable** — shortcuts for everything (below), a fully themed dark UI, and a single self-contained executable.
 
+## Screenshots
+
+**Render a certificate-protected website — every resource (HTML, CSS, JS, images, XHR) is fetched with your client certificate**
+
+<div align="center">
+  <img alt="Rendered website view" src="docs/assets/shot-rendered.png" width="860" />
+</div>
+
+**Organise saved requests into collections, and switch between environments of `{{variables}}`**
+
+<div align="center">
+  <img alt="Collections sidebar" src="docs/assets/shot-collections.png" width="820" />
+  <br/><br/>
+  <img alt="Environments and variables" src="docs/assets/shot-environments.png" width="560" />
+</div>
+
 ## Requirements
 
 - **To run:** Windows 10 or 11 (64-bit). Nothing else — the released `.exe` bundles the .NET runtime.

@@ -80,6 +80,13 @@
 
   footer { border-top: 1px solid var(--twb-border); background: var(--twb-bg-1); padding: 28px 0; color: var(--twb-text-muted); font-size: 13.5px; }
   footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+  .gallery { display: grid; gap: 22px; margin-top: 26px; }
+  .gallery figure { margin: 0; }
+  .gallery img { width: 100%; height: auto; border: 1px solid var(--twb-border); border-radius: var(--twb-radius-l); display: block; }
+  .gallery figcaption { font-family: var(--twb-font-mono); font-size: 12.5px; color: var(--twb-text-muted); margin-top: 10px; letter-spacing: 0.02em; }
+  .gallery .two { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 680px) { .gallery .two { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -94,6 +101,7 @@
     </div>
     <nav>
       <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
       <a href="#get">Get it</a>
       <a href="#how">How it works</a>
       <a href="https://github.com/Real-Fruit-Snacks/windows-cert-api-tester">GitHub</a>
@@ -148,6 +156,29 @@
       <div class="card"><h3>Clear failures</h3><p>Tells &ldquo;certificate refused&rdquo; apart from &ldquo;server not trusted&rdquo;, a network error, and a timeout — with an off-by-default insecure bypass for private CAs.</p></div>
       <div class="card"><h3>Honors your proxy</h3><p>Follows the machine's proxy, including WPAD auto-detect and a PAC script from Internet Options, authenticating with your Windows credentials.</p></div>
       <div class="card"><h3>Built-in self-test</h3><p>One click stands up a local mutual-TLS server and proves the whole certificate path end to end — no real endpoint required.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screenshots">
+  <div class="wrap">
+    <p class="manifest"><span class="chev">&#10095;</span> A LOOK INSIDE</p>
+    <h2>Screenshots</h2>
+    <div class="gallery">
+      <figure>
+        <img src="assets/shot-rendered.png" alt="Rendered website view — a page rendered through the client certificate">
+        <figcaption>Rendered view &mdash; every resource on the page (HTML, CSS, JS, images, XHR) is fetched with your client certificate.</figcaption>
+      </figure>
+      <div class="two">
+        <figure>
+          <img src="assets/shot-collections.png" alt="Collections sidebar with folders of saved requests">
+          <figcaption>Collections &mdash; saved requests, foldered, alongside history.</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/shot-environments.png" alt="Environments and variables editor">
+          <figcaption>Environments &amp; <code>{{variables}}</code>.</figcaption>
+        </figure>
+      </div>
     </div>
   </div>
 </section>
