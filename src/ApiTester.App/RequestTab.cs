@@ -17,6 +17,9 @@ public sealed class RequestTab : INotifyPropertyChanged
     public string LastRawText { get; set; } = "";
     public ResponseSnapshot? Snapshot { get; set; }
 
+    /// <summary>Live network trace for this tab — requests sent and resources the Rendered view fetched.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<NetworkEntry> Network { get; } = new();
+
     public RequestTab(RequestModel request)
     {
         Request = request;

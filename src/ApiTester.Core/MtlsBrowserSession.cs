@@ -13,6 +13,7 @@ public sealed class FetchResult
     public string? ReasonPhrase { get; set; }
     public string? ContentType { get; set; }
     public byte[] Body { get; set; } = Array.Empty<byte>();
+    public double ElapsedMs { get; set; }
     public List<KeyValuePair<string, string>> Headers { get; set; } = new();
 }
 
@@ -70,15 +71,18 @@ public sealed class MtlsBrowserSession : IDisposable
                 message.Content.Headers.ContentType = mt;
         }
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseContentRead, cancellationToken);
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        stopwatch.Stop();
 
         var result = new FetchResult
         {
             StatusCode = (int)response.StatusCode,
             ReasonPhrase = response.ReasonPhrase,
             ContentType = response.Content.Headers.ContentType?.ToString(),
-            Body = bytes
+            Body = bytes,
+            ElapsedMs = stopwatch.Elapsed.TotalMilliseconds
         };
         foreach (var h in response.Headers)
             foreach (var v in h.Value) result.Headers.Add(new(h.Key, v));

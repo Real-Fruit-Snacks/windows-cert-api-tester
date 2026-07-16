@@ -42,6 +42,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Rendered website view** — a **Rendered** response tab opens the current URL as a web page, fetching *every* resource (document, CSS, JS, images, XHR) with your selected client certificate — so a certificate-protected internal site renders fully, not just its HTML. It loads on demand and uses the Edge WebView2 runtime included with Windows 11.
 - **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML with **syntax highlighting**, shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers / Diagnostics views are always available.
 - **Connection diagnostics** — see the negotiated **TLS version and cipher**, whether your client certificate was **actually presented** to the server, and the server's certificate (subject, issuer, thumbprint, expiry, and chain).
+- **Network trace** — a **Network** tab, like a browser's network panel: every HTTP call is logged — the request you sent *and* every resource the Rendered view fetches — with method, status, type, size, timing, and a marker when it used your client certificate. Click a row for its headers.
 - **Saved websites** — save a base URL (e.g. `https://internal.corp`) and the URL box becomes just the path after it, so you can fire off `/api/thing`, `/api/other` without retyping the host.
 - **Request history** — a sidebar of recent requests, labelled by path (with the host beneath). Click one to reload the *entire* request — website, certificate, headers, auth, timeout, and body — **and** the response it returned. The app also remembers your window, last certificate, and settings between runs.
 - **Copy & export** — copy the response body, copy the request **as a cURL command**, and save any response (including binary) with a sensible file extension.
@@ -66,6 +67,12 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
   <img alt="Collections sidebar" src="docs/assets/shot-collections.png" width="820" />
   <br/><br/>
   <img alt="Environments and variables" src="docs/assets/shot-environments.png" width="560" />
+</div>
+
+**A network trace — every request the page made, like a browser's network panel, each fetched through your certificate**
+
+<div align="center">
+  <img alt="Network trace tab" src="docs/assets/shot-network.png" width="860" />
 </div>
 
 **Built-in Help & Reference — every feature explained, embedded so it works with no web access**

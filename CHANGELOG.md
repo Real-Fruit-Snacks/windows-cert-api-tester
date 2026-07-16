@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-07-15
+
+### Added
+- **Network trace** — a **Network** response tab that logs every HTTP call, like a browser's
+  network panel: the request you sent **and** every resource the Rendered view fetches (document,
+  CSS, JS, images, XHR). Each row shows method, status, type, size, timing, and a marker when it
+  was fetched with your client certificate; click a row for its request/response headers and cert
+  detail. Clearable, and it keeps metadata only (no response bodies).
+
 ## [1.14.1] - 2026-07-15
 
 ### Fixed
@@ -194,6 +203,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.15.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.15.0
 [1.14.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.1
 [1.14.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.0
 [1.13.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.1

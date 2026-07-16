@@ -166,7 +166,7 @@ public partial class HelpWindow : Window
             "Choose a method and type a URL on the request line.",
             "Press Send (or Ctrl+Enter). The response appears in the panel below."),
         Sub("READING THE RESPONSE"),
-        P("Pretty formats JSON and XML with syntax highlighting; Raw shows the exact bytes; Headers lists the response headers; Diagnostics shows the TLS and certificate details of the connection; Rendered opens the URL as a web page."),
+        P("Pretty formats JSON and XML with syntax highlighting; Raw shows the exact bytes; Headers lists the response headers; Diagnostics shows the TLS and certificate details; Rendered opens the URL as a web page; Network traces every HTTP call — the request you sent and every resource the Rendered view fetched."),
         NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window."));
 
     private UIElement RequestsAndTabs() => Section("Requests & tabs",
@@ -230,7 +230,8 @@ public partial class HelpWindow : Window
         Bullets(
             "Every resource the page loads — the document, CSS, JavaScript, images, and XHR — is fetched with your selected client certificate, so a certificate-protected site renders fully, not just its HTML.",
             "It loads on demand: nothing runs until you open the tab. Use Reload to fetch again.",
-            "The address line shows exactly which URL is being rendered."),
+            "The address line shows exactly which URL is being rendered.",
+            "The Network tab logs every resource the page fetches — method, status, type, size, and timing, like a browser's network panel — so you can see what a certificate-protected page loads and whether each resource succeeded."),
         NoteBox("The rendered view uses the Microsoft Edge WebView2 runtime, which ships with Windows 11 (and is a standard component on up-to-date Windows 10). If it isn't available, the tab explains that and the rest of the app is unaffected."));
 
     private UIElement Shortcuts() => Section("Keyboard shortcuts",

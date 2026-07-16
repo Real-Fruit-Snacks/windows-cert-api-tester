@@ -151,6 +151,7 @@
       <div class="card"><h3>Built-in help</h3><p>A <strong>?</strong> in the title bar (or F1) opens a Help &amp; Reference window covering every feature, the keyboard shortcuts, and an About panel &mdash; all embedded, so it works with no web access.</p></div>
       <div class="card"><h3>Reads any response</h3><p>Pretty-prints JSON and XML with syntax highlighting, shows HTML/text, hex-dumps binary, and sniffs the body when the content type is missing or lying.</p></div>
       <div class="card"><h3>Connection diagnostics</h3><p>See the negotiated TLS version and cipher, whether your client cert was actually presented, and the server's certificate and chain.</p></div>
+      <div class="card"><h3>Network trace</h3><p>A Network tab like a browser's network panel &mdash; every HTTP call logged, including every resource the Rendered view fetches, with method, status, type, size, timing, and a client-certificate marker. Click a row for headers.</p></div>
       <div class="card"><h3>Saved websites</h3><p>Save a base URL like <code>https://internal.corp</code> and the URL box becomes just the path after it — fire off <code>/api/thing</code> without retyping the host.</p></div>
       <div class="card"><h3>Request history</h3><p>A sidebar of recent requests, labelled by path. Click one to reload the entire request — website, cert, headers, auth — and the response it returned.</p></div>
       <div class="card"><h3>Copy &amp; export</h3><p>Copy the response body, copy the request as a cURL command, and save any response with a sensible file extension.</p></div>
@@ -180,6 +181,10 @@
           <figcaption>Environments &amp; <code>{{variables}}</code>.</figcaption>
         </figure>
       </div>
+      <figure>
+        <img src="assets/shot-network.png" alt="Network trace tab listing every HTTP request">
+        <figcaption>Network trace &mdash; every request the page made, like a browser's network panel, each fetched through your certificate.</figcaption>
+      </figure>
       <figure>
         <img src="assets/shot-help.png" alt="In-app Help &amp; Reference window">
         <figcaption>Built-in Help &mdash; every feature explained, embedded so it works with no web access.</figcaption>

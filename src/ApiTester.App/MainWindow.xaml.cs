@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     private MtlsBrowserSession? _browserSession;
     private CancellationTokenSource? _browserCts;
     private bool _browserReady;
+    private RequestTab? _renderTraceTarget;   // the tab whose Network trace a render populates
+    private string? _renderCertSubject;       // the client cert the browser session offers
 
     private IReadOnlyList<CertificateInfo> _certs = new List<CertificateInfo>();
     private List<CertOption> _allOptions = new();
@@ -182,6 +184,7 @@ public partial class MainWindow : Window
             LoadIntoControls(newTab.Request);
             _loadedTab = newTab;
             ShowTabResponse(newTab);
+            BindNetwork(newTab);
         }
         finally { _switching = false; }
     }
@@ -512,6 +515,7 @@ public partial class MainWindow : Window
         }
         if (!await EnsureBrowserAsync()) return;
 
+        _renderTraceTarget = ActiveTab;
         RebuildBrowserSession();
         RenderUrlText.Text = url;
         try
@@ -555,7 +559,9 @@ public partial class MainWindow : Window
         _browserCts?.Cancel();
         _browserCts?.Dispose();
         _browserCts = new CancellationTokenSource();
-        _browserSession = new MtlsBrowserSession(SelectedCert(), IgnoreServerCertCheck.IsChecked == true);
+        var cert = SelectedCert();
+        _renderCertSubject = cert?.Subject;
+        _browserSession = new MtlsBrowserSession(cert, IgnoreServerCertCheck.IsChecked == true);
     }
 
     private void Browser_WebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -585,6 +591,20 @@ public partial class MainWindow : Window
             e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
                 new MemoryStream(result.Body), result.StatusCode,
                 string.IsNullOrEmpty(result.ReasonPhrase) ? "OK" : result.ReasonPhrase, headerLines);
+            RecordNetwork(_renderTraceTarget, new NetworkEntry
+            {
+                Method = method,
+                Url = uri,
+                StatusCode = result.StatusCode,
+                ReasonPhrase = result.ReasonPhrase,
+                ContentType = result.ContentType,
+                Size = result.Body?.LongLength ?? 0,
+                ElapsedMs = result.ElapsedMs,
+                ClientCertSubject = _renderCertSubject,
+                Source = "Rendered",
+                RequestHeaders = headers,
+                ResponseHeaders = result.Headers ?? new List<KeyValuePair<string, string>>()
+            });
         }
         catch (Exception ex)
         {
@@ -594,6 +614,12 @@ public partial class MainWindow : Window
                 System.Net.WebUtility.HtmlEncode(ex.Message) + "</pre></body></html>");
             e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
                 new MemoryStream(bytes), 502, "Bad Gateway", "Content-Type: text/html; charset=utf-8");
+            if (!ct.IsCancellationRequested)
+                RecordNetwork(_renderTraceTarget, new NetworkEntry
+                {
+                    Method = method, Url = uri, Error = ex.Message,
+                    ClientCertSubject = _renderCertSubject, Source = "Rendered", RequestHeaders = headers
+                });
         }
         finally { deferral.Complete(); }
     }
@@ -615,6 +641,87 @@ public partial class MainWindow : Window
             return ms.Length == 0 ? null : ms.ToArray();
         }
         catch { return null; }
+    }
+
+    // ---------- network trace ----------
+
+    private const int MaxNetworkEntries = 500;
+
+    private void RecordNetwork(RequestTab? tab, NetworkEntry entry)
+    {
+        if (tab is null) return;
+        tab.Network.Add(entry);
+        while (tab.Network.Count > MaxNetworkEntries) tab.Network.RemoveAt(0);
+        if (ReferenceEquals(tab, ActiveTab)) UpdateNetworkCount();
+    }
+
+    private void BindNetwork(RequestTab tab)
+    {
+        NetworkList.ItemsSource = tab.Network;
+        NetworkDetailPane.Visibility = Visibility.Collapsed;
+        UpdateNetworkCount();
+    }
+
+    private void UpdateNetworkCount()
+    {
+        int n = ActiveTab?.Network.Count ?? 0;
+        NetworkCountText.Text = n == 0 ? "No requests yet — send a request or open the Rendered tab."
+            : $"{n} request{(n == 1 ? "" : "s")}";
+    }
+
+    private void ClearNetworkButton_Click(object sender, RoutedEventArgs e)
+    {
+        ActiveTab?.Network.Clear();
+        NetworkDetailPane.Visibility = Visibility.Collapsed;
+        UpdateNetworkCount();
+    }
+
+    private void NetworkList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (NetworkList.SelectedItem is not NetworkEntry entry)
+        {
+            NetworkDetailPane.Visibility = Visibility.Collapsed;
+            return;
+        }
+        NetworkDetailText.Text = BuildNetworkDetail(entry);
+        NetworkDetailPane.Visibility = Visibility.Visible;
+    }
+
+    private static string BuildNetworkDetail(NetworkEntry e)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"{e.Method} {e.Url}");
+        sb.AppendLine();
+        sb.AppendLine("Status      : " + (e.Error is not null ? "ERROR — " + e.Error : $"{e.StatusCode} {e.ReasonPhrase}"));
+        sb.AppendLine("Type        : " + (e.ContentType ?? "—"));
+        if (e.Error is null)
+        {
+            sb.AppendLine("Size        : " + e.SizeLabel);
+            sb.AppendLine("Time        : " + e.TimeLabel);
+        }
+        sb.AppendLine("Source      : " + e.Source);
+        if (e.ClientCertSubject is not null)
+        {
+            string how = e.Source == "Request"
+                ? (e.ClientCertPresented ? " (presented to the server)" : " (offered; the server did not request it)")
+                : " (via the mutual-TLS session)";
+            sb.AppendLine("Client cert : " + e.ClientCertSubject + how);
+        }
+        else sb.AppendLine("Client cert : none");
+
+        if (e.RequestHeaders.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("REQUEST HEADERS");
+            foreach (var h in e.RequestHeaders) sb.AppendLine($"  {h.Key}: {h.Value}");
+        }
+        if (e.ResponseHeaders.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("RESPONSE HEADERS");
+            foreach (var h in e.ResponseHeaders) sb.AppendLine($"  {h.Key}: {h.Value}");
+        }
+        return sb.ToString();
     }
 
     // ---------- certificates ----------
@@ -842,6 +949,22 @@ public partial class MainWindow : Window
                 tab.LastResponse = response;
                 tab.LastRawText = _lastRawText;
                 tab.Snapshot = BuildSnapshot(response);
+                RecordNetwork(tab, new NetworkEntry
+                {
+                    Method = request.Method.Method,
+                    Url = request.Url,
+                    StatusCode = response.StatusCode,
+                    ReasonPhrase = response.ReasonPhrase,
+                    ContentType = response.ContentType,
+                    Size = response.Body?.LongLength ?? 0,
+                    ElapsedMs = response.Elapsed.TotalMilliseconds,
+                    ClientCertSubject = response.Connection?.ClientCertificateSubject,
+                    ClientCertPresented = response.Connection?.ClientCertificateSent ?? false,
+                    Error = response.Error?.Message,
+                    Source = "Request",
+                    RequestHeaders = request.Headers?.ToList() ?? new List<KeyValuePair<string, string>>(),
+                    ResponseHeaders = response.Headers?.ToList() ?? new List<KeyValuePair<string, string>>()
+                });
             }
             AddToHistory(response);
         }
