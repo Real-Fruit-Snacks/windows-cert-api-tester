@@ -68,6 +68,12 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
   <img alt="Environments and variables" src="docs/assets/shot-environments.png" width="560" />
 </div>
 
+**Built-in Help & Reference — every feature explained, embedded so it works with no web access**
+
+<div align="center">
+  <img alt="In-app Help window" src="docs/assets/shot-help.png" width="820" />
+</div>
+
 ## Requirements
 
 - **To run:** Windows 10 or 11 (64-bit). Nothing else — the released `.exe` bundles the .NET runtime.
