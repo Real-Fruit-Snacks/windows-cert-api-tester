@@ -407,14 +407,39 @@
                         </DockPanel>
                     </TabItem>
                     <TabItem Header="Network">
-                        <DockPanel>
-                            <Grid DockPanel.Dock="Top" Height="32" Background="{StaticResource Bg.Window}">
-                                <TextBlock x:Name="NetworkCountText" VerticalAlignment="Center" Margin="10,0,0,0"
-                                           Foreground="{StaticResource Text.Muted}" FontSize="11" Text="No requests yet."/>
-                                <Button x:Name="ClearNetworkButton" Content="Clear" HorizontalAlignment="Right" Margin="0,0,10,0"
-                                        Height="24" FontSize="11" Padding="10,0" Click="ClearNetworkButton_Click"/>
-                            </Grid>
-                            <Border DockPanel.Dock="Top" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*" MinHeight="56"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition x:Name="NetworkDetailRow" Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Height="38" Background="{StaticResource Bg.Window}" Padding="10,0">
+                                <DockPanel LastChildFill="False">
+                                    <TextBox x:Name="NetworkSearchBox" DockPanel.Dock="Left" Width="170" Height="26" Padding="7,0"
+                                             VerticalContentAlignment="Center" VerticalAlignment="Center" FontSize="11"
+                                             Tag="filter…" TextChanged="NetworkSearch_TextChanged"
+                                             ToolTip="Filter by URL, method, status, or content type"/>
+                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <Button x:Name="NetClassAll" Content="All" Style="{StaticResource SideTab}" Tag="active" Margin="0,0,8,0" Click="NetworkClass_Click"/>
+                                        <Button x:Name="NetClass2xx" Content="2xx" Style="{StaticResource SideTab}" Margin="0,0,8,0" Click="NetworkClass_Click"/>
+                                        <Button x:Name="NetClass3xx" Content="3xx" Style="{StaticResource SideTab}" Margin="0,0,8,0" Click="NetworkClass_Click"/>
+                                        <Button x:Name="NetClass4xx" Content="4xx" Style="{StaticResource SideTab}" Margin="0,0,8,0" Click="NetworkClass_Click"/>
+                                        <Button x:Name="NetClass5xx" Content="5xx" Style="{StaticResource SideTab}" Margin="0,0,8,0" Click="NetworkClass_Click"/>
+                                        <Button x:Name="NetClassErr" Content="ERR" Style="{StaticResource SideTab}" Click="NetworkClass_Click"/>
+                                    </StackPanel>
+                                    <CheckBox x:Name="NetworkCertOnly" DockPanel.Dock="Left" Content="cert only" VerticalAlignment="Center"
+                                              Margin="12,0,0,0" FontSize="11" Foreground="{StaticResource Text.Muted}"
+                                              Click="NetworkFilter_Changed"
+                                              ToolTip="Show only calls made with your client certificate"/>
+                                    <Button x:Name="ClearNetworkButton" DockPanel.Dock="Right" Content="Clear" VerticalAlignment="Center"
+                                            Height="24" FontSize="11" Padding="10,0" Click="ClearNetworkButton_Click"/>
+                                    <TextBlock x:Name="NetworkCountText" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                               Foreground="{StaticResource Text.Muted}" FontSize="11" Text="No requests yet."/>
+                                </DockPanel>
+                            </Border>
+                            <Border Grid.Row="1" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
                                     BorderThickness="0,1,0,1" Padding="10,5,10,5">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -434,14 +459,43 @@
                                     <TextBlock Grid.Column="6" Text="URL" Style="{StaticResource Caption}" FontSize="10"/>
                                 </Grid>
                             </Border>
-                            <Border DockPanel.Dock="Bottom" x:Name="NetworkDetailPane" Height="176" Visibility="Collapsed"
+                            <GridSplitter x:Name="NetworkSplitter" Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
+                                          Background="{StaticResource Border}" Visibility="Collapsed" Focusable="False"
+                                          ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
+                            <Border Grid.Row="4" x:Name="NetworkDetailPane" Visibility="Collapsed"
                                     Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
-                                <TextBox x:Name="NetworkDetailText" IsReadOnly="True" AcceptsReturn="True" BorderThickness="0"
-                                         Background="{StaticResource Bg.Panel}" VerticalScrollBarVisibility="Auto"
-                                         HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" Padding="10"/>
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="10,4">
+                                        <DockPanel>
+                                            <Button x:Name="NetworkDetailClose" DockPanel.Dock="Right" Style="{StaticResource MiniButton}"
+                                                    Width="22" Height="22" FontFamily="Segoe MDL2 Assets" FontSize="10" Content="&#xE8BB;"
+                                                    ToolTip="Close details" Click="NetworkDetailClose_Click"/>
+                                            <Button x:Name="NetworkDetailCopy" DockPanel.Dock="Right" Content="Copy" Height="22" FontSize="11"
+                                                    Padding="10,0" Margin="0,0,8,0" Click="NetworkDetailCopy_Click"
+                                                    ToolTip="Copy these details to the clipboard"/>
+                                            <TextBlock x:Name="NetworkDetailTitle" Style="{StaticResource Caption}" FontSize="10"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel x:Name="NetworkDetailHost" Margin="10,8,10,10"/>
+                                    </ScrollViewer>
+                                </DockPanel>
                             </Border>
-                            <ListBox x:Name="NetworkList" SelectionChanged="NetworkList_SelectionChanged"
+                            <ListBox x:Name="NetworkList" Grid.Row="2" SelectionChanged="NetworkList_SelectionChanged"
+                                     PreviewMouseRightButtonDown="NetworkList_PreviewMouseRightButtonDown"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                        <Setter Property="Padding" Value="10,4"/>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Copy URL" Click="NetworkCopyUrl_Click"/>
+                                        <MenuItem Header="Copy as cURL" Click="NetworkCopyCurl_Click"/>
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid>
@@ -473,7 +527,7 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
-                        </DockPanel>
+                        </Grid>
                     </TabItem>
                 </TabControl>
             </DockPanel>

@@ -26,11 +26,46 @@ public sealed class NetworkEntry
 
     public string StatusLabel => Error is not null ? "ERR" : StatusCode?.ToString() ?? "—";
 
-    public string SizeLabel =>
-        Error is not null ? "" :
-        Size < 1024 ? $"{Size} B" :
-        Size < 1024 * 1024 ? $"{Size / 1024.0:F1} KB" :
-        $"{Size / (1024.0 * 1024.0):F1} MB";
+    /// <summary>The status class used by the filter bar: "2xx".."5xx", "ERR", or "" when unknown.</summary>
+    public string StatusClass =>
+        Error is not null ? "ERR" :
+        StatusCode is { } c && c >= 100 && c <= 599 ? $"{c / 100}xx" : "";
+
+    public string SizeLabel => Error is not null ? "" : FormatSize(Size);
+
+    public static string FormatSize(long bytes) =>
+        bytes < 1024 ? $"{bytes} B" :
+        bytes < 1024 * 1024 ? $"{bytes / 1024.0:F1} KB" :
+        $"{bytes / (1024.0 * 1024.0):F1} MB";
+
+    /// <summary>Whether this entry passes the Network filter bar.</summary>
+    /// <param name="text">Substring matched against the URL, method, status, and content type.</param>
+    /// <param name="statusClass">"All", "2xx".."5xx", or "ERR".</param>
+    /// <param name="certOnly">Show only calls made with a client certificate.</param>
+    public bool Matches(string? text, string statusClass, bool certOnly)
+    {
+        if (certOnly && !UsedClientCert) return false;
+        if (statusClass != "All" &&
+            !string.Equals(StatusClass, statusClass, StringComparison.OrdinalIgnoreCase)) return false;
+        text = text?.Trim();
+        if (string.IsNullOrEmpty(text)) return true;
+        return Url.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || Method.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || StatusLabel.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || (ContentType?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    /// <summary>A curl command that reproduces this call (method, URL, and request headers).</summary>
+    public string ToCurl()
+    {
+        var sb = new System.Text.StringBuilder("curl");
+        if (!Method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+            sb.Append(" -X ").Append(Method.ToUpperInvariant());
+        sb.Append(" \"").Append(Url.Replace("\"", "\\\"")).Append('"');
+        foreach (var h in RequestHeaders)
+            sb.Append(" -H \"").Append(h.Key).Append(": ").Append(h.Value.Replace("\"", "\\\"")).Append('"');
+        return sb.ToString();
+    }
 
     public string TimeLabel => Error is not null ? "" : $"{ElapsedMs:F0} ms";
 

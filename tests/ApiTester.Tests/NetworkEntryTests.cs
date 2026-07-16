@@ -40,4 +40,75 @@ public class NetworkEntryTests
         Assert.True(new NetworkEntry { ClientCertSubject = "CN=me" }.UsedClientCert);
         Assert.False(new NetworkEntry().UsedClientCert);
     }
+
+    [Fact]
+    public void StatusClass_buckets_by_hundreds()
+    {
+        Assert.Equal("2xx", new NetworkEntry { StatusCode = 204 }.StatusClass);
+        Assert.Equal("3xx", new NetworkEntry { StatusCode = 302 }.StatusClass);
+        Assert.Equal("4xx", new NetworkEntry { StatusCode = 404 }.StatusClass);
+        Assert.Equal("5xx", new NetworkEntry { StatusCode = 503 }.StatusClass);
+        Assert.Equal("ERR", new NetworkEntry { Error = "boom" }.StatusClass);
+        Assert.Equal("", new NetworkEntry().StatusClass);
+    }
+
+    [Fact]
+    public void Matches_filters_by_status_class()
+    {
+        var ok = new NetworkEntry { StatusCode = 200, Url = "https://x/a" };
+        Assert.True(ok.Matches(null, "All", certOnly: false));
+        Assert.True(ok.Matches(null, "2xx", certOnly: false));
+        Assert.False(ok.Matches(null, "4xx", certOnly: false));
+        Assert.True(new NetworkEntry { Error = "boom" }.Matches(null, "ERR", certOnly: false));
+    }
+
+    [Fact]
+    public void Matches_filters_by_cert_only()
+    {
+        Assert.True(new NetworkEntry { ClientCertSubject = "CN=me" }.Matches(null, "All", certOnly: true));
+        Assert.False(new NetworkEntry().Matches(null, "All", certOnly: true));
+    }
+
+    [Fact]
+    public void Matches_searches_url_method_status_and_type()
+    {
+        var e = new NetworkEntry
+        {
+            Method = "POST",
+            Url = "https://api.example.com/users",
+            StatusCode = 201,
+            ContentType = "application/json"
+        };
+        Assert.True(e.Matches("example.com", "All", false));
+        Assert.True(e.Matches("post", "All", false));
+        Assert.True(e.Matches("201", "All", false));
+        Assert.True(e.Matches("json", "All", false));
+        Assert.False(e.Matches("stylesheet", "All", false));
+        Assert.True(e.Matches("  users  ", "All", false));   // whitespace is trimmed
+        Assert.True(e.Matches("", "All", false));
+    }
+
+    [Fact]
+    public void ToCurl_reproduces_the_call()
+    {
+        var get = new NetworkEntry { Method = "GET", Url = "https://x/a?b=1" };
+        Assert.Equal("curl \"https://x/a?b=1\"", get.ToCurl());
+
+        var post = new NetworkEntry
+        {
+            Method = "POST",
+            Url = "https://x/a",
+            RequestHeaders = { new("Accept", "application/json"), new("X-Trace", "1") }
+        };
+        Assert.Equal("curl -X POST \"https://x/a\" -H \"Accept: application/json\" -H \"X-Trace: 1\"", post.ToCurl());
+    }
+
+    [Fact]
+    public void FormatSize_scales_units()
+    {
+        Assert.Equal("0 B", NetworkEntry.FormatSize(0));
+        Assert.Equal("1023 B", NetworkEntry.FormatSize(1023));
+        Assert.Equal("1.0 KB", NetworkEntry.FormatSize(1024));
+        Assert.Equal("1.0 MB", NetworkEntry.FormatSize(1024 * 1024));
+    }
 }

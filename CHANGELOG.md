@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-07-16
+
+### Changed
+- **Network panel polish** — the Network tab now works like a proper browser network panel:
+  - **Filter bar**: a text filter (matches URL, method, status, and content type), status-class
+    filters (**All / 2xx / 3xx / 4xx / 5xx / ERR**), and a **cert only** toggle that shows just the
+    calls made with your client certificate. The counter shows how many rows match and their
+    combined size (e.g. “9 of 12 requests · 2.1 MB”).
+  - **Details pane**: clicking a row opens a structured details pane — general facts (URL, status,
+    type, size, time, start time, source, client certificate) and the request/response headers —
+    with a **Copy** button and a drag handle to resize it. New rows scroll into view as they arrive.
+  - **Right-click a row** to copy its URL or a matching `curl` command.
+
+### Fixed
+- Text typed into the Network filter box was invisible (clipped by the input's vertical padding).
+- Opening a row's details no longer squeezes the request list to nothing at small window sizes.
+
 ## [1.15.0] - 2026-07-15
 
 ### Added
@@ -203,6 +220,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.16.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.16.0
 [1.15.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.15.0
 [1.14.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.1
 [1.14.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.0

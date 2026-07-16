@@ -231,7 +231,8 @@ public partial class HelpWindow : Window
             "Every resource the page loads — the document, CSS, JavaScript, images, and XHR — is fetched with your selected client certificate, so a certificate-protected site renders fully, not just its HTML.",
             "It loads on demand: nothing runs until you open the tab. Use Reload to fetch again.",
             "The address line shows exactly which URL is being rendered.",
-            "The Network tab logs every resource the page fetches — method, status, type, size, and timing, like a browser's network panel — so you can see what a certificate-protected page loads and whether each resource succeeded."),
+            "The Network tab logs every resource the page fetches — method, status, type, size, and timing, like a browser's network panel — so you can see what a certificate-protected page loads and whether each resource succeeded.",
+            "In the Network tab you can filter the trace by text or status class (2xx–5xx, errors), show only calls made with your certificate, click a row for its full details and headers, drag the divider to resize the details, and right-click a row to copy its URL or a matching curl command."),
         NoteBox("The rendered view uses the Microsoft Edge WebView2 runtime, which ships with Windows 11 (and is a standard component on up-to-date Windows 10). If it isn't available, the tab explains that and the rest of the app is unaffected."));
 
     private UIElement Shortcuts() => Section("Keyboard shortcuts",

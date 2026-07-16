@@ -647,32 +647,75 @@ public partial class MainWindow : Window
 
     private const int MaxNetworkEntries = 500;
 
+    private string _networkClass = "All";
+    private NetworkEntry? _networkDetailEntry;
+
     private void RecordNetwork(RequestTab? tab, NetworkEntry entry)
     {
         if (tab is null) return;
         tab.Network.Add(entry);
         while (tab.Network.Count > MaxNetworkEntries) tab.Network.RemoveAt(0);
-        if (ReferenceEquals(tab, ActiveTab)) UpdateNetworkCount();
+        if (ReferenceEquals(tab, ActiveTab))
+        {
+            UpdateNetworkCount();
+            if (NetworkList.Items.Count > 0)
+                NetworkList.ScrollIntoView(NetworkList.Items[NetworkList.Items.Count - 1]);
+        }
     }
 
     private void BindNetwork(RequestTab tab)
     {
-        NetworkList.ItemsSource = tab.Network;
-        NetworkDetailPane.Visibility = Visibility.Collapsed;
+        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(tab.Network);
+        view.Filter = NetworkRowVisible;
+        NetworkList.ItemsSource = view;
+        CloseNetworkDetail();
+        UpdateNetworkCount();
+    }
+
+    private bool NetworkRowVisible(object item) =>
+        item is NetworkEntry en &&
+        en.Matches(NetworkSearchBox.Text, _networkClass, NetworkCertOnly.IsChecked == true);
+
+    private void NetworkClass_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button clicked) return;
+        _networkClass = clicked.Content?.ToString() ?? "All";
+        foreach (var chip in new[] { NetClassAll, NetClass2xx, NetClass3xx, NetClass4xx, NetClass5xx, NetClassErr })
+            chip.Tag = ReferenceEquals(chip, clicked) ? "active" : null;
+        RefreshNetworkFilter();
+    }
+
+    private void NetworkSearch_TextChanged(object sender, TextChangedEventArgs e) => RefreshNetworkFilter();
+
+    private void NetworkFilter_Changed(object sender, RoutedEventArgs e) => RefreshNetworkFilter();
+
+    private void RefreshNetworkFilter()
+    {
+        if (NetworkList?.ItemsSource is System.ComponentModel.ICollectionView view) view.Refresh();
         UpdateNetworkCount();
     }
 
     private void UpdateNetworkCount()
     {
-        int n = ActiveTab?.Network.Count ?? 0;
-        NetworkCountText.Text = n == 0 ? "No requests yet — send a request or open the Rendered tab."
-            : $"{n} request{(n == 1 ? "" : "s")}";
+        if (NetworkCountText is null) return;
+        int total = ActiveTab?.Network.Count ?? 0;
+        if (total == 0)
+        {
+            NetworkCountText.Text = "No requests yet — send a request or open the Rendered tab.";
+            return;
+        }
+        var shown = NetworkList.Items.OfType<NetworkEntry>().ToList();
+        long size = shown.Sum(en => en.Error is null ? en.Size : 0);
+        string counts = shown.Count == total
+            ? $"{total} request{(total == 1 ? "" : "s")}"
+            : $"{shown.Count} of {total} requests";
+        NetworkCountText.Text = $"{counts} · {NetworkEntry.FormatSize(size)}";
     }
 
     private void ClearNetworkButton_Click(object sender, RoutedEventArgs e)
     {
         ActiveTab?.Network.Clear();
-        NetworkDetailPane.Visibility = Visibility.Collapsed;
+        CloseNetworkDetail();
         UpdateNetworkCount();
     }
 
@@ -680,11 +723,135 @@ public partial class MainWindow : Window
     {
         if (NetworkList.SelectedItem is not NetworkEntry entry)
         {
-            NetworkDetailPane.Visibility = Visibility.Collapsed;
+            CloseNetworkDetail();
             return;
         }
-        NetworkDetailText.Text = BuildNetworkDetail(entry);
+        _networkDetailEntry = entry;
+        NetworkDetailTitle.Text = $"{entry.Method}  {entry.StatusLabel}  ·  {entry.Url}";
+        BuildNetworkDetailPane(entry);
+        if (NetworkDetailPane.Visibility != Visibility.Visible)
+        {
+            NetworkDetailRow.MinHeight = 90;
+            NetworkDetailRow.Height = new GridLength(190);
+        }
+        NetworkSplitter.Visibility = Visibility.Visible;
         NetworkDetailPane.Visibility = Visibility.Visible;
+    }
+
+    private void CloseNetworkDetail()
+    {
+        _networkDetailEntry = null;
+        NetworkDetailPane.Visibility = Visibility.Collapsed;
+        NetworkSplitter.Visibility = Visibility.Collapsed;
+        NetworkDetailRow.MinHeight = 0;
+        NetworkDetailRow.Height = GridLength.Auto;
+        NetworkDetailHost.Children.Clear();
+    }
+
+    private void NetworkDetailClose_Click(object sender, RoutedEventArgs e) => NetworkList.SelectedItem = null;
+
+    private void NetworkDetailCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if (_networkDetailEntry is { } entry) TrySetClipboard(BuildNetworkDetail(entry), "Copied request details.");
+    }
+
+    private void NetworkList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Right-click selects the row under the cursor so the context menu acts on it.
+        var d = e.OriginalSource as DependencyObject;
+        while (d is not null && d is not ListBoxItem)
+            d = d is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                : LogicalTreeHelper.GetParent(d);
+        if (d is ListBoxItem item) item.IsSelected = true;
+    }
+
+    private void NetworkCopyUrl_Click(object sender, RoutedEventArgs e)
+    {
+        if (NetworkList.SelectedItem is NetworkEntry entry) TrySetClipboard(entry.Url, "Copied URL.");
+    }
+
+    private void NetworkCopyCurl_Click(object sender, RoutedEventArgs e)
+    {
+        if (NetworkList.SelectedItem is NetworkEntry entry) TrySetClipboard(entry.ToCurl(), "Copied cURL command.");
+    }
+
+    private void BuildNetworkDetailPane(NetworkEntry entry)
+    {
+        var host = NetworkDetailHost;
+        host.Children.Clear();
+
+        var statusBrush = (System.Windows.Media.Brush)new StatusToBrushConverter().Convert(
+            entry, typeof(System.Windows.Media.Brush), null!, System.Globalization.CultureInfo.CurrentCulture);
+
+        host.Children.Add(DetailCaption("GENERAL", first: true));
+        host.Children.Add(DetailRow("URL", entry.Url));
+        host.Children.Add(DetailRow("Status",
+            entry.Error is not null ? "ERROR — " + entry.Error : $"{entry.StatusCode} {entry.ReasonPhrase}".Trim(),
+            statusBrush));
+        host.Children.Add(DetailRow("Type", string.IsNullOrEmpty(entry.ContentType) ? "—" : entry.ContentType));
+        if (entry.Error is null)
+        {
+            host.Children.Add(DetailRow("Size", entry.SizeLabel));
+            host.Children.Add(DetailRow("Time", entry.TimeLabel));
+        }
+        host.Children.Add(DetailRow("Started", entry.Timestamp.ToString("HH:mm:ss.fff")));
+        host.Children.Add(DetailRow("Source", entry.Source == "Rendered" ? "Rendered page resource" : "Request you sent"));
+        host.Children.Add(DetailRow("Client cert", ClientCertLine(entry)));
+
+        if (entry.RequestHeaders.Count > 0)
+        {
+            host.Children.Add(DetailCaption($"REQUEST HEADERS ({entry.RequestHeaders.Count})"));
+            foreach (var h in entry.RequestHeaders) host.Children.Add(DetailRow(h.Key, h.Value));
+        }
+        if (entry.ResponseHeaders.Count > 0)
+        {
+            host.Children.Add(DetailCaption($"RESPONSE HEADERS ({entry.ResponseHeaders.Count})"));
+            foreach (var h in entry.ResponseHeaders) host.Children.Add(DetailRow(h.Key, h.Value));
+        }
+    }
+
+    private static string ClientCertLine(NetworkEntry e)
+    {
+        if (e.ClientCertSubject is null) return "none";
+        string how = e.Source == "Request"
+            ? (e.ClientCertPresented ? " (presented to the server)" : " (offered; the server did not request it)")
+            : " (via the mutual-TLS session)";
+        return e.ClientCertSubject + how;
+    }
+
+    private TextBlock DetailCaption(string text, bool first = false) => new()
+    {
+        Text = text,
+        Style = (Style)FindResource("Caption"),
+        FontSize = 10,
+        Margin = new Thickness(0, first ? 0 : 12, 0, 4)
+    };
+
+    private FrameworkElement DetailRow(string label, string value, System.Windows.Media.Brush? valueBrush = null)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var key = new TextBlock
+        {
+            Text = label,
+            FontSize = 11.5,
+            Foreground = (System.Windows.Media.Brush)FindResource("Text.Muted"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        var val = new TextBlock
+        {
+            Text = value,
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = valueBrush ?? (System.Windows.Media.Brush)FindResource("Text.Soft")
+        };
+        Grid.SetColumn(val, 1);
+        grid.Children.Add(key);
+        grid.Children.Add(val);
+        return grid;
     }
 
     private static string BuildNetworkDetail(NetworkEntry e)
@@ -699,15 +866,9 @@ public partial class MainWindow : Window
             sb.AppendLine("Size        : " + e.SizeLabel);
             sb.AppendLine("Time        : " + e.TimeLabel);
         }
+        sb.AppendLine("Started     : " + e.Timestamp.ToString("HH:mm:ss.fff"));
         sb.AppendLine("Source      : " + e.Source);
-        if (e.ClientCertSubject is not null)
-        {
-            string how = e.Source == "Request"
-                ? (e.ClientCertPresented ? " (presented to the server)" : " (offered; the server did not request it)")
-                : " (via the mutual-TLS session)";
-            sb.AppendLine("Client cert : " + e.ClientCertSubject + how);
-        }
-        else sb.AppendLine("Client cert : none");
+        sb.AppendLine("Client cert : " + ClientCertLine(e));
 
         if (e.RequestHeaders.Count > 0)
         {
