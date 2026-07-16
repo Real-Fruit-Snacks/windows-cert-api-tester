@@ -144,9 +144,13 @@
 
             <!-- request tab strip -->
             <DockPanel Grid.Row="0" Margin="0,0,0,0">
-                <Button x:Name="NewTabButton" DockPanel.Dock="Right" Content="&#xFF0B;" Width="34"
+                <Button x:Name="NewTabButton" DockPanel.Dock="Right" Width="34"
                         VerticalAlignment="Bottom" Margin="4,0,0,0" Click="NewTabButton_Click"
-                        ToolTip="New request tab (Ctrl+T)"/>
+                        ToolTip="New request tab (Ctrl+T)">
+                    <Path Data="M7,0.5 V13.5 M0.5,7 H13.5" Stroke="{StaticResource Text.Normal}" StrokeThickness="1.6"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
                 <Button x:Name="ImportButton" DockPanel.Dock="Right" Content="Import &#x25BE;" Width="92"
                         VerticalAlignment="Bottom" Margin="4,0,0,0" Click="ImportButton_Click"
                         ToolTip="Import a request from a cURL command or an OpenAPI file">

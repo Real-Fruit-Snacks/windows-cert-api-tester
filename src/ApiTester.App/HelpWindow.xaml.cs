@@ -180,7 +180,7 @@ public partial class HelpWindow : Window
         Sub("WORKING IN TABS"),
         Bullets(
             "Keep several requests open at once — each tab has its own website, certificate, and response.",
-            "New tab: the ＋ button or Ctrl+T. Close: the tab's ✕, middle-click, or Ctrl+W.",
+            "New tab: the + button or Ctrl+T. Close: the tab's ✕, middle-click, or Ctrl+W.",
             "Your open tabs are restored the next time you launch."),
         Sub("WEBSITE (BASE URL)"),
         P("Set a WEBSITE and the URL box becomes just the path after it — fire off /api/thing without retyping the host. Save frequently-used websites from the dropdown and pick them again later."));

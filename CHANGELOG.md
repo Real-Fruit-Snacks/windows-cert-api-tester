@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-07-15
+
+### Fixed
+- The new-tab **+** button now renders as a crisp, correctly-weighted plus (it was using a
+  full-width character that some fonts don't have, so it looked off).
+
 ## [1.14.0] - 2026-07-15
 
 ### Added
@@ -188,6 +194,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.14.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.1
 [1.14.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.0
 [1.13.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.1
 [1.13.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.0
