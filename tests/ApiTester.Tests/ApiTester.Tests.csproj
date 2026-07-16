@@ -1,7 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- net9.0-windows + UseWPF so the tests can reference the WPF app assembly and cover
+         its request-model mapping logic (RequestModel / CollectionNode). -->
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -20,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ApiTester.Core\ApiTester.Core.csproj" />
+    <ProjectReference Include="..\..\src\ApiTester.App\ApiTester.App.csproj" />
   </ItemGroup>
 
 </Project>
