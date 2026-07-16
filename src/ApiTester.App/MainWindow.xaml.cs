@@ -2,15 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using ApiTester.Core;
+using Microsoft.Web.WebView2.Core;
 
 namespace ApiTester.App;
 
@@ -30,6 +33,10 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ApiEnvironment> _environments = new();
     private List<string> _unresolvedVars = new();
     private bool _envLoading;
+
+    private MtlsBrowserSession? _browserSession;
+    private CancellationTokenSource? _browserCts;
+    private bool _browserReady;
 
     private IReadOnlyList<CertificateInfo> _certs = new List<CertificateInfo>();
     private List<CertOption> _allOptions = new();
@@ -98,6 +105,11 @@ public partial class MainWindow : Window
         _state.LastBaseUrl = string.IsNullOrWhiteSpace(ActiveRequest?.BaseUrl) ? null : ActiveRequest!.BaseUrl!.Trim();
 
         _state.Save();
+
+        _browserSession?.Dispose();
+        _browserCts?.Cancel();
+        _browserCts?.Dispose();
+
         base.OnClosing(e);
     }
 
@@ -468,6 +480,134 @@ public partial class MainWindow : Window
 
     private static int CountRequests(CollectionNode n) =>
         (n.IsFolder ? 0 : 1) + n.Children.Sum(CountRequests);
+
+    // ---------- rendered website view ----------
+
+    private void ResponseTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, ResponseTabs)) return;
+        if (ResponseTabs.SelectedItem is TabItem { Header: "Rendered" }) _ = ShowRenderedAsync();
+    }
+
+    private void RenderReloadButton_Click(object sender, RoutedEventArgs e) => _ = ShowRenderedAsync();
+
+    private async Task ShowRenderedAsync()
+    {
+        if (ActiveRequest is not { } model) return;
+        CaptureControlsInto(model);
+        var (url, _, _, _) = ResolveActive();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            RenderHint.Text = "Enter a URL in the request above, then reopen this tab to render the page.";
+            RenderHint.Visibility = Visibility.Visible;
+            return;
+        }
+        if (!await EnsureBrowserAsync()) return;
+
+        RebuildBrowserSession();
+        RenderUrlText.Text = url;
+        try
+        {
+            RenderHint.Visibility = Visibility.Collapsed;
+            Browser.CoreWebView2.Navigate(url);
+        }
+        catch (Exception ex)
+        {
+            RenderHint.Text = "Couldn't render that URL: " + ex.Message;
+            RenderHint.Visibility = Visibility.Visible;
+        }
+    }
+
+    private async Task<bool> EnsureBrowserAsync()
+    {
+        if (_browserReady) return true;
+        try
+        {
+            await Browser.EnsureCoreWebView2Async();
+            var core = Browser.CoreWebView2;
+            core.Settings.AreDevToolsEnabled = false;
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            core.WebResourceRequested += Browser_WebResourceRequested;
+            _browserReady = true;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RenderHint.Text = "The rendered view needs the Microsoft Edge WebView2 runtime, " +
+                              "which couldn't be started on this machine:\n" + ex.Message;
+            RenderHint.Visibility = Visibility.Visible;
+            return false;
+        }
+    }
+
+    private void RebuildBrowserSession()
+    {
+        _browserSession?.Dispose();
+        _browserCts?.Cancel();
+        _browserCts?.Dispose();
+        _browserCts = new CancellationTokenSource();
+        _browserSession = new MtlsBrowserSession(SelectedCert(), IgnoreServerCertCheck.IsChecked == true);
+    }
+
+    private void Browser_WebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
+    {
+        if (_browserSession is not { } session || _browserCts is not { } cts) return;
+
+        var deferral = e.GetDeferral();
+        var request = e.Request;
+        string method = request.Method;
+        string uri = request.Uri;
+        var headers = request.Headers.Select(h => new KeyValuePair<string, string>(h.Key, h.Value)).ToList();
+        byte[]? body = ReadRequestContent(request.Content);
+        _ = HandleResourceAsync(session, cts.Token, e, deferral, method, uri, headers, body);
+    }
+
+    private async Task HandleResourceAsync(
+        MtlsBrowserSession session, CancellationToken ct,
+        CoreWebView2WebResourceRequestedEventArgs e, CoreWebView2Deferral deferral,
+        string method, string uri, List<KeyValuePair<string, string>> headers, byte[]? body)
+    {
+        try
+        {
+            var result = await session.FetchAsync(method, new Uri(uri), headers, body, null, ct);
+            var headerLines = string.Join("\r\n", result.Headers
+                .Where(h => Forwardable(h.Key))
+                .Select(h => $"{h.Key}: {h.Value}"));
+            e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
+                new MemoryStream(result.Body), result.StatusCode,
+                string.IsNullOrEmpty(result.ReasonPhrase) ? "OK" : result.ReasonPhrase, headerLines);
+        }
+        catch (Exception ex)
+        {
+            var bytes = Encoding.UTF8.GetBytes(
+                "<html><body style='font-family:Consolas;background:#0e1214;color:#ff6e7a;padding:24px'>" +
+                "<h2>Could not load this resource</h2><pre>" +
+                System.Net.WebUtility.HtmlEncode(ex.Message) + "</pre></body></html>");
+            e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
+                new MemoryStream(bytes), 502, "Bad Gateway", "Content-Type: text/html; charset=utf-8");
+        }
+        finally { deferral.Complete(); }
+    }
+
+    // Hop-by-hop / content-coding headers must not be forwarded (the body is already decompressed).
+    private static bool Forwardable(string name) =>
+        !name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) &&
+        !name.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase) &&
+        !name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) &&
+        !name.Equals("Connection", StringComparison.OrdinalIgnoreCase);
+
+    private static byte[]? ReadRequestContent(Stream? content)
+    {
+        if (content is null) return null;
+        try
+        {
+            using var ms = new MemoryStream();
+            content.CopyTo(ms);
+            return ms.Length == 0 ? null : ms.ToArray();
+        }
+        catch { return null; }
+    }
 
     // ---------- certificates ----------
 

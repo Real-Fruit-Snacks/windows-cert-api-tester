@@ -1,6 +1,7 @@
 <Window x:Class="ApiTester.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="Certificate API Tester" Height="780" Width="1180" MinWidth="960" MinHeight="600"
         Icon="pack://application:,,,/icon.ico"
         WindowStyle="None"
@@ -352,7 +353,7 @@
                                 Click="SaveResponseButton_Click"/>
                     </StackPanel>
                 </Grid>
-                <TabControl>
+                <TabControl x:Name="ResponseTabs" SelectionChanged="ResponseTabs_SelectionChanged">
                     <TabItem Header="Pretty">
                         <RichTextBox x:Name="PrettyRich" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
                                      HorizontalScrollBarVisibility="Auto"/>
@@ -371,6 +372,27 @@
                         <TextBox x:Name="DiagnosticsBox" IsReadOnly="True" AcceptsReturn="True" BorderThickness="0"
                                  Tag="TLS and certificate details appear here after a request."
                                  VerticalScrollBarVisibility="Auto" FontFamily="Consolas" Padding="10"/>
+                    </TabItem>
+                    <TabItem Header="Rendered">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Top" Background="{StaticResource Bg.Window}" Padding="8,6"
+                                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                <DockPanel>
+                                    <Button x:Name="RenderReloadButton" DockPanel.Dock="Right" Content="Reload" Height="26"
+                                            FontSize="11" Padding="10,0" Margin="8,0,0,0" Click="RenderReloadButton_Click"/>
+                                    <TextBlock x:Name="RenderUrlText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource Text.Muted}" FontSize="11"
+                                               Text="Opens the current request's URL as a web page — every resource is fetched with your client certificate."/>
+                                </DockPanel>
+                            </Border>
+                            <Grid>
+                                <wv2:WebView2 x:Name="Browser"/>
+                                <TextBlock x:Name="RenderHint" IsHitTestVisible="False" TextWrapping="Wrap" MaxWidth="520"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                           Foreground="{StaticResource Text.Faint}" FontSize="12"
+                                           Text="Enter a URL in the request above, then this tab renders that page — authenticated with your selected certificate."/>
+                            </Grid>
+                        </DockPanel>
                     </TabItem>
                 </TabControl>
             </DockPanel>

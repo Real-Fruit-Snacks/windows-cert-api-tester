@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-07-15
+
+### Added
+- **Rendered website view** — a new **Rendered** tab in the response area opens the current
+  request's URL as a web page. Every resource the page loads (the document, styles, scripts,
+  images, and XHR) is fetched with your selected client certificate, so a certificate-protected
+  internal site renders fully authenticated — not just the HTML. It renders on demand (nothing
+  loads until you open the tab) and has its own address line and Reload button. Uses the Microsoft
+  Edge WebView2 runtime that ships with Windows 11; if it isn't present, the tab explains that.
+
 ## [1.12.0] - 2026-07-15
 
 ### Added
@@ -158,6 +168,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.13.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.0
 [1.12.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.12.0
 [1.11.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.3
 [1.11.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.2
