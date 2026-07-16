@@ -409,6 +409,66 @@ public partial class MainWindow : Window
         RefreshEnvCombo();
     }
 
+    // ---------- import ----------
+
+    private void ImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ImportButton.ContextMenu is { } cm)
+        {
+            cm.PlacementTarget = ImportButton;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void ImportCurl_Click(object sender, RoutedEventArgs e)
+    {
+        var text = InputDialog.ShowMultiline(this, "Import cURL",
+            "Paste a curl command (Ctrl+Enter to import):");
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try
+        {
+            var model = RequestModel.FromParsed(CurlParser.Parse(text));
+            var tab = new RequestTab(model);
+            _tabs.Add(tab);
+            TabStrip.SelectedItem = tab;
+            StatusText.Text = "Imported request from cURL.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Couldn't parse that cURL command: " + ex.Message;
+        }
+    }
+
+    private void ImportOpenApi_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import OpenAPI / Swagger file",
+            Filter = "OpenAPI / Swagger (JSON)|*.json|All files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var parsed = OpenApiImporter.Parse(System.IO.File.ReadAllText(dlg.FileName));
+            var node = CollectionNode.FromParsed(parsed);
+            _collections.Add(node);
+            UpdateCollectionsHint();
+            SetSidebarMode(history: false);
+            var count = CountRequests(node);
+            StatusText.Text = count == 0
+                ? $"Imported “{parsed.Name}”, but it defined no operations."
+                : $"Imported {count} request(s) from “{parsed.Name}”.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Couldn't import that file: " + ex.Message;
+        }
+    }
+
+    private static int CountRequests(CollectionNode n) =>
+        (n.IsFolder ? 0 : 1) + n.Children.Sum(CountRequests);
+
     // ---------- certificates ----------
 
     private void LoadCertificates()

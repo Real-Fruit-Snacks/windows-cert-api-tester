@@ -114,7 +114,7 @@
                                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding MethodBadge}" FontSize="10" FontWeight="Bold" MinWidth="30"
-                                                   Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                                                   Margin="0,0,7,0" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text.Normal}"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                     </StackPanel>
@@ -144,6 +144,16 @@
                 <Button x:Name="NewTabButton" DockPanel.Dock="Right" Content="&#xFF0B;" Width="34"
                         VerticalAlignment="Bottom" Margin="4,0,0,0" Click="NewTabButton_Click"
                         ToolTip="New request tab (Ctrl+T)"/>
+                <Button x:Name="ImportButton" DockPanel.Dock="Right" Content="Import &#x25BE;" Width="92"
+                        VerticalAlignment="Bottom" Margin="4,0,0,0" Click="ImportButton_Click"
+                        ToolTip="Import a request from a cURL command or an OpenAPI file">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Paste cURL command…" Click="ImportCurl_Click"/>
+                            <MenuItem Header="Import OpenAPI file…" Click="ImportOpenApi_Click"/>
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <ListBox x:Name="TabStrip" Style="{StaticResource TabStripList}" VerticalAlignment="Bottom"
                              SelectionChanged="TabStrip_SelectionChanged"

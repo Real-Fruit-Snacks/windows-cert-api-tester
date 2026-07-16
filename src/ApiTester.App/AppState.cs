@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ApiTester.Core;
 
 namespace ApiTester.App;
 
@@ -130,6 +131,21 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
 
     /// <summary>Method badge shown before a saved request's name; a folder mark for folders.</summary>
     [JsonIgnore] public string MethodBadge => IsFolder ? "▸" : Request?.Method ?? "";
+
+    /// <summary>Build a collections folder (and its requests) from an imported OpenAPI collection.</summary>
+    public static CollectionNode FromParsed(ParsedCollection pc)
+    {
+        var folder = new CollectionNode { Name = pc.Name, IsFolder = true };
+        foreach (var sub in pc.Folders) folder.Children.Add(FromParsed(sub));
+        foreach (var req in pc.Requests)
+            folder.Children.Add(new CollectionNode
+            {
+                Name = string.IsNullOrWhiteSpace(req.Name) ? $"{req.Method} {req.Url}" : req.Name!,
+                IsFolder = false,
+                Request = RequestModel.FromParsed(req)
+            });
+        return folder;
+    }
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));

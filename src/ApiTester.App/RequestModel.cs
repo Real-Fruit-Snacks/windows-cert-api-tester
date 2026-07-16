@@ -69,6 +69,25 @@ public sealed class RequestModel : INotifyPropertyChanged
         return entry;
     }
 
+    /// <summary>Build a request model from an imported (cURL or OpenAPI) request.</summary>
+    public static RequestModel FromParsed(ParsedRequest p)
+    {
+        var m = new RequestModel { Method = p.Method, BaseUrl = p.BaseUrl ?? "" };
+        var (path, query) = RequestUrl.SplitForEditing(p.Url);
+        m.Path = path;
+        foreach (var kv in query) m.QueryParams.Add(new ParamRow { Key = kv.Key, Value = kv.Value });
+        foreach (var h in p.Headers) m.Headers.Add(new HeaderRow { Name = h.Key, Value = h.Value });
+        m.Body = string.IsNullOrEmpty(p.Body) ? null : p.Body;
+        if (!string.IsNullOrEmpty(p.ContentType)) m.ContentType = p.ContentType;
+        if (p.BearerToken is not null) { m.AuthType = "Bearer"; m.AuthSecret = p.BearerToken; }
+        else if (p.BasicUser is not null || p.BasicPassword is not null)
+        {
+            m.AuthType = "Basic"; m.AuthUser = p.BasicUser; m.AuthSecret = p.BasicPassword;
+        }
+        m.IgnoreServerCert = p.InsecureSkipVerify;
+        return m;
+    }
+
     /// <summary>Rebuild a request model from a stored history entry.</summary>
     public static RequestModel FromHistoryEntry(HistoryEntry e)
     {

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-07-15
+
+### Added
+- **Import from cURL** — paste a `curl` command (Import ▸ Paste cURL command) and it opens a new
+  tab with the method, URL, query parameters, headers, body, and auth filled in. Understands
+  `-X`, `-H`, `-d`/`--data`, `-u` (Basic), `-k` (insecure), an `Authorization: Bearer` header
+  (mapped to the Bearer helper), quoting, and line continuations.
+- **Import OpenAPI / Swagger** — import a JSON OpenAPI 3.x or Swagger 2.0 file
+  (Import ▸ Import OpenAPI file) to generate a collection of requests, grouped into folders by
+  tag, with the server/host used as each request's website.
+
 ## [1.11.3] - 2026-07-15
 
 ### Fixed
@@ -147,6 +158,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.12.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.12.0
 [1.11.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.3
 [1.11.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.2
 [1.11.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.1
