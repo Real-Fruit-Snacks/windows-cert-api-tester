@@ -1,5 +1,7 @@
+using System.IO;
 using System.Text.Json;
 using ApiTester.App;
+using ApiTester.Core;
 
 namespace ApiTester.Tests;
 
@@ -77,5 +79,22 @@ public class WorkspaceStateTests
         var h = Assert.Single(back.History);
         Assert.Equal(200, h.StatusCode);
         Assert.Equal("https://api.example", Assert.Single(back.SavedBaseUrls));
+    }
+
+    [Fact]
+    public void SaveTo_and_LoadFrom_round_trip_an_explicit_path()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"certapi-test-{Guid.NewGuid():N}.json");
+        try
+        {
+            var state = new AppState();
+            state.Collections.Add(new CollectionNode { Name = "X", IsFolder = true });
+            state.SaveTo(path);
+
+            var back = AppState.LoadFrom(path);
+            Assert.Equal("X", Assert.Single(back.Collections).Name);
+            Assert.False(File.Exists(path + ".tmp"));   // temp file was moved, not left behind
+        }
+        finally { File.Delete(path); }
     }
 }

@@ -2,9 +2,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using ApiTester.Core;
 
-namespace ApiTester.App;
+namespace ApiTester.Core;
 
 /// <summary>A single request's editable state — the value a tab, history entry, or saved
 /// request is built from. Bindable so the editor reflects changes both ways.</summary>

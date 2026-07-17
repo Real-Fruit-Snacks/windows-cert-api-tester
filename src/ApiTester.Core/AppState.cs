@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ApiTester.Core;
 
-namespace ApiTester.App;
+namespace ApiTester.Core;
 
 /// <summary>Persisted window/request state, stored under %AppData%\CertApiTester\state.json.</summary>
 public sealed class AppState
@@ -32,7 +31,8 @@ public sealed class AppState
     public List<ApiEnvironment> Environments { get; set; } = new();
     public string? ActiveEnvironmentId { get; set; }
 
-    private static string FilePath
+    /// <summary>The live GUI state file under %AppData%.</summary>
+    public static string DefaultPath
     {
         get
         {
@@ -45,23 +45,27 @@ public sealed class AppState
 
     public static AppState Load()
     {
-        try
-        {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppState>(File.ReadAllText(FilePath)) ?? new AppState();
-        }
-        catch { /* corrupt or unreadable — start fresh */ }
-        return new AppState();
+        try { return File.Exists(DefaultPath) ? LoadFrom(DefaultPath) : new AppState(); }
+        catch { return new AppState(); } // corrupt or unreadable — start fresh
     }
+
+    /// <summary>Load from an explicit file. Throws on missing/corrupt files — callers decide.</summary>
+    public static AppState LoadFrom(string path) =>
+        JsonSerializer.Deserialize<AppState>(File.ReadAllText(path)) ?? new AppState();
 
     public void Save()
     {
-        try
-        {
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this,
-                new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch { /* best effort */ }
+        try { SaveTo(DefaultPath); }
+        catch { /* best effort for the GUI */ }
+    }
+
+    /// <summary>Write atomically: serialize to a temp file, then replace the target.</summary>
+    public void SaveTo(string path)
+    {
+        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, json);
+        File.Move(tmp, path, overwrite: true);
     }
 }
 
