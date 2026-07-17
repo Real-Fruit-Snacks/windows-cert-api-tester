@@ -72,7 +72,7 @@ public class SendCommandTests
     }
 
     [Fact]
-    public async Task Transport_errors_exit_1()
+    public void Transport_errors_exit_1()
     {
         // The loopback server always answers 200, so --fail's status branch can't be hit here;
         // the transport-error path is what matters: an unreachable port is a network failure -> 1.
