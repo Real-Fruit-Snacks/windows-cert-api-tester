@@ -59,4 +59,55 @@ public class CaptureCliTests
             new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices());
         Assert.Equal(2, code);
     }
+
+    [Fact]
+    public void Send_with_a_missing_workspace_and_no_capture_is_a_data_error()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}.json");
+        int code = CliApp.Run(new[] { "send", "https://example.com", "--workspace", missing },
+            new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices());
+        Assert.Equal(3, code);
+    }
+
+    [Fact]
+    public void Blank_capture_variable_is_a_usage_error()
+    {
+        int code = CliApp.Run(new[] { "send", "https://x", "--capture", "=access_token" },
+            new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices());
+        Assert.Equal(2, code);
+    }
+
+    [Fact]
+    public async Task Run_applies_a_saved_requests_capture_rules()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"access_token\":\"run-tok\"}");
+            var ws = Path.Combine(Path.GetTempPath(), $"caprun-{Guid.NewGuid():N}.json");
+            try
+            {
+                // Build a workspace with one saved request that captures the token.
+                var state = new AppState();
+                var req = new RequestModel { Method = "GET", Path = upstream.BaseUrl, IgnoreServerCert = true, CertThumbprint = client.Thumbprint };
+                req.Captures.Add(new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" });
+                state.Collections.Add(new CollectionNode { Name = "login", IsFolder = false, Request = req });
+                state.SaveTo(ws);
+
+                var services = new CliServices
+                {
+                    FindCertificate = _ => client,
+                    IsGuiRunning = () => false,
+                    LiveStatePath = "unused"
+                };
+                int code = CliApp.Run(new[] { "run", "login", "--workspace", ws }, new StringWriter(), new StringWriter(), services: services);
+                Assert.Equal(0, code);
+
+                var back = AppState.LoadFrom(ws);
+                var env = back.Environments.Single(e => e.Id == back.ActiveEnvironmentId);
+                Assert.Equal("run-tok", env.Variables.Single(v => v.Key == "token").Value);
+            }
+            finally { File.Delete(ws); }
+        }
+    }
 }

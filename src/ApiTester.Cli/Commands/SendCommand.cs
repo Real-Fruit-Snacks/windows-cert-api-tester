@@ -84,6 +84,7 @@ public static class SendCommand
             int eq = raw.IndexOf('=');
             if (eq <= 0) throw new CliUsageException($"--capture expects var=path, got '{raw}'.");
             string variable = raw[..eq].Trim();
+            if (variable.Length == 0) throw new CliUsageException($"--capture needs a variable name, got '{raw}'.");
             string path = raw[(eq + 1)..];
             bool header = path.StartsWith("header:", StringComparison.OrdinalIgnoreCase);
             captureRules.Add(new CaptureRule
@@ -101,9 +102,15 @@ public static class SendCommand
             ? File.Exists(dataFile) ? File.ReadAllText(dataFile) : throw new CliDataException($"Body file not found: {dataFile}")
             : null);
 
+        // An explicit --workspace file that doesn't exist is an error — unless --capture is
+        // creating it (a capture write starts from an empty workspace).
+        if (workspace is not null && captureRules.Count == 0 && !File.Exists(workspace))
+            throw new CliDataException($"Workspace file not found: {workspace}");
+
         // ---- variables ----
-        // A --workspace that doesn't exist yet is fine here: it isn't read for anything but a named
-        // --env lookup, and --capture (below) is allowed to create it fresh on save.
+        // A --workspace that doesn't exist yet is fine here when --capture is present: it isn't
+        // read for anything but a named --env lookup, and --capture (below) is allowed to create
+        // it fresh on save.
         var state = (envName is not null || workspace is not null)
             ? LoadWorkspaceOrEmpty(workspace, services) : new AppState();
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);

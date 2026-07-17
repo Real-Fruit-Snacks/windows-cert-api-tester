@@ -67,10 +67,15 @@ public static class RunCommand
         }
         clock.Stop();
 
-        if (record || (capturedAny && !(workspace is null && services.IsGuiRunning())))
+        bool guiBlocksLiveWrite = workspace is null && services.IsGuiRunning();
+        if ((record || capturedAny) && !guiBlocksLiveWrite)
         {
             try { state.SaveTo(workspace ?? services.LiveStatePath); }
-            catch (Exception ex) { stderr.WriteLine($"warning: could not record results: {ex.Message}"); }
+            catch (Exception ex) { stderr.WriteLine($"warning: could not save results: {ex.Message}"); }
+        }
+        else if (capturedAny && guiBlocksLiveWrite)
+        {
+            stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
         }
 
         int passed = results.Count(r => r.Response.IsSuccess);
