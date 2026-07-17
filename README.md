@@ -87,6 +87,12 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
   <img alt="In-app Help window" src="docs/assets/shot-help.png" width="820" />
 </div>
 
+**Run it headless as a local gateway — an app points its base URL at the port and reaches a certificate-protected site with no mTLS code of its own**
+
+<div align="center">
+  <img alt="certapi serve local mTLS gateway forwarding requests" src="docs/assets/shot-gateway.svg" width="860" />
+</div>
+
 ## Requirements
 
 - **To run:** Windows 10 or 11 (64-bit). Nothing else — the released `.exe` bundles the .NET runtime.
