@@ -167,6 +167,7 @@ public partial class HelpWindow : Window
             "Press Send (or Ctrl+Enter). The response appears in the panel below."),
         Sub("READING THE RESPONSE"),
         P("Pretty formats JSON and XML with syntax highlighting; Raw shows the exact bytes; Headers lists the response headers; Diagnostics shows the TLS and certificate details; Rendered opens the URL as a web page; Network traces every HTTP call — the request you sent and every resource the Rendered view fetched."),
+        P("Any of these views can be popped out into its own window with the pop-out button above the response (next to Copy body) — for example, keep the Network trace or a Rendered page visible beside the main window while you work. The popped-out view stays live, and closing its window puts it back in place."),
         NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window."));
 
     private UIElement RequestsAndTabs() => Section("Requests & tabs",

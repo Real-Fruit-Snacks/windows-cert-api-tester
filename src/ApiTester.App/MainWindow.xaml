@@ -375,6 +375,10 @@
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
                     <TextBlock Text="RESPONSE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="PopOutButton" Height="26" Width="32" Padding="0" Margin="0,0,6,0"
+                                FontFamily="Segoe MDL2 Assets" FontSize="12" Content="&#xE8A7;"
+                                Click="PopOutButton_Click"
+                                ToolTip="Open the selected response view in its own window"/>
                         <Button x:Name="CopyBodyButton" Content="Copy body" Height="26" FontSize="11" Padding="10,0"
                                 Margin="0,0,6,0" Click="CopyBodyButton_Click"/>
                         <Button x:Name="CopyCurlButton" Content="Copy as cURL" Height="26" FontSize="11" Padding="10,0"

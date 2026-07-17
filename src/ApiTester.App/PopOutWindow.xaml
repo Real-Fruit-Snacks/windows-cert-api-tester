@@ -1,0 +1,34 @@
+<Window x:Class="ApiTester.App.PopOutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="960" Height="640" MinWidth="420" MinHeight="300"
+        WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        FontFamily="{StaticResource Mono}" FontSize="12.5" ShowInTaskbar="True"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
+                      GlassFrameThickness="1" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Height="38" Background="{StaticResource Bg.Panel}"
+                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource CaptionButton}" Height="38" Content="&#xE921;"
+                                Click="Min_Click" ToolTip="Minimize"/>
+                        <Button Style="{StaticResource CaptionButton}" Height="38" Content="&#xE922;"
+                                Click="Max_Click" ToolTip="Maximize"/>
+                        <Button Style="{StaticResource CaptionClose}" Height="38" Content="&#xE8BB;"
+                                Click="Close_Click" ToolTip="Close and return this view to the main window"/>
+                    </StackPanel>
+                    <TextBlock x:Name="TitleText" VerticalAlignment="Center" Margin="14,0,0,0"
+                               Style="{StaticResource Caption}"/>
+                </DockPanel>
+            </Border>
+            <ContentControl x:Name="Host" Focusable="False"/>
+        </DockPanel>
+    </Border>
+</Window>

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-07-16
+
+### Added
+- **Pop-out response views** — a pop-out button above the response opens the selected view
+  (Pretty, Raw, Headers, Diagnostics, Rendered, or Network) in its own window, so you can keep —
+  say — the live Network trace or a Rendered page visible beside the main window while you work.
+  The popped-out view stays fully live, the tab shows a “Bring it back” shortcut meanwhile, and
+  closing the window returns the view to its tab.
+
 ## [1.19.0] - 2026-07-16
 
 ### Added
@@ -256,6 +265,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.20.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.20.0
 [1.19.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.19.0
 [1.18.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.18.0
 [1.17.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.17.0

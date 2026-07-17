@@ -392,6 +392,57 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---------- response pop-out windows ----------
+
+    private readonly Dictionary<TabItem, PopOutWindow> _popOuts = new();
+
+    private void PopOutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ResponseTabs.SelectedItem is not TabItem tab) return;
+        if (_popOuts.TryGetValue(tab, out var existing)) { existing.Activate(); return; }
+        if (tab.Content is not UIElement content) return;
+
+        string title = tab.Header?.ToString() ?? "Response";
+        tab.Content = BuildPopOutPlaceholder(title, tab);   // replacing disconnects the old content
+
+        var window = new PopOutWindow(title, content) { Owner = this };
+        _popOuts[tab] = window;
+        window.Closed += (_, _) =>
+        {
+            _popOuts.Remove(tab);
+            if (window.DetachContent() is { } returned) tab.Content = returned;
+            StatusText.Text = $"{title} view returned to the main window.";
+        };
+        window.Show();
+        StatusText.Text = $"{title} is now its own window — close it to bring the view back.";
+    }
+
+    private UIElement BuildPopOutPlaceholder(string title, TabItem tab)
+    {
+        var text = new TextBlock
+        {
+            Text = $"The {title} view is open in its own window.",
+            Foreground = (System.Windows.Media.Brush)FindResource("Text.Faint"),
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        var restore = new Button
+        {
+            Content = "Bring it back",
+            Height = 26,
+            FontSize = 11,
+            Padding = new Thickness(12, 0, 12, 0),
+            Margin = new Thickness(0, 12, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        restore.Click += (_, _) => { if (_popOuts.TryGetValue(tab, out var w)) w.Close(); };
+
+        var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        panel.Children.Add(text);
+        panel.Children.Add(restore);
+        return panel;
+    }
+
     // ---------- workspace save/load ----------
 
     private void ExportWorkspace_Click(object sender, RoutedEventArgs e)
