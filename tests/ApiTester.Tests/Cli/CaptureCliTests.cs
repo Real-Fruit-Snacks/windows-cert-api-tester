@@ -72,7 +72,9 @@ public class CaptureCliTests
     [Fact]
     public void Blank_capture_variable_is_a_usage_error()
     {
-        int code = CliApp.Run(new[] { "send", "https://x", "--capture", "=access_token" },
+        // A non-leading '=' with a whitespace-only name must be rejected (hits the variable-name guard,
+        // not the earlier no-'=' check).
+        int code = CliApp.Run(new[] { "send", "https://x", "--capture", " =access_token" },
             new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices());
         Assert.Equal(2, code);
     }
@@ -108,6 +110,41 @@ public class CaptureCliTests
                 Assert.Equal("run-tok", env.Variables.Single(v => v.Key == "token").Value);
             }
             finally { File.Delete(ws); }
+        }
+    }
+
+    [Fact]
+    public async Task Run_captures_are_not_saved_to_live_state_while_the_gui_is_running()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"access_token\":\"live-tok\"}");
+            var live = Path.Combine(Path.GetTempPath(), $"caplive-{Guid.NewGuid():N}.json");
+            try
+            {
+                var state = new AppState();
+                var req = new RequestModel { Method = "GET", Path = upstream.BaseUrl, IgnoreServerCert = true, CertThumbprint = client.Thumbprint };
+                req.Captures.Add(new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" });
+                state.Collections.Add(new CollectionNode { Name = "login", IsFolder = false, Request = req });
+                state.SaveTo(live);
+
+                var services = new CliServices
+                {
+                    FindCertificate = _ => client,
+                    IsGuiRunning = () => true,          // GUI is up → live-state writes are skipped
+                    LiveStatePath = live
+                };
+                var stderr = new StringWriter();
+                int code = CliApp.Run(new[] { "run", "login" }, new StringWriter(), stderr, services: services);
+                Assert.Equal(0, code);
+                Assert.Contains("GUI is running", stderr.ToString());
+
+                // The captured value must NOT have been written to the live file (the GUI owns it).
+                var back = AppState.LoadFrom(live);
+                Assert.DoesNotContain(back.Environments.SelectMany(e => e.Variables), v => v.Key == "token");
+            }
+            finally { File.Delete(live); }
         }
     }
 }
