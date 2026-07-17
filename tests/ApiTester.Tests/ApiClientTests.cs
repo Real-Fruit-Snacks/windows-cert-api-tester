@@ -106,9 +106,10 @@ public class ApiClientTests
             // Whether the timeout fires as a cancellation (Timeout) or the aborted handshake throws
             // a socket error (Network) is timing-dependent on the CI runner — both are correct here;
             // the point is the app doesn't hang and classifies it as an error, not a success.
+            var kind = resp.Error?.Kind;
             Assert.True(
-                resp.Error?.Kind is ApiErrorKind.Timeout or ApiErrorKind.Network,
-                $"expected Timeout or Network, got {resp.Error?.Kind?.ToString() ?? "no error"}");
+                kind is ApiErrorKind.Timeout or ApiErrorKind.Network,
+                $"expected Timeout or Network, got {kind}");
         }
         finally { listener.Stop(); }
     }
