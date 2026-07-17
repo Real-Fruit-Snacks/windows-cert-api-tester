@@ -83,4 +83,23 @@ public class ImportExportCommandTests
         }
         finally { File.Delete(live); File.Delete(outFile); }
     }
+
+    [Fact]
+    public void Import_into_a_new_workspace_file_creates_it()
+    {
+        var (services, live) = FreshServices();
+        var ws = Path.Combine(Path.GetTempPath(), $"certapi-newws-{Guid.NewGuid():N}.json");
+        try
+        {
+            int code = CliApp.Run(
+                new[] { "import", "curl", "curl https://h/api", "--workspace", ws },
+                new StringWriter(), new StringWriter(), services: services);
+            Assert.Equal(0, code);
+            Assert.True(File.Exists(ws));
+            var state = AppState.LoadFrom(ws);
+            Assert.Single(state.Collections);
+            Assert.False(File.Exists(live));   // live state untouched
+        }
+        finally { File.Delete(ws); if (File.Exists(live)) File.Delete(live); }
+    }
 }

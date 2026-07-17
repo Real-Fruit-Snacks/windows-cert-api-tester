@@ -24,7 +24,10 @@ public static class ImportCommand
             throw new CliDataException(
                 "The GUI is running and would overwrite this change when it closes — close the app, or import into a --workspace file.");
 
-        var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        // Importing may target a brand-new workspace file: start empty and create it on save.
+        var state = workspace is not null && !File.Exists(workspace)
+            ? new AppState()
+            : CliWorkspace.Load(workspace, services.LiveStatePath);
 
         int added;
         string what;
