@@ -44,6 +44,7 @@ public sealed class RequestModel : INotifyPropertyChanged
 
     public ObservableCollection<HeaderRow> Headers { get; set; } = new();
     public ObservableCollection<ParamRow> QueryParams { get; set; } = new();
+    public ObservableCollection<CaptureRule> Captures { get; set; } = new();
 
     /// <summary>The enabled, non-empty query parameters as key/value pairs.</summary>
     public IEnumerable<KeyValuePair<string, string>> EnabledParams() =>
@@ -63,6 +64,7 @@ public sealed class RequestModel : INotifyPropertyChanged
             Url = Path.Trim(),
             Params = QueryParams.Select(p => new ParamRow { Enabled = p.Enabled, Key = p.Key, Value = p.Value }).ToList(),
             Headers = Headers.Select(h => new HeaderRow { Enabled = h.Enabled, Name = h.Name, Value = h.Value }).ToList(),
+            Captures = Captures.Select(c => new CaptureRule { Enabled = c.Enabled, Variable = c.Variable, Source = c.Source, Path = c.Path }).ToList(),
             Body = string.IsNullOrEmpty(Body) ? null : Body,
             ContentType = ContentType,
             AuthType = AuthType,
@@ -125,6 +127,9 @@ public sealed class RequestModel : INotifyPropertyChanged
         QueryParams.Clear();
         foreach (var p in e.Params)
             QueryParams.Add(new ParamRow { Enabled = p.Enabled, Key = p.Key, Value = p.Value });
+        Captures.Clear();
+        foreach (var c in e.Captures)
+            Captures.Add(new CaptureRule { Enabled = c.Enabled, Variable = c.Variable, Source = c.Source, Path = c.Path });
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

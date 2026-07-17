@@ -98,6 +98,7 @@ public sealed class HistoryEntry
     public int TimeoutSeconds { get; set; } = 100;
     public int? StatusCode { get; set; }
     public ResponseSnapshot? Response { get; set; }
+    public List<CaptureRule> Captures { get; set; } = new();
 
     [JsonIgnore] public string EffectiveUrl => UrlHelper.Combine(BaseUrl, Url);
 
@@ -314,6 +315,27 @@ public sealed class ParamRow : System.ComponentModel.INotifyPropertyChanged
     public bool Enabled { get => _enabled; set { _enabled = value; Raise(nameof(Enabled)); } }
     public string Key { get => _key; set { _key = value; Raise(nameof(Key)); } }
     public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
+}
+
+public enum CaptureSource { Body, Header }
+
+/// <summary>A rule that saves a value from a response into an environment variable after a send.</summary>
+public sealed class CaptureRule : System.ComponentModel.INotifyPropertyChanged
+{
+    private bool _enabled = true;
+    private string _variable = "";
+    private CaptureSource _source = CaptureSource.Body;
+    private string _path = "";
+
+    public bool Enabled { get => _enabled; set { _enabled = value; Raise(nameof(Enabled)); } }
+    public string Variable { get => _variable; set { _variable = value; Raise(nameof(Variable)); } }
+    public CaptureSource Source { get => _source; set { _source = value; Raise(nameof(Source)); } }
+    public string Path { get => _path; set { _path = value; Raise(nameof(Path)); } }
+
+    public CaptureSpec ToSpec() => new(Variable.Trim(), Source == CaptureSource.Header, Path.Trim());
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));

@@ -140,6 +140,22 @@ public class RequestModelMappingTests
         Assert.Equal("Basic", m.AuthType);
         Assert.Equal("bob", m.AuthUser);
     }
+
+    [Fact]
+    public void Round_trips_capture_rules_through_history()
+    {
+        var m = new RequestModel { Method = "POST", Path = "/auth" };
+        m.Captures.Add(new CaptureRule { Enabled = true, Variable = "token", Source = CaptureSource.Body, Path = "access_token" });
+        m.Captures.Add(new CaptureRule { Enabled = false, Variable = "sid", Source = CaptureSource.Header, Path = "X-Session" });
+
+        var back = RequestModel.FromHistoryEntry(m.ToHistoryEntry(null, null));
+
+        Assert.Equal(2, back.Captures.Count);
+        Assert.Equal("token", back.Captures[0].Variable);
+        Assert.Equal(CaptureSource.Body, back.Captures[0].Source);
+        Assert.False(back.Captures[1].Enabled);
+        Assert.Equal(CaptureSource.Header, back.Captures[1].Source);
+    }
 }
 
 public class CollectionNodeTests
