@@ -51,6 +51,7 @@ public static class CliApp
             {
                 "--version" or "-v" => Version(stdout),
                 "help" or "--help" or "-h" => Help(rest, stdout),
+                "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, stderr, services),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
             };
         }

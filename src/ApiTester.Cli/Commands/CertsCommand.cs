@@ -1,0 +1,59 @@
+using System.Text.Json;
+using ApiTester.Core;
+
+namespace ApiTester.Cli.Commands;
+
+public static class CertsCommand
+{
+    public const string Help = """
+        Usage: certapi certs [--filter <text>] [--store CurrentUser|LocalMachine] [--json]
+
+        Lists client certificates from the Windows store (subject, thumbprint, expiry,
+        client-auth EKU). --filter substring-matches subject/issuer/thumbprint.
+        """;
+
+    public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
+    {
+        string? filter = args.Value("--filter");
+        string store = args.Value("--store") ?? "CurrentUser";
+        bool json = args.Flag("--json");
+        if (args.Positionals().Count > 0) throw new CliUsageException(Help);
+
+        bool includeLocalMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
+        if (!includeLocalMachine && !store.Equals("CurrentUser", StringComparison.OrdinalIgnoreCase))
+            throw new CliUsageException("--store must be CurrentUser or LocalMachine.");
+
+        var certs = services.ListCertificates(includeLocalMachine)
+            .Where(c => filter is null ||
+                        c.Subject.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                        c.Issuer.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                        c.Thumbprint.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (json)
+        {
+            stdout.WriteLine(JsonSerializer.Serialize(certs.Select(c => new
+            {
+                subject = c.Subject,
+                issuer = c.Issuer,
+                thumbprint = c.Thumbprint,
+                notAfter = c.NotAfter,
+                expired = c.IsExpired(),
+                clientAuthEku = c.HasClientAuthEku
+            }), new JsonSerializerOptions { WriteIndented = true }));
+            return ExitCodes.Ok;
+        }
+
+        if (certs.Count == 0)
+        {
+            stderr.WriteLine("No client certificates found.");
+            return ExitCodes.Ok;
+        }
+        foreach (var c in certs)
+        {
+            string flags = (c.IsExpired() ? "  [EXPIRED]" : "") + (c.HasClientAuthEku ? "" : "  (no client-auth EKU)");
+            stdout.WriteLine($"{c.Subject}\n  {c.Thumbprint}  ·  expires {c.NotAfter:yyyy-MM-dd}{flags}");
+        }
+        return ExitCodes.Ok;
+    }
+}
