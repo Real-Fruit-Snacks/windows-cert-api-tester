@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-07-16
+
+### Added
+- **MCP server for AI agents** — `certapi mcp` speaks the Model Context Protocol (JSON-RPC over
+  stdio) so an AI agent can use certapi as a tool: `send_request` (an mTLS call with the pinned
+  certificate), `list_certificates`, `list_saved`, `run_saved`, and `self_test`. The operator pins
+  one certificate with `--cert` and an allowed host set with `--allow` at launch — the agent never
+  chooses a certificate, and every outbound URL is checked against the allowlist before it leaves
+  the machine. Nothing is exposed on the network.
+
 ## [1.23.0] - 2026-07-16
 
 ### Added
@@ -311,6 +321,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.24.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.24.0
 [1.23.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.23.0
 [1.22.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.1
 [1.22.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.0
