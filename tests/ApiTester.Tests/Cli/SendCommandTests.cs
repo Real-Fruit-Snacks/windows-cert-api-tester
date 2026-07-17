@@ -1,0 +1,85 @@
+using System.IO;
+using System.Text;
+using ApiTester.Cli;
+using ApiTester.Core;
+
+namespace ApiTester.Tests.Cli;
+
+public class SendCommandTests
+{
+    private static async Task<(int Code, string Out, string Err, byte[] Body)> RunAsync(
+        string[] args, string responseBody = "{\"ok\":true}")
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
+        await using var server = await LoopbackMtlsServer.StartAsync(serverCert, clientCert.Thumbprint!, responseBody);
+
+        var services = new CliServices
+        {
+            ListCertificates = _ => new[]
+            {
+                new CertificateInfo
+                {
+                    Subject = "CN=CliClient", Issuer = "CN=CA", Thumbprint = clientCert.Thumbprint!,
+                    NotBefore = DateTime.Now.AddDays(-1), NotAfter = DateTime.Now.AddDays(30),
+                    HasClientAuthEku = true, Certificate = clientCert
+                }
+            }
+        };
+
+        var so = new StringWriter();
+        var se = new StringWriter();
+        var body = new MemoryStream();
+        var full = args.Select(a => a.Replace("{URL}", server.BaseUrl)).ToArray();
+        int code = CliApp.Run(full, so, se, body, services);
+        return (code, so.ToString(), se.ToString(), body.ToArray());
+    }
+
+    [Fact]
+    public async Task Sends_with_client_cert_and_writes_body_to_stdout()
+    {
+        var r = await RunAsync(new[] { "send", "{URL}", "--cert", "CliClient", "--insecure" });
+        Assert.Equal(0, r.Code);
+        Assert.Equal("{\"ok\":true}", Encoding.UTF8.GetString(r.Body));
+        Assert.Contains("200", r.Err);           // metadata line on stderr
+        Assert.DoesNotContain("200", r.Out);     // stdout text stream stays clean
+    }
+
+    [Fact]
+    public async Task Include_prints_headers_and_json_builds_an_envelope()
+    {
+        var inc = await RunAsync(new[] { "send", "{URL}", "--cert", "CliClient", "--insecure", "--include" });
+        Assert.Contains("200", inc.Out);         // status line + headers as text
+
+        var js = await RunAsync(new[] { "send", "{URL}", "--cert", "CliClient", "--insecure", "--json" });
+        using var doc = System.Text.Json.JsonDocument.Parse(js.Out);
+        Assert.Equal(200, doc.RootElement.GetProperty("status").GetInt32());
+        Assert.Contains("ok", doc.RootElement.GetProperty("body").GetString());
+        Assert.True(doc.RootElement.GetProperty("clientCertPresented").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Vars_resolve_and_missing_url_is_usage()
+    {
+        var r = await RunAsync(new[] { "send", "{URL}?q={{missing}}", "--cert", "CliClient", "--insecure" });
+        Assert.Equal(0, r.Code);
+        Assert.Contains("missing", r.Err);       // unresolved-token warning
+
+        var so = new StringWriter(); var se = new StringWriter();
+        Assert.Equal(2, CliApp.Run(new[] { "send" }, so, se, new MemoryStream(), new CliServices()));
+    }
+
+    [Fact]
+    public async Task Transport_errors_exit_1()
+    {
+        // The loopback server always answers 200, so --fail's status branch can't be hit here;
+        // the transport-error path is what matters: an unreachable port is a network failure -> 1.
+        var so = new StringWriter(); var se = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "send", "https://127.0.0.1:1/", "--timeout", "2" },
+            so, se, new MemoryStream(), new CliServices());
+        Assert.Equal(1, code);
+        Assert.Contains("error", se.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+}

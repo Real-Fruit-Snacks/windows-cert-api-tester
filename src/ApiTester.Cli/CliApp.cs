@@ -52,6 +52,7 @@ public static class CliApp
                 "--version" or "-v" => Version(stdout),
                 "help" or "--help" or "-h" => Help(rest, stdout),
                 "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, stderr, services),
+                "send" => Commands.SendCommand.Run(new Args(rest), stdout, stderr, bodyOut ?? new MemoryStream(), services),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
             };
         }
@@ -70,7 +71,12 @@ public static class CliApp
 
     private static int Help(string[] rest, TextWriter stdout)
     {
-        stdout.WriteLine(Usage);   // per-command help arrives with each command's task
+        stdout.WriteLine(rest.FirstOrDefault()?.ToLowerInvariant() switch
+        {
+            "send" => Commands.SendCommand.Help,
+            "certs" => Commands.CertsCommand.Help,
+            _ => Usage
+        });
         return ExitCodes.Ok;
     }
 }
