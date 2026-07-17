@@ -219,7 +219,9 @@ public partial class HelpWindow : Window
             "A token with no value is left untouched and reported in the status line, so nothing is sent silently wrong."),
         Sub("EXAMPLE"),
         CodeLine("{{base}}/users/{{userId}}"),
-        P("With base = https://api.internal.corp and userId = 42, that request is sent to https://api.internal.corp/users/42."));
+        P("With base = https://api.internal.corp and userId = 42, that request is sent to https://api.internal.corp/users/42."),
+        Sub("CAPTURE A TOKEN FROM A RESPONSE"),
+        P("A request's Capture tab can save a value from its response into a {{variable}}: set a Variable name, choose Body (a dotted JSON path like data.access_token) or Header (a header name), and the value is written to your active environment when you send — a “Captured” environment is created if you don't have one selected. Reuse it as {{token}} in a Bearer token or any field. This turns an auth call + token reuse into two clicks."));
 
     private UIElement Importing() => Section("Importing & exporting",
         P("Bring requests in from elsewhere with the Import ▾ menu next to the tabs."),

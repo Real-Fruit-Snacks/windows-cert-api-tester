@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-07-16
+
+### Added
+- **Capture & reuse auth tokens** — a request can now save a value from its response into an
+  environment `{{variable}}`: a JSON body field (a dotted path like `data.access_token`) or a
+  response header. Call an auth endpoint once and the token is stored (in the active environment,
+  or a new **Captured** one); reuse it as `Authorization: Bearer {{token}}` on later requests with
+  no copy-paste. Available in the app (a new **Capture** tab on each request) and headless
+  (`certapi send --capture token=access_token`, and saved requests' rules are applied by
+  `certapi run`).
+
+### Changed
+- The README now includes a task-oriented **Using it** guide covering sending requests,
+  certificates, collections, environments, token capture, import/export, and the `certapi`
+  command line, gateway, and MCP server.
+
 ## [1.24.0] - 2026-07-16
 
 ### Added
@@ -321,6 +337,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.25.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.25.0
 [1.24.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.24.0
 [1.23.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.23.0
 [1.22.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.1

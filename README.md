@@ -38,6 +38,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Collections** — save named requests into folders and reopen them in a tab. Switch the sidebar between **History** and **Collections**; save the current request, organise it in folders, rename, or delete. Collections persist between sessions.
 - **Known-good endpoints** — every saved request remembers its last result: send it and a dot appears next to its name (mint for a 2xx, red for a failure or error status), with a tooltip showing when it was last checked and what it returned. See at a glance which endpoints are verified working.
 - **Environments & variables** — define `{{variable}}` values per environment (Dev / Staging / Prod) and switch from the **ENV** selector in the title bar. Variables are substituted in the URL, query, headers, body, and auth when you send — stored requests keep the raw `{{tokens}}`, and any token with no value is flagged in the status line.
+- **Capture & reuse auth tokens** — grab a value from a response (a JSON field like `access_token` or a response header) and save it into a `{{variable}}` automatically. Call your auth endpoint once, then send `Authorization: Bearer {{token}}` on every later request — no copy-paste. Works in the app (a **Capture** tab) and headless (`certapi send --capture token=access_token`).
 - **Import from cURL** — paste a `curl` command and it opens a ready-to-send tab with the method, URL, query, headers, body, and auth filled in (understands `-X`, `-H`, `-d`, `-u`, `-k`, Bearer headers, quoting, and line continuations).
 - **Import OpenAPI / Swagger** — point it at a JSON OpenAPI 3.x or Swagger 2.0 file to generate a collection of requests, foldered by tag, with the server as each request's website.
 - **Export as OpenAPI** — write the selected folder (or all collections) as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its parameters, headers, and body example, and each known-good note becomes the operation description. Tokens and passwords are never written — auth is exported as a security scheme only.
@@ -59,6 +60,76 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine and proves the whole certificate-authentication path end to end, **no real endpoint required.**
 - **Built-in help** — a **?** in the title bar (or **F1**) opens a Help & Reference window that walks through every feature, lists the keyboard shortcuts, and shows an About panel. It's all embedded, so it works even with no web access.
 - **Keyboard-friendly and portable** — shortcuts for everything (below), a fully themed dark UI, and a single self-contained executable.
+
+## Using it
+
+### Send your first request
+1. **Pick a certificate** in the CERTIFICATE row (or leave it on *"— no certificate —"* for a plain request). The filter box finds one quickly among many.
+2. Choose a **method** and type a **URL** (a full `https://…`, or a path if you've saved a website).
+3. Press **Send** (or **Ctrl+Enter**). The response appears below: **Pretty** highlights JSON/XML, **Raw** shows the exact bytes, **Headers** and **Diagnostics** (TLS version, cipher, whether your certificate was presented) round it out.
+
+### Save a base URL (websites)
+Type a base like `https://internal.corp` in the WEBSITE row and click the saved-websites arrow to keep it. The URL box then takes just the path (`/api/thing`), so you don't retype the host.
+
+### Organise requests (collections)
+Switch the sidebar to **COLLECTIONS**, then **Save current request…** to store it in a folder. Double-click a saved request to reopen it in a tab. Each saved request shows a **known-good dot** after you send it — mint for a 2xx, red for a failure — with a tooltip of when it was last checked.
+
+### Environments & variables
+Open the **ENV** selector (title bar) → **Edit** to define `{{variable}}` values per environment (Dev / Staging / Prod). Use `{{name}}` anywhere — URL, query, headers, body, or the auth fields — and it's substituted when you send. Switch environments to point the same requests at a different backend.
+
+### Capture & reuse an auth token
+Many APIs want you to log in first and then send the returned token on every call. Do it once and reuse it automatically:
+1. Build the **login request** (e.g. `POST https://internal.corp/auth` with your credentials in the body).
+2. Open its **Capture** tab → **+ Add capture**. Set **Variable** = `token`, **From** = `Body`, **Path** = `access_token` (use a dotted path like `data.access_token` for nested fields, or **From = Header** with a header name).
+3. **Send** the login request. The status line shows `Captured token`, and the value is saved into your active environment (a `Captured` environment is created automatically if you don't have one selected).
+4. In your other requests, set **Auth → Bearer** with the token `{{token}}` (or put `{{token}}` in any header). Send — the captured token is filled in. Re-run the login request anytime to refresh it.
+
+### Import / export
+- **Import ▾** (next to the tabs): paste a **cURL** command, or import an **OpenAPI/Swagger** JSON file to generate a whole collection.
+- **Export**: write a collection as **OpenAPI** (from the collections sidebar), or **Export workspace** to move everything — tabs, collections, environments, history — to another machine.
+
+### Headless (the `certapi` command-line tool)
+`certapi.exe` (a separate download on the releases page) does everything without the window:
+
+```powershell
+# one-off request with a client certificate from the Windows store
+certapi send https://internal.corp/api/orders --cert "CN=matt"
+
+# log in and capture the token into a workspace, then reuse it
+certapi send https://internal.corp/auth --cert "CN=matt" --capture token=access_token --workspace team.json
+certapi send https://internal.corp/api/orders --workspace team.json --env Captured -H "Authorization: Bearer {{token}}"
+
+# run saved requests as a pass/fail suite (exit code 1 if any fail)
+certapi run "internal api" --env Prod
+certapi run --all --json
+
+# utilities
+certapi certs --filter matt
+certapi selftest
+```
+
+Run `certapi help <command>` for every option. Response bodies go to stdout and diagnostics to stderr, with script-friendly exit codes (0 success · 1 failure · 2 usage · 3 data).
+
+### Local gateway (for apps that can't do client certificates)
+Point any app's base URL at a local port and it reaches a certificate-protected site with your certificate attached:
+
+```powershell
+certapi serve https://internal.corp --port 8819 --cert "CN=matt"
+# then the app calls http://localhost:8819/api/orders
+```
+
+Loopback only; add `--token <value>` to require a shared secret.
+
+### MCP server (for AI agents)
+Give an AI agent controlled use of your certificate over the Model Context Protocol. Configure your MCP host:
+
+```json
+{ "mcpServers": { "certapi": {
+  "command": "certapi",
+  "args": ["mcp", "--cert", "CN=matt", "--allow", "internal.corp"] } } }
+```
+
+The agent gets `send_request`, `list_certificates`, `list_saved`, `run_saved`, and `self_test` — always using the certificate you pinned, and only reaching hosts on the `--allow` list.
 
 ## Screenshots
 
