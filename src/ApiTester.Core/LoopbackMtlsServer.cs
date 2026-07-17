@@ -43,6 +43,31 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         return Task.FromResult(server);
     }
 
+    /// <summary>A server that echoes the request line, headers, and body back in its 200 response —
+    /// lets a test assert exactly what the client sent through.</summary>
+    public static Task<LoopbackMtlsServer> StartEchoAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleEchoAsync(client, serverCertificate, expectedClientThumbprint, ct));
+        return Task.FromResult(server);
+    }
+
+    /// <summary>A server that answers every request with a 302 to <paramref name="location"/>.</summary>
+    public static Task<LoopbackMtlsServer> StartRedirectAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint, string location)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleRedirectAsync(client, serverCertificate, expectedClientThumbprint, location, ct));
+        return Task.FromResult(server);
+    }
+
     private async Task AcceptLoopAsync(Func<TcpClient, CancellationToken, Task> handleClient)
     {
         try
@@ -62,15 +87,15 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         catch (ObjectDisposedException) { }
     }
 
-    private static async Task HandleClientAsync(
-        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
-        string body, string contentType, CancellationToken ct)
+    /// <summary>Complete the server-side mTLS handshake, requiring a client cert whose thumbprint
+    /// matches. A mismatch throws from AuthenticateAsServerAsync (swallowed by the accept loop).</summary>
+    private static async Task<SslStream> AuthenticateServerAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint, CancellationToken ct)
     {
-        await using var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false,
+        var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false,
             userCertificateValidationCallback: (_, cert, _, _) =>
                 cert is not null &&
                 cert.GetCertHashString().Equals(expectedClientThumbprint, StringComparison.OrdinalIgnoreCase));
-
         var options = new SslServerAuthenticationOptions
         {
             ServerCertificate = serverCert,
@@ -78,6 +103,14 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
         };
         await ssl.AuthenticateAsServerAsync(options, ct);
+        return ssl;
+    }
+
+    private static async Task HandleClientAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
+        string body, string contentType, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
 
         // Read request headers (until blank line). Body of request is ignored.
         var buffer = new byte[4096];
@@ -98,6 +131,74 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         await ssl.WriteAsync(Encoding.ASCII.GetBytes(header), ct);
         await ssl.WriteAsync(bodyBytes, ct);
         await ssl.FlushAsync(ct);
+    }
+
+    private static async Task HandleEchoAsync(
+        TcpClient client, X509Certificate2 serverCertificate, string expectedClientThumbprint, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCertificate, expectedClientThumbprint, ct);
+
+        var buffer = new byte[8192];
+        var request = new StringBuilder();
+        int headerEnd = -1;
+        while (headerEnd < 0)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            headerEnd = request.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        }
+        int contentLength = ParseContentLength(request.ToString());
+        int bodyHave = headerEnd >= 0 ? request.Length - (headerEnd + 4) : 0;
+        while (bodyHave < contentLength)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            bodyHave += n;
+        }
+
+        var bodyBytes = Encoding.UTF8.GetBytes(request.ToString());
+        var head =
+            "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: text/plain\r\n" +
+            $"Content-Length: {bodyBytes.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+        await ssl.WriteAsync(Encoding.UTF8.GetBytes(head), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
+    }
+
+    private static async Task HandleRedirectAsync(
+        TcpClient client, X509Certificate2 serverCertificate, string expectedClientThumbprint,
+        string location, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCertificate, expectedClientThumbprint, ct);
+
+        var buffer = new byte[4096];
+        var request = new StringBuilder();
+        while (!request.ToString().Contains("\r\n\r\n"))
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.ASCII.GetString(buffer, 0, n));
+        }
+        var head =
+            "HTTP/1.1 302 Found\r\n" +
+            $"Location: {location}\r\n" +
+            "Content-Length: 0\r\n" +
+            "Connection: close\r\n\r\n";
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await ssl.FlushAsync(ct);
+    }
+
+    private static int ParseContentLength(string requestText)
+    {
+        foreach (var line in requestText.Split("\r\n"))
+            if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(line["Content-Length:".Length..].Trim(), out var len))
+                return len;
+        return 0;
     }
 
     public async ValueTask DisposeAsync()
