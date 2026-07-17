@@ -57,6 +57,7 @@ public static class CliApp
                 "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, stderr, services),
                 "send" => Commands.SendCommand.Run(new Args(rest), stdout, stderr, bodyOut ?? new MemoryStream(), services),
                 "run" => Commands.RunCommand.Run(new Args(rest), stdout, stderr, services),
+                "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, stderr),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
             };
         }
@@ -80,6 +81,7 @@ public static class CliApp
             "send" => Commands.SendCommand.Help,
             "certs" => Commands.CertsCommand.Help,
             "run" => Commands.RunCommand.Help,
+            "selftest" => Commands.SelfTestCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;
