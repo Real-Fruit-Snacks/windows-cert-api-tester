@@ -43,6 +43,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Export as OpenAPI** — write the selected folder (or all collections) as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its parameters, headers, and body example, and each known-good note becomes the operation description. Tokens and passwords are never written — auth is exported as a security scheme only.
 - **Save / load workspaces** — export everything (open tabs, collections with their known-good results, environments, saved websites, history) to a single JSON file and load it back later, merging into or replacing the current workspace. Move between machines, keep named project snapshots, or hand a teammate a ready-to-use setup.
 - **Headless mode (`certapi.exe`)** — the whole tester without the window: send one-off requests with a client certificate from the Windows store, run saved requests and whole collections as pass/fail suites (updating their known-good markers), list certificates, run the mTLS self-test, and import/export cURL, OpenAPI, and workspaces — all scriptable, with body-to-stdout output and meaningful exit codes.
+- **Local mTLS gateway (`certapi serve`)** — run a loopback reverse proxy that forwards to a certificate-protected site: point any local app's base URL at `http://localhost:<port>` and it reaches the upstream with your Windows-store client certificate attached, no mTLS code of its own. Loopback-only, with an optional shared-secret token.
 - **Rendered website view** — a **Rendered** response tab opens the current URL as a web page, fetching *every* resource (document, CSS, JS, images, XHR) with your selected client certificate — so a certificate-protected internal site renders fully, not just its HTML. It loads on demand and uses the Edge WebView2 runtime included with Windows 11.
 - **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML with **syntax highlighting**, shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers / Diagnostics views are always available.
 - **Connection diagnostics** — see the negotiated **TLS version and cipher**, whether your client certificate was **actually presented** to the server, and the server's certificate (subject, issuer, thumbprint, expiry, and chain).
@@ -132,6 +133,21 @@ certapi export workspace -o team-setup.json
 Saved requests, collections, and environments come from the GUI's state automatically, or
 from any exported workspace file via `--workspace` — so it works on machines that have
 never opened the app. Run `certapi help <command>` for every option.
+
+### Local gateway
+
+Let an app that can't do client certificates reach a certificate-protected site — it just changes its base URL:
+
+```powershell
+# terminal 1: forward localhost:8819 to the real site, attaching your certificate
+certapi serve https://internal.corp --port 8819 --cert "CN=matt"
+
+# terminal 2 (or your app): call the local port like the real API
+curl http://localhost:8819/api/orders           # → forwarded to https://internal.corp/api/orders with mTLS
+```
+
+The gateway binds to `127.0.0.1` only. Add `--token <value>` to require callers to send
+`Authorization: Bearer <value>`. Stop it with Ctrl+C.
 
 ## Keyboard shortcuts
 

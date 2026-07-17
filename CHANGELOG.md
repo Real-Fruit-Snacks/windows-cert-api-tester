@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-07-16
+
+### Added
+- **Local mTLS gateway** — `certapi serve <upstream> --port <n> --cert <id>` runs a loopback
+  reverse proxy: point any local application's base URL at `http://127.0.0.1:<port>` and every
+  request is forwarded to the certificate-protected upstream with your Windows-store client
+  certificate attached, then the response is relayed back unchanged. The application needs no
+  mTLS code of its own — just a different base URL. Binds to loopback only; add `--token <value>`
+  to require callers to present a shared secret. Stop with Ctrl+C.
+
 ## [1.22.1] - 2026-07-16
 
 ### Fixed
@@ -301,6 +311,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.23.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.23.0
 [1.22.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.1
 [1.22.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.0
 [1.21.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.21.0
