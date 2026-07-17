@@ -28,6 +28,7 @@ public partial class HelpWindow : Window
             ("Collections & history", Collections),
             ("Environments & variables", Environments),
             ("Importing & exporting", Importing),
+            ("Command line", CommandLine),
             ("Rendered website", Rendered),
             ("Keyboard shortcuts", Shortcuts),
             ("About", About),
@@ -232,6 +233,16 @@ public partial class HelpWindow : Window
         Sub("EXPORT AS OPENAPI"),
         P("“Export as OpenAPI…” at the bottom of the collections sidebar writes the selected folder — or all collections when nothing is selected — as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its query parameters, headers, and body example, and a request's known-good note (when it was last checked and what it returned) becomes the operation description."),
         NoteBox("Exports are safe to share: authentication is written only as a security scheme — bearer tokens, usernames, and passwords are never written to the file."));
+
+    private UIElement CommandLine() => Section("Command line",
+        P("certapi.exe — a separate download on the releases page — is the tester without the window, built for scripts and scheduled tasks."),
+        Bullets(
+            "certapi send <url> sends a one-off request; pick a client certificate from the Windows store with --cert <thumbprint or subject>. The body goes to stdout, diagnostics to stderr.",
+            "certapi run <collection or folder> runs saved requests as a pass/fail suite and updates their known-good markers — point it at your live workspace or any exported workspace file with --workspace.",
+            "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
+            "certapi import / export move cURL commands, OpenAPI documents, and whole workspaces in and out.",
+            "Exit codes are script-friendly: 0 success, 1 failure, 2 usage error, 3 data error. Run certapi help <command> for all options."),
+        NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."));
 
     private UIElement Rendered() => Section("Rendered website",
         P("The Rendered response tab opens the current request's URL as a web page instead of raw text — useful when the target is a site rather than an API."),

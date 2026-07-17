@@ -42,6 +42,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Import OpenAPI / Swagger** — point it at a JSON OpenAPI 3.x or Swagger 2.0 file to generate a collection of requests, foldered by tag, with the server as each request's website.
 - **Export as OpenAPI** — write the selected folder (or all collections) as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its parameters, headers, and body example, and each known-good note becomes the operation description. Tokens and passwords are never written — auth is exported as a security scheme only.
 - **Save / load workspaces** — export everything (open tabs, collections with their known-good results, environments, saved websites, history) to a single JSON file and load it back later, merging into or replacing the current workspace. Move between machines, keep named project snapshots, or hand a teammate a ready-to-use setup.
+- **Headless mode (`certapi.exe`)** — the whole tester without the window: send one-off requests with a client certificate from the Windows store, run saved requests and whole collections as pass/fail suites (updating their known-good markers), list certificates, run the mTLS self-test, and import/export cURL, OpenAPI, and workspaces — all scriptable, with body-to-stdout output and meaningful exit codes.
 - **Rendered website view** — a **Rendered** response tab opens the current URL as a web page, fetching *every* resource (document, CSS, JS, images, XHR) with your selected client certificate — so a certificate-protected internal site renders fully, not just its HTML. It loads on demand and uses the Edge WebView2 runtime included with Windows 11.
 - **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML with **syntax highlighting**, shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers / Diagnostics views are always available.
 - **Connection diagnostics** — see the negotiated **TLS version and cipher**, whether your client certificate was **actually presented** to the server, and the server's certificate (subject, issuer, thumbprint, expiry, and chain).
@@ -92,7 +93,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 
 ## Download
 
-Grab `ApiTester.App.exe` from the [latest release](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) and double-click it. There is no installer and it needs no admin rights — copy it wherever you like and run it.
+Grab `ApiTester.App.exe` from the [latest release](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) and double-click it. There is no installer and it needs no admin rights — copy it wherever you like and run it. The command-line client `certapi.exe` is a separate asset on the same releases page.
 
 ## Quick start
 
@@ -108,6 +109,29 @@ To sanity-check the certificate path with no real endpoint, click **Run Self-Tes
 - **Server-cert toggle:** `https://self-signed.badssl.com/` fails as *ServerCertificateUntrusted* until you enable *Ignore server certificate errors*.
 - **General (no cert):** `https://httpbin.org/anything`, `https://postman-echo.com/get`, `https://jsonplaceholder.typicode.com/todos/1`.
 - **Formats:** `https://httpbin.org/xml`, `/html`, `/image/png` (binary → hex dump).
+
+## Headless / command line
+
+`certapi.exe` (a separate download on the releases page) drives everything from scripts:
+
+```powershell
+# one-off request, client cert picked from the Windows store by subject
+certapi send https://internal.corp/api --cert "CN=matt" | jq .status
+
+# run a saved folder as a smoke test — exit code 1 if anything fails
+certapi run "internal api" --env Prod
+certapi run --all --json
+
+# utilities
+certapi certs --filter matt
+certapi selftest
+certapi import openapi .\spec.json --into imported
+certapi export workspace -o team-setup.json
+```
+
+Saved requests, collections, and environments come from the GUI's state automatically, or
+from any exported workspace file via `--workspace` — so it works on machines that have
+never opened the app. Run `certapi help <command>` for every option.
 
 ## Keyboard shortcuts
 
