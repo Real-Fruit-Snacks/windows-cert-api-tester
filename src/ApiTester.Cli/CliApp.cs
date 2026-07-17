@@ -21,6 +21,9 @@ public sealed class CliServices
 
     public Func<string, System.Security.Cryptography.X509Certificates.X509Certificate2?> FindCertificate { get; init; } =
         thumbprint => new CertificateStoreService().FindByThumbprint(thumbprint, includeLocalMachine: true);
+
+    public Func<Uri, System.Security.Cryptography.X509Certificates.X509Certificate2?, bool, TimeSpan, ApiTester.Core.MtlsGateway> GatewayFactory
+    { get; init; } = (upstream, cert, insecure, timeout) => new ApiTester.Core.MtlsGateway(upstream, cert, insecure, timeout);
 }
 
 public static class CliApp
@@ -35,6 +38,7 @@ public static class CliApp
           selftest          Prove the mTLS path end-to-end against a loopback server
           import            Import a cURL command or an OpenAPI file into collections
           export            Export collections as OpenAPI, or the whole workspace
+          serve <upstream>  Run a local mTLS gateway that forwards to <upstream>
           help [command]    Show help (for one command, or this overview)
 
         Run 'certapi help <command>' for options. 'certapi --version' prints the version.
@@ -60,6 +64,7 @@ public static class CliApp
                 "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, stderr),
                 "import" => Commands.ImportCommand.Run(new Args(rest), stdout, stderr, services),
                 "export" => Commands.ExportCommand.Run(new Args(rest), stdout, stderr, services),
+                "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, stderr, services),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
             };
         }
@@ -87,6 +92,7 @@ public static class CliApp
             "selftest" => Commands.SelfTestCommand.Help,
             "import" => Commands.ImportCommand.Help,
             "export" => Commands.ExportCommand.Help,
+            "serve" => Commands.ServeCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;
