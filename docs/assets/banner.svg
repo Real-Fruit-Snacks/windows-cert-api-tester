@@ -4,7 +4,7 @@
       <stop offset="0" stop-color="#090c0d"/>
       <stop offset="1" stop-color="#0e1214"/>
     </linearGradient>
-    <linearGradient id="wire" x1="0" y1="0" x2="1" y2="0">
+    <linearGradient id="wire" gradientUnits="userSpaceOnUse" x1="470" y1="452" x2="730" y2="452">
       <stop offset="0" stop-color="#63f2ab" stop-opacity="0.15"/>
       <stop offset="0.5" stop-color="#63f2ab" stop-opacity="0.7"/>
       <stop offset="1" stop-color="#6bdcff" stop-opacity="0.5"/>
@@ -23,9 +23,8 @@
   <!-- ============ illustration ============ -->
   <g font-family="'JetBrains Mono','Cascadia Code',Consolas,monospace">
 
-    <!-- connector wire: request -> lock -> response -->
-    <path d="M470,452 H556" fill="none" stroke="url(#wire)" stroke-width="2.5"/>
-    <path d="M644,452 H730" fill="none" stroke="url(#wire)" stroke-width="2.5"/>
+    <!-- connector wire: request -> response -->
+    <path d="M470,452 H730" fill="none" stroke="url(#wire)" stroke-width="2.5"/>
 
     <!-- ===== REQUEST card ===== -->
     <rect x="118" y="330" width="352" height="244" rx="10" fill="#13191c" stroke="#2a363d" stroke-width="1.5"/>
@@ -54,18 +53,6 @@
     <rect x="140" y="500" width="120" height="7" rx="3.5" fill="#63736f" opacity="0.5"/>
     <rect x="140" y="518" width="196" height="7" rx="3.5" fill="#63736f" opacity="0.35"/>
     <rect x="140" y="536" width="150" height="7" rx="3.5" fill="#63736f" opacity="0.25"/>
-
-    <!-- ===== mTLS lock (center) ===== -->
-    <g transform="translate(600,452)">
-      <circle r="46" fill="#0e1214" stroke="#63f2ab" stroke-opacity="0.5" stroke-width="1.5"/>
-      <circle r="46" fill="#63f2ab" opacity="0.06"/>
-      <!-- padlock -->
-      <path d="M-13,-6 v-7 a13,13 0 0 1 26,0 v7" fill="none" stroke="#63f2ab" stroke-width="3" stroke-linecap="round"/>
-      <rect x="-17" y="-6" width="34" height="26" rx="5" fill="#63f2ab"/>
-      <circle cx="0" cy="5" r="3.5" fill="#07100d"/>
-      <rect x="-1.6" y="5" width="3.2" height="8" rx="1.6" fill="#07100d"/>
-      <text y="40" font-size="10.5" font-weight="700" letter-spacing="3" fill="#63f2ab" text-anchor="middle">mTLS</text>
-    </g>
 
     <!-- ===== RESPONSE card ===== -->
     <rect x="730" y="330" width="352" height="244" rx="10" fill="#13191c" stroke="#2a363d" stroke-width="1.5"/>
