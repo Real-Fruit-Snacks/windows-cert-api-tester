@@ -18,6 +18,9 @@ public sealed class CliServices
 
     /// <summary>Wired to Ctrl+C by Program.cs so in-flight requests cancel cleanly.</summary>
     public CancellationToken Cancel { get; init; } = CancellationToken.None;
+
+    public Func<string, System.Security.Cryptography.X509Certificates.X509Certificate2?> FindCertificate { get; init; } =
+        thumbprint => new CertificateStoreService().FindByThumbprint(thumbprint, includeLocalMachine: true);
 }
 
 public static class CliApp
@@ -53,6 +56,7 @@ public static class CliApp
                 "help" or "--help" or "-h" => Help(rest, stdout),
                 "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, stderr, services),
                 "send" => Commands.SendCommand.Run(new Args(rest), stdout, stderr, bodyOut ?? new MemoryStream(), services),
+                "run" => Commands.RunCommand.Run(new Args(rest), stdout, stderr, services),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
             };
         }
@@ -75,6 +79,7 @@ public static class CliApp
         {
             "send" => Commands.SendCommand.Help,
             "certs" => Commands.CertsCommand.Help,
+            "run" => Commands.RunCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;
