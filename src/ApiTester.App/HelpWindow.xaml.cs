@@ -238,7 +238,7 @@ public partial class HelpWindow : Window
         P("certapi.exe — a separate download on the releases page — is the tester without the window, built for scripts and scheduled tasks."),
         Bullets(
             "certapi send <url> sends a one-off request; pick a client certificate from the Windows store with --cert <thumbprint or subject>. The body goes to stdout, diagnostics to stderr.",
-            "certapi run <collection or folder> runs saved requests as a pass/fail suite and updates their known-good markers — point it at your live workspace or any exported workspace file with --workspace.",
+            "certapi run <collection or folder> runs saved requests as a pass/fail suite and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
             "certapi import / export move cURL commands, OpenAPI documents, and whole workspaces in and out.",
             "Exit codes are script-friendly: 0 success, 1 failure, 2 usage error, 3 data error. Run certapi help <command> for all options."),

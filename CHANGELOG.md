@@ -10,9 +10,9 @@ All notable changes to this project are documented here. The format follows
 - **Headless mode** — a new `certapi.exe` (separate download) drives the tester from the
   command line and scripts: `send` one-off requests with a client certificate from the
   Windows store, `run` saved requests and whole collections as pass/fail suites (recording
-  their known-good markers, from the live workspace or any exported workspace file),
-  `certs`, `selftest`, and `import`/`export` for cURL, OpenAPI, and workspaces. Response
-  bodies go to stdout and diagnostics to stderr, with script-friendly exit codes
+  their known-good markers — automatically for the live workspace, with `--record` for exported
+  workspace files), `certs`, `selftest`, and `import`/`export` for cURL, OpenAPI, and workspaces.
+  Response bodies go to stdout and diagnostics to stderr, with script-friendly exit codes
   (0 success · 1 failure · 2 usage · 3 data).
 
 ## [1.21.0] - 2026-07-16

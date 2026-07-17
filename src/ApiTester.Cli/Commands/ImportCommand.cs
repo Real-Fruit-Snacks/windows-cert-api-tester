@@ -36,7 +36,9 @@ public static class ImportCommand
         {
             case "curl":
             {
-                var parsed = CurlParser.Parse(positionals[1]);
+                ParsedRequest parsed;
+                try { parsed = CurlParser.Parse(positionals[1]); }
+                catch (Exception ex) { throw new CliDataException($"Could not parse the curl command: {ex.Message}"); }
                 var model = RequestModel.FromParsed(parsed);
                 var name = string.IsNullOrWhiteSpace(parsed.Name) ? $"{model.Method} {model.Path}" : parsed.Name!;
                 add(new CollectionNode { Name = name, IsFolder = false, Request = model });
@@ -46,7 +48,9 @@ public static class ImportCommand
             case "openapi":
             {
                 if (!File.Exists(positionals[1])) throw new CliDataException($"File not found: {positionals[1]}");
-                var pc = OpenApiImporter.Parse(File.ReadAllText(positionals[1]));
+                ParsedCollection pc;
+                try { pc = OpenApiImporter.Parse(File.ReadAllText(positionals[1])); }
+                catch (Exception ex) { throw new CliDataException($"Could not parse '{positionals[1]}': {ex.Message}"); }
                 var node = CollectionNode.FromParsed(pc);
                 add(node);
                 added = CountRequests(node); what = node.Name;

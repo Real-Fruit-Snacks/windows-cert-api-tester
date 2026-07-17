@@ -36,7 +36,7 @@ public static class SendCommand
           --pretty                Pretty-print the body (JSON/XML; hex for binary)
           --json                  Print a JSON result envelope instead of the raw body
           --fail                  Exit 1 when the HTTP status is 400 or higher
-          -q, --quiet              No metadata line on stderr
+          -q, --quiet             No metadata line on stderr
 
         The body goes to stdout; everything else goes to stderr. Exit 0 on a delivered
         response (any status unless --fail), 1 on transport errors, 2/3 on usage/data errors.

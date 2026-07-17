@@ -123,4 +123,15 @@ public class SendCommandTests
         }
         finally { if (File.Exists(outFile)) File.Delete(outFile); }
     }
+
+    [Fact]
+    public void Unexpected_exceptions_become_a_clean_error_and_exit_1()
+    {
+        var se = new StringWriter();
+        int code = CliApp.Run(new[] { "send", "https://h/", "-X", "BAD METHOD" },
+                              new StringWriter(), se, new MemoryStream(), new CliServices());
+        Assert.Equal(1, code);
+        Assert.Contains("error:", se.ToString());
+        Assert.DoesNotContain("   at ", se.ToString());
+    }
 }

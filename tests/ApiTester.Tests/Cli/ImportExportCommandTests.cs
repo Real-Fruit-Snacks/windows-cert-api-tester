@@ -102,4 +102,21 @@ public class ImportExportCommandTests
         }
         finally { File.Delete(ws); if (File.Exists(live)) File.Delete(live); }
     }
+
+    [Fact]
+    public void Malformed_openapi_file_is_a_data_error_without_a_stack_trace()
+    {
+        var (services, live) = FreshServices();
+        var bad = Path.Combine(Path.GetTempPath(), $"certapi-bad-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(bad, "{ not json ");
+            var se = new StringWriter();
+            int code = CliApp.Run(new[] { "import", "openapi", bad }, new StringWriter(), se, services: services);
+            Assert.Equal(3, code);
+            Assert.Contains("Could not parse", se.ToString());
+            Assert.DoesNotContain("   at ", se.ToString());
+        }
+        finally { File.Delete(bad); if (File.Exists(live)) File.Delete(live); }
+    }
 }

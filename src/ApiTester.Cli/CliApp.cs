@@ -65,6 +65,7 @@ public static class CliApp
         }
         catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
         catch (CliDataException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Data; }
+        catch (Exception ex) { stderr.WriteLine("error: " + ex.Message); return ExitCodes.Failure; }
     }
 
     private static int Version(TextWriter stdout)
