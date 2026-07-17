@@ -6,6 +6,11 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace ApiTester.Core;
 
+/// <summary>Thrown when a forwarded request's target resolves to a host other than the
+/// configured upstream — refused so the client certificate can never reach an arbitrary host.</summary>
+public sealed class GatewayTargetException(string target)
+    : Exception($"Request target '{target}' resolves off the configured upstream host and was refused.");
+
 /// <summary>Hop-by-hop headers that must never be forwarded through a proxy (RFC 7230 §6.1),
 /// plus Host/Content-Length which the HTTP client manages itself.</summary>
 public static class HopByHop
@@ -68,6 +73,8 @@ public sealed class MtlsGateway : IDisposable
     public async Task<GatewayResponse> ForwardAsync(GatewayRequest request, CancellationToken ct)
     {
         var uri = new Uri(_upstreamBase, request.PathAndQuery);
+        if (uri.GetLeftPart(UriPartial.Authority) != _upstreamBase.GetLeftPart(UriPartial.Authority))
+            throw new GatewayTargetException(request.PathAndQuery);
         var message = new HttpRequestMessage(new HttpMethod(request.Method), uri);
 
         string? contentType = request.ContentType;

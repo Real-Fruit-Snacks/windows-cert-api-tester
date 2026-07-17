@@ -161,6 +161,21 @@ public static class ServeCommand
             res.Close();
             log($"{method,-6} {pathAndQuery}  -> {gwResp.StatusCode}  {sw.ElapsedMilliseconds} ms");
         }
+        catch (GatewayTargetException ex)
+        {
+            try
+            {
+                res.StatusCode = 400;
+                var bytes = System.Text.Encoding.UTF8.GetBytes("400 Bad Request: " + ex.Message);
+                res.ContentType = "text/plain";
+                res.ContentLength64 = bytes.Length;
+                await res.OutputStream.WriteAsync(bytes, ct);
+                res.Close();
+            }
+            catch { /* client already gone */ }
+            log($"{method,-6} {pathAndQuery}  -> 400 (off-host target)");
+            return;
+        }
         catch (Exception ex)
         {
             try

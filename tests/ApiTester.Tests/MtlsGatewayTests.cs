@@ -121,4 +121,38 @@ public class MtlsGatewayTests
                     h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) && h.Value == "5");
         }
     }
+
+    [Theory]
+    [InlineData("//evil.com/steal")]
+    [InlineData("https://evil.com/steal")]
+    [InlineData("http://evil.com/steal")]
+    public async Task Off_host_request_targets_are_refused(string target)
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            // Upstream is a real loopback server; the off-host target must be rejected BEFORE any connect,
+            // so the certificate never reaches another host.
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            using var gw = new MtlsGateway(new Uri(upstream.BaseUrl), client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30));
+
+            await Assert.ThrowsAsync<GatewayTargetException>(async () =>
+                await gw.ForwardAsync(new GatewayRequest("GET", target, Array.Empty<KeyValuePair<string, string>>(), null, null), default));
+        }
+    }
+
+    [Fact]
+    public async Task Normal_paths_still_forward()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            using var gw = new MtlsGateway(new Uri(upstream.BaseUrl), client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30));
+
+            var resp = await gw.ForwardAsync(
+                new GatewayRequest("GET", "/api/x?q=1", Array.Empty<KeyValuePair<string, string>>(), null, null), default);
+            using (resp.Lifetime) Assert.Equal(200, resp.StatusCode);
+        }
+    }
 }
