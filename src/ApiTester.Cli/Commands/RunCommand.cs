@@ -51,6 +51,7 @@ public static class RunCommand
             stderr.WriteLine("note: the GUI is running — results were not recorded (it would overwrite them on close).");
         }
 
+        bool capturedAny = false;
         var results = new List<(string Path, RequestModel Model, ApiResponse Response)>();
         var clock = Stopwatch.StartNew();
         foreach (var (path, node) in targets)
@@ -58,10 +59,15 @@ public static class RunCommand
             var response = Execute(node.Request!, vars, strictVars, stderr, services);
             results.Add((path, node.Request!, response));
             if (record) node.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+            if (response.Error is null && node.Request!.Captures.Count > 0)
+            {
+                var outcome = CaptureApplier.Apply(state, node.Request!.Captures, response.Body, response.ContentType, response.Headers);
+                if (outcome.Count > 0) capturedAny = true;
+            }
         }
         clock.Stop();
 
-        if (record)
+        if (record || (capturedAny && !(workspace is null && services.IsGuiRunning())))
         {
             try { state.SaveTo(workspace ?? services.LiveStatePath); }
             catch (Exception ex) { stderr.WriteLine($"warning: could not record results: {ex.Message}"); }

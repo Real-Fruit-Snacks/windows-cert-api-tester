@@ -29,6 +29,9 @@ public static class SendCommand
           --var k=v               Override/add a variable (repeatable)
           --workspace <file>      Load environments from a workspace file instead of the live state
           --strict-vars           Unresolved {{tokens}} become an error instead of a warning
+          --capture var=path      Save a response value into an environment variable after the
+                                  send (repeatable). path is a JSON body path (access_token,
+                                  data.token) or header:Name for a response header.
 
         Output:
           -o, --output <file>     Write the body to a file instead of stdout
@@ -69,10 +72,27 @@ public static class SendCommand
         bool json = args.Flag("--json");
         bool fail = args.Flag("--fail");
         bool quiet = args.Flag("-q", "--quiet");
+        var captureSpecs = args.Values("--capture");
 
         var positionals = args.Positionals();
         if (positionals.Count != 1) throw new CliUsageException(Help);
         string url = positionals[0];
+
+        var captureRules = new List<CaptureRule>();
+        foreach (var raw in captureSpecs)
+        {
+            int eq = raw.IndexOf('=');
+            if (eq <= 0) throw new CliUsageException($"--capture expects var=path, got '{raw}'.");
+            string variable = raw[..eq].Trim();
+            string path = raw[(eq + 1)..];
+            bool header = path.StartsWith("header:", StringComparison.OrdinalIgnoreCase);
+            captureRules.Add(new CaptureRule
+            {
+                Variable = variable,
+                Source = header ? CaptureSource.Header : CaptureSource.Body,
+                Path = header ? path["header:".Length..] : path
+            });
+        }
         if (data is not null && dataFile is not null)
             throw new CliUsageException("-d/--data and --data-file are mutually exclusive.");
         if (bearer is not null && basic is not null)
@@ -82,8 +102,10 @@ public static class SendCommand
             : null);
 
         // ---- variables ----
+        // A --workspace that doesn't exist yet is fine here: it isn't read for anything but a named
+        // --env lookup, and --capture (below) is allowed to create it fresh on save.
         var state = (envName is not null || workspace is not null)
-            ? CliWorkspace.Load(workspace, services.LiveStatePath) : new AppState();
+            ? LoadWorkspaceOrEmpty(workspace, services) : new AppState();
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
         var unresolved = new List<string>();
         string R(string s)
@@ -135,6 +157,9 @@ public static class SendCommand
 
         if (!quiet) stderr.WriteLine(OutputText.MetaLine(response));
 
+        if (captureRules.Count > 0 && response.Error is null)
+            ApplyCaptures(captureRules, response, workspace, services, stderr);
+
         // ---- output ----
         if (json)
         {
@@ -157,6 +182,33 @@ public static class SendCommand
         if (response.Error is not null) return ExitCodes.Failure;
         if (fail && response.StatusCode is >= 400) return ExitCodes.Failure;
         return ExitCodes.Ok;
+    }
+
+    /// <summary>Like <see cref="CliWorkspace.Load"/>, but a missing explicit workspace file yields an
+    /// empty workspace instead of an error — --capture is allowed to create the file on save.</summary>
+    private static AppState LoadWorkspaceOrEmpty(string? workspace, CliServices services) =>
+        workspace is not null && !File.Exists(workspace)
+            ? new AppState()
+            : CliWorkspace.Load(workspace, services.LiveStatePath);
+
+    private static void ApplyCaptures(
+        List<CaptureRule> rules, ApiResponse response, string? workspace, CliServices services, TextWriter stderr)
+    {
+        var state = LoadWorkspaceOrEmpty(workspace, services);
+        var outcome = CaptureApplier.Apply(state, rules, response.Body, response.ContentType, response.Headers);
+        if (outcome.Count == 0) return;
+
+        if (workspace is null && services.IsGuiRunning())
+        {
+            stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
+            return;
+        }
+        try { state.SaveTo(workspace ?? services.LiveStatePath); }
+        catch (Exception ex) { stderr.WriteLine($"warning: could not save captured values: {ex.Message}"); return; }
+
+        var ok = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
+        if (ok.Count > 0) stderr.WriteLine("captured " + string.Join(", ", ok));
+        foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"capture '{b.Variable}' failed: {b.Error}");
     }
 
     internal static string BuildEnvelope(ApiResponse r, bool includeBody)
