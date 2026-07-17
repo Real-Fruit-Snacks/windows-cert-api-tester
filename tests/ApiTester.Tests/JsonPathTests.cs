@@ -32,4 +32,13 @@ public class JsonPathTests
         Assert.Null(JsonPath.Evaluate(root, "a[0]"));      // object indexed like an array
         Assert.Null(JsonPath.Evaluate(root, "a.b.c"));     // descend into a string
     }
+
+    [Fact]
+    public void Malformed_bracket_segments_return_null()
+    {
+        var root = Root("""{"count":5,"arr":[1,2]}""");
+        Assert.Null(JsonPath.Evaluate(root, "count["));      // unclosed, nothing after
+        Assert.Null(JsonPath.Evaluate(root, "arr[0"));       // unclosed
+        Assert.Null(JsonPath.Evaluate(root, "arr[x]"));      // non-numeric
+    }
 }

@@ -12,11 +12,12 @@ public static class CaptureApplier
         var applicable = rules.Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.Variable)).ToList();
         if (applicable.Count == 0) return results;
 
-        var env = ActiveEnvironment(state);
+        ApiEnvironment? env = null;
         foreach (var rule in applicable)
         {
             var (value, error) = ResponseCapture.Extract(rule.ToSpec(), body, contentType, headers);
             if (value is null) { results.Add((rule.Variable.Trim(), false, error)); continue; }
+            env ??= ActiveEnvironment(state);
             Upsert(env, rule.Variable.Trim(), value);
             results.Add((rule.Variable.Trim(), true, null));
         }

@@ -54,8 +54,19 @@ public class CaptureApplierTests
         var outcome = CaptureApplier.Apply(state, rules, B("""{"access_token":"new"}"""), null, NoHeaders);
 
         Assert.Equal("new", env.Variables.Single(v => v.Key == "token").Value);   // upserted, not duplicated
-        Assert.Single(env.Variables.Where(v => v.Key == "token"));
+        Assert.Single(env.Variables, v => v.Key == "token");
         Assert.Contains(outcome, o => o.Variable == "sid" && !o.Ok);
         Assert.DoesNotContain(outcome, o => o.Variable == "");                     // blank-name rule not reported
+    }
+
+    [Fact]
+    public void Does_not_create_an_environment_when_every_rule_fails()
+    {
+        var state = new AppState();
+        var rules = new[] { new CaptureRule { Variable = "sid", Source = CaptureSource.Header, Path = "X-Missing" } };
+        var outcome = CaptureApplier.Apply(state, rules, B("""{"a":1}"""), null, NoHeaders);
+        Assert.False(outcome[0].Ok);
+        Assert.Empty(state.Environments);              // nothing created
+        Assert.Null(state.ActiveEnvironmentId);
     }
 }

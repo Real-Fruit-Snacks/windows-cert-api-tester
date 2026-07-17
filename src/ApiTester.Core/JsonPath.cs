@@ -27,8 +27,11 @@ public static class JsonPath
             if (bracket >= 0)
             {
                 string rest = s[bracket..];
-                foreach (var idxToken in rest.Split('[', StringSplitOptions.RemoveEmptyEntries))
+                var idxTokens = rest.Split('[', StringSplitOptions.RemoveEmptyEntries);
+                if (idxTokens.Length == 0) return null;   // "name[" with nothing after
+                foreach (var idxToken in idxTokens)
                 {
+                    if (!idxToken.EndsWith(']')) return null;   // unclosed like "name[0"
                     var t = idxToken.TrimEnd(']');
                     if (!int.TryParse(t, out int index) || current.ValueKind != JsonValueKind.Array) return null;
                     if (index < 0 || index >= current.GetArrayLength()) return null;

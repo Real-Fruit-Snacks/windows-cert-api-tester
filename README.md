@@ -81,7 +81,7 @@ Open the **ENV** selector (title bar) → **Edit** to define `{{variable}}` valu
 Many APIs want you to log in first and then send the returned token on every call. Do it once and reuse it automatically:
 1. Build the **login request** (e.g. `POST https://internal.corp/auth` with your credentials in the body).
 2. Open its **Capture** tab → **+ Add capture**. Set **Variable** = `token`, **From** = `Body`, **Path** = `access_token` (use a dotted path like `data.access_token` for nested fields, or **From = Header** with a header name).
-3. **Send** the login request. The status line shows `Captured token`, and the value is saved into your active environment (a `Captured` environment is created automatically if you don't have one selected).
+3. **Send** the login request. The status line shows `Captured token`, and the value is saved into your active environment (a `Captured` environment is created automatically if you don't have one selected). Captured values are stored with your environments (in the workspace/state file, in plain text), so treat exported workspaces as private.
 4. In your other requests, set **Auth → Bearer** with the token `{{token}}` (or put `{{token}}` in any header). Send — the captured token is filled in. Re-run the login request anytime to refresh it.
 
 ### Import / export

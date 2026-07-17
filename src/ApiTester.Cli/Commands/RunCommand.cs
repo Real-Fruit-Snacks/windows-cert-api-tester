@@ -44,6 +44,12 @@ public static class RunCommand
         var targets = CliWorkspace.ResolveTargets(state, positionals.FirstOrDefault(), all);
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
 
+        // If --env names an existing environment, make it the capture target so a token captured
+        // by one request in this run is reusable by later requests via {{var}}.
+        if (envName is not null &&
+            state.Environments.FirstOrDefault(e => e.Name.Equals(envName, StringComparison.OrdinalIgnoreCase)) is { } namedEnv)
+            state.ActiveEnvironmentId = namedEnv.Id;
+
         bool record = !noRecord && (workspace is null || recordFlag);
         if (record && workspace is null && services.IsGuiRunning())
         {
@@ -62,7 +68,14 @@ public static class RunCommand
             if (response.Error is null && node.Request!.Captures.Count > 0)
             {
                 var outcome = CaptureApplier.Apply(state, node.Request!.Captures, response.Body, response.ContentType, response.Headers);
-                if (outcome.Count > 0) capturedAny = true;
+                if (outcome.Count > 0)
+                {
+                    capturedAny = true;
+                    var okVars = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
+                    if (okVars.Count > 0) stderr.WriteLine($"{path}: captured " + string.Join(", ", okVars));
+                    foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"{path}: capture '{b.Variable}' failed: {b.Error}");
+                    vars = CliWorkspace.BuildVars(state, envName, varOverrides);
+                }
             }
         }
         clock.Stop();
