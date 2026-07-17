@@ -36,8 +36,9 @@ public static class CliWorkspace
         foreach (var kv in varOverrides)
         {
             int eq = kv.IndexOf('=');
-            if (eq <= 0) throw new CliUsageException($"--var expects key=value, got '{kv}'.");
-            vars[kv[..eq].Trim()] = kv[(eq + 1)..];
+            string key = eq > 0 ? kv[..eq].Trim() : "";
+            if (key.Length == 0) throw new CliUsageException($"--var expects key=value, got '{kv}'.");
+            vars[key] = kv[(eq + 1)..];
         }
         return vars;
     }
@@ -57,11 +58,18 @@ public static class CliWorkspace
                 if (matches.Count == 0)
                     throw new CliDataException($"Nothing named '{segment}' under '{(prefix.Length == 0 ? "collections" : prefix.TrimEnd('/'))}'.");
                 if (matches.Count > 1)
-                    throw new CliDataException($"'{segment}' is ambiguous under '{prefix}' ({matches.Count} matches).");
+                    throw new CliDataException(
+                        $"'{segment}' is ambiguous under '{(prefix.Length == 0 ? "collections" : prefix.TrimEnd('/'))}':\n" +
+                        string.Join("\n", matches.Select(m => $"  {prefix}{m.Name}  ({(m.IsFolder ? "folder" : "request")})")));
                 var node = matches[0];
                 prefix += node.Name + "/";
                 if (!node.IsFolder)
-                    return Leaves(node, prefix.TrimEnd('/')) ;
+                {
+                    var leaf = Leaves(node, prefix.TrimEnd('/'));
+                    if (leaf.Count == 0)
+                        throw new CliDataException($"'{prefix.TrimEnd('/')}' has no runnable request.");
+                    return leaf;
+                }
                 scope = node.Children;
             }
         }

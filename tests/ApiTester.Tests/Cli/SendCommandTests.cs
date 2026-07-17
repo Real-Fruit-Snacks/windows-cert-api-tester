@@ -125,6 +125,42 @@ public class SendCommandTests
     }
 
     [Fact]
+    public void Invalid_timeout_is_a_usage_error()
+    {
+        foreach (var bad in new[] { "abc", "0", "-5" })
+        {
+            var se = new StringWriter();
+            int code = CliApp.Run(new[] { "send", "https://h/", "--timeout", bad },
+                                  new StringWriter(), se, new MemoryStream(), new CliServices());
+            Assert.Equal(2, code);
+            Assert.Contains("--timeout", se.ToString());
+        }
+    }
+
+    [Fact]
+    public void Envelope_merges_mixed_case_duplicate_headers()
+    {
+        var response = new ApiResponse
+        {
+            StatusCode = 200,
+            ReasonPhrase = "OK",
+            Headers = new[]
+            {
+                new KeyValuePair<string, string>("Set-Cookie", "a=1"),
+                new KeyValuePair<string, string>("set-cookie", "b=2")
+            },
+            Body = Encoding.UTF8.GetBytes("hi")
+        };
+
+        var json = ApiTester.Cli.Commands.SendCommand.BuildEnvelope(response, includeBody: false);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var headers = doc.RootElement.GetProperty("headers");
+        Assert.Single(headers.EnumerateObject());
+        Assert.Equal(2, headers.GetProperty("Set-Cookie").GetArrayLength());
+    }
+
+    [Fact]
     public void Unexpected_exceptions_become_a_clean_error_and_exit_1()
     {
         var se = new StringWriter();

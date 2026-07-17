@@ -38,6 +38,55 @@ public class CliWorkspaceTests
     }
 
     [Fact]
+    public void Corrupt_workspace_file_is_a_data_error()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"certapi-corrupt-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, "{ this is not json ");
+            var ex = Assert.Throws<CliDataException>(() => CliWorkspace.Load(path, liveStatePath: path));
+            Assert.Contains("Could not read", ex.Message);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Var_override_with_a_blank_key_is_a_usage_error()
+    {
+        Assert.Throws<CliUsageException>(() =>
+            CliWorkspace.BuildVars(new AppState(), null, new[] { " =value" }));
+        Assert.Throws<CliUsageException>(() =>
+            CliWorkspace.BuildVars(new AppState(), null, new[] { "=value" }));
+    }
+
+    [Fact]
+    public void Ambiguous_segment_lists_the_candidates()
+    {
+        var state = new AppState();
+        state.Collections.Add(new CollectionNode { Name = "api", IsFolder = true });
+        state.Collections.Add(new CollectionNode
+        {
+            Name = "api",
+            IsFolder = false,
+            Request = new RequestModel { Method = "GET", Path = "https://h/" }
+        });
+
+        var ex = Assert.Throws<CliDataException>(() => CliWorkspace.ResolveTargets(state, "api", all: false));
+        Assert.Contains("(folder)", ex.Message);
+        Assert.Contains("(request)", ex.Message);
+    }
+
+    [Fact]
+    public void A_request_entry_without_a_request_is_a_data_error()
+    {
+        var state = new AppState();
+        state.Collections.Add(new CollectionNode { Name = "broken", IsFolder = false, Request = null });
+
+        var ex = Assert.Throws<CliDataException>(() => CliWorkspace.ResolveTargets(state, "broken", all: false));
+        Assert.Contains("no runnable request", ex.Message);
+    }
+
+    [Fact]
     public void Targets_resolve_by_path_folder_or_all()
     {
         var one = CliWorkspace.ResolveTargets(Sample(), "api/Get todo", all: false);

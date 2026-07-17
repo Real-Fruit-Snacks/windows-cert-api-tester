@@ -21,7 +21,7 @@ public static class SendCommand
 
         TLS / certificates:
           --cert <thumb|subject>  Client certificate from the Windows store
-          --store <location>      CurrentUser (default) or LocalMachine
+          --store <location>      CurrentUser (default); LocalMachine searches both stores
           --insecure              Ignore server certificate errors
 
         Variables:
@@ -55,7 +55,10 @@ public static class SendCommand
         string? certQuery = args.Value("--cert");
         string store = args.Value("--store") ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
-        int timeout = int.TryParse(args.Value("--timeout"), out var t) && t > 0 ? t : 100;
+        string? timeoutRaw = args.Value("--timeout");
+        int timeout = 100;
+        if (timeoutRaw is not null && (!int.TryParse(timeoutRaw, out timeout) || timeout <= 0))
+            throw new CliUsageException($"--timeout expects a positive number of seconds, got '{timeoutRaw}'.");
         string? envName = args.Value("--env");
         var varOverrides = args.Values("--var");
         string? workspace = args.Value("--workspace");
@@ -162,8 +165,9 @@ public static class SendCommand
         string? text = null;
         if (includeBody && r.Error is null)
         {
-            try { text = Encoding.UTF8.GetString(r.Body); binary = text.Contains('�'); }
-            catch { binary = true; }
+            // UTF8.GetString never throws — invalid bytes decode to U+FFFD, which marks the body binary.
+            text = Encoding.UTF8.GetString(r.Body);
+            binary = text.Contains('�');
         }
         var obj = new Dictionary<string, object?>
         {
@@ -173,7 +177,7 @@ public static class SendCommand
             ["contentType"] = r.ContentType,
             ["sizeBytes"] = r.Body.LongLength,
             ["headers"] = r.Headers
-                .GroupBy(h => h.Key)
+                .GroupBy(h => h.Key, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     g => g.Key,
                     g => g.Count() == 1 ? (object)g.First().Value : g.Select(h => h.Value).ToArray()),

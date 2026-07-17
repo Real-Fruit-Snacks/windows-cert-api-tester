@@ -163,6 +163,9 @@ Produce the portable single-file executable:
 ```bash
 dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publish
 # -> publish/ApiTester.App.exe   (runs on any Windows 10/11 machine, no install)
+
+dotnet publish src/ApiTester.Cli -c Release -r win-x64 --self-contained -o publish
+# -> publish/certapi.exe         (the command-line client)
 ```
 
 > The runtime-identifier and self-contained flags live on the publish command, not in the project file, so everyday `dotnet build` / `dotnet test` stay fast and framework-dependent.

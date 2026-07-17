@@ -26,6 +26,8 @@ public static class CertPicker
         return hit;
     }
 
+    // Intentionally broader than whitespace-stripping: thumbprints are hex, so dropping every
+    // non-alphanumeric also forgives colon- or dash-separated forms pasted from other tools.
     private static string Normalize(string s) =>
         new(s.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

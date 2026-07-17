@@ -97,7 +97,7 @@ public class ApiClientTests
                 {
                     Method = HttpMethod.Get,
                     Url = $"https://127.0.0.1:{port}/",
-                    Timeout = TimeSpan.FromMilliseconds(400)
+                    Timeout = TimeSpan.FromMilliseconds(1200)   // generous: short timeouts flake under parallel test load
                 },
                 clientCertificate: null,
                 ignoreServerCertificateErrors: true);

@@ -10,6 +10,7 @@ public static class CertsCommand
 
         Lists client certificates from the Windows store (subject, thumbprint, expiry,
         client-auth EKU). --filter substring-matches subject/issuer/thumbprint.
+        --store LocalMachine searches the machine store in addition to your user store.
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)

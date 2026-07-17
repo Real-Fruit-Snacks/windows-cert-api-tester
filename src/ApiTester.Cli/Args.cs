@@ -8,6 +8,8 @@ public sealed class Args
 
     public Args(IReadOnlyList<string> tokens) => _tokens = tokens.ToArray();
 
+    /// <summary>Consume one occurrence of a flag (name match is case-insensitive). A repeated,
+    /// unconsumed occurrence is later rejected by <see cref="Positionals"/> as an unknown option.</summary>
     public bool Flag(params string[] names)
     {
         for (int i = 0; i < _tokens.Length; i++)
@@ -19,6 +21,8 @@ public sealed class Args
         return false;
     }
 
+    /// <summary>Consume one option and its value (name match is case-insensitive); null when absent.
+    /// An option present without a value is a usage error.</summary>
     public string? Value(params string[] names)
     {
         for (int i = 0; i < _tokens.Length; i++)
@@ -33,6 +37,7 @@ public sealed class Args
         return null;
     }
 
+    /// <summary>Consume every occurrence of a repeatable option, in order.</summary>
     public List<string> Values(params string[] names)
     {
         var all = new List<string>();

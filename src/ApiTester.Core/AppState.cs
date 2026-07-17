@@ -31,17 +31,11 @@ public sealed class AppState
     public List<ApiEnvironment> Environments { get; set; } = new();
     public string? ActiveEnvironmentId { get; set; }
 
-    /// <summary>The live GUI state file under %AppData%.</summary>
-    public static string DefaultPath
-    {
-        get
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CertApiTester");
-            Directory.CreateDirectory(dir);
-            return Path.Combine(dir, "state.json");
-        }
-    }
+    /// <summary>The live GUI state file under %AppData%. Computing the path has no side
+    /// effects; <see cref="SaveTo"/> creates the directory when it first writes.</summary>
+    public static string DefaultPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                     "CertApiTester", "state.json");
 
     public static AppState Load()
     {
@@ -63,6 +57,7 @@ public sealed class AppState
     public void SaveTo(string path)
     {
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        if (Path.GetDirectoryName(path) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
         var tmp = path + ".tmp";
         File.WriteAllText(tmp, json);
         File.Move(tmp, path, overwrite: true);

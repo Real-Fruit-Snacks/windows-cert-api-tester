@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.1] - 2026-07-16
+
+### Fixed
+- `certapi send --timeout` now rejects non-numeric or non-positive values as a usage error
+  instead of silently using the default.
+- `certapi --var` rejects overrides with a blank key (e.g. `" =value"`).
+- Ambiguous collection paths in `certapi run` now list the matching entries (marked folder or
+  request) instead of only counting them, and a saved entry with no request reports a clear error.
+- The `--json` envelope merges duplicate response headers that differ only in case.
+- Help text: clarified that `--store LocalMachine` searches the machine store in addition to
+  your user store.
+
+### Internal
+- Widened a short timeout in a network test that could flake under parallel test load;
+  computing the state-file path no longer creates the settings directory as a side effect.
+
 ## [1.22.0] - 2026-07-16
 
 ### Added
@@ -285,6 +301,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.22.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.1
 [1.22.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.0
 [1.21.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.21.0
 [1.20.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.20.0

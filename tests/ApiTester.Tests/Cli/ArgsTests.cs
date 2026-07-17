@@ -37,4 +37,22 @@ public class ArgsTests
         Assert.Equal("-negative-looking-body", a.Value("-d", "--data"));
         Assert.Empty(a.Positionals());
     }
+
+    [Fact]
+    public void Names_match_case_insensitively()
+    {
+        var a = new Args(new[] { "--INSECURE", "-x", "post" });
+        Assert.True(a.Flag("--insecure"));
+        Assert.Equal("post", a.Value("-X", "--method"));
+        Assert.Empty(a.Positionals());
+    }
+
+    [Fact]
+    public void A_repeated_flag_is_rejected_as_an_unknown_option()
+    {
+        var a = new Args(new[] { "--insecure", "--insecure" });
+        Assert.True(a.Flag("--insecure"));            // consumes the first occurrence only
+        var ex = Assert.Throws<CliUsageException>(() => a.Positionals());
+        Assert.Contains("--insecure", ex.Message);
+    }
 }
