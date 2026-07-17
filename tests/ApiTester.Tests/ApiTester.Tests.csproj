@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ApiTester.Core\ApiTester.Core.csproj" />
     <ProjectReference Include="..\..\src\ApiTester.App\ApiTester.App.csproj" />
+    <ProjectReference Include="..\..\src\ApiTester.Cli\ApiTester.Cli.csproj" />
   </ItemGroup>
 
 </Project>
