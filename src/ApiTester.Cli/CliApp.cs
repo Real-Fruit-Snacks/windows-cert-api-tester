@@ -39,10 +39,25 @@ public static class CliApp
           import            Import a cURL command or an OpenAPI file into collections
           export            Export collections as OpenAPI, or the whole workspace
           serve <upstream>  Run a local mTLS gateway that forwards to <upstream>
+          mcp               Run an MCP server so AI agents can make mTLS calls
           help [command]    Show help (for one command, or this overview)
 
         Run 'certapi help <command>' for options. 'certapi --version' prints the version.
         """;
+
+    public static int Run(string[] args, TextReader input, TextWriter stdout, TextWriter stderr,
+                          Stream? bodyOut = null, CliServices? services = null)
+    {
+        services ??= new CliServices();
+        if (args.Length > 0 && args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase))
+        {
+            try { return Commands.McpCommand.Run(new Args(args.Skip(1).ToArray()), input, stdout, stderr, services); }
+            catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
+            catch (CliDataException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Data; }
+            catch (Exception ex) { stderr.WriteLine("error: " + ex.Message); return ExitCodes.Failure; }
+        }
+        return Run(args, stdout, stderr, bodyOut, services);
+    }
 
     public static int Run(string[] args, TextWriter stdout, TextWriter stderr,
                           Stream? bodyOut = null, CliServices? services = null)
@@ -93,6 +108,7 @@ public static class CliApp
             "import" => Commands.ImportCommand.Help,
             "export" => Commands.ExportCommand.Help,
             "serve" => Commands.ServeCommand.Help,
+            "mcp" => Commands.McpCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;
