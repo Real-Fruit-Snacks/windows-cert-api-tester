@@ -242,6 +242,7 @@ public partial class MainWindow : Window
             BaseUrlBox.Text = m.BaseUrl ?? "";
             UrlBox.Text = m.Path;
             HeadersItems.ItemsSource = m.Headers;
+            CaptureItems.ItemsSource = m.Captures;
             ParamsItems.ItemsSource = m.QueryParams;
             BodyBox.Text = m.Body ?? "";
             SelectContentType(m.ContentType);
@@ -1295,6 +1296,13 @@ public partial class MainWindow : Window
         if (sender is Button { Tag: HeaderRow row }) ActiveRequest?.Headers.Remove(row);
     }
 
+    private void AddCaptureButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.Captures.Add(new CaptureRule());
+
+    private void RemoveCaptureButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: CaptureRule row }) ActiveRequest?.Captures.Remove(row);
+    }
+
     private void AddParamButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.QueryParams.Add(new ParamRow());
 
     private void RemoveParamButton_Click(object sender, RoutedEventArgs e)
@@ -1439,6 +1447,8 @@ public partial class MainWindow : Window
                 FindNodeById(srcId) is { IsFolder: false, Request: { } saved } srcNode &&
                 saved.Method == model.Method && saved.EffectiveUrl() == model.EffectiveUrl())
                 srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+            if (response.Error is null && model.Captures.Count > 0)
+                ApplyCaptures(model, response);
             AddToHistory(response);
         }
         finally
@@ -1597,6 +1607,22 @@ public partial class MainWindow : Window
     // ---------- history ----------
 
     private const int MaxStoredBody = 256 * 1024;
+
+    private void ApplyCaptures(RequestModel model, ApiResponse response)
+    {
+        var outcome = CaptureApplier.Apply(
+            _state, model.Captures, response.Body, response.ContentType, response.Headers);
+        if (outcome.Count == 0) return;
+
+        RefreshEnvCombo();   // a newly created "Captured" env, or updated values, show in the selector
+
+        var ok = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
+        var bad = outcome.Where(o => !o.Ok).ToList();
+        var parts = new List<string>();
+        if (ok.Count > 0) parts.Add("Captured " + string.Join(", ", ok));
+        foreach (var b in bad) parts.Add($"{b.Variable} ✗ ({b.Error})");
+        if (parts.Count > 0) StatusText.Text += "   •   " + string.Join("; ", parts);
+    }
 
     private void AddToHistory(ApiResponse response)
     {

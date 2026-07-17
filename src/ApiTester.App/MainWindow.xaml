@@ -20,6 +20,7 @@
     <Window.Resources>
         <local:StatusToBrushConverter x:Key="StatusBrush"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:CaptureSourceConverter x:Key="CaptureSourceConverter"/>
     </Window.Resources>
 
     <DockPanel x:Name="RootContainer">
@@ -364,6 +365,46 @@
                         </StackPanel>
                     </StackPanel>
                     </ScrollViewer>
+                </TabItem>
+                <TabItem Header="Capture">
+                    <DockPanel Margin="2">
+                        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{StaticResource Text.Faint}"
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Text="After sending, save a value from the response into a {{variable}} for later requests — e.g. Variable “token”, From Body, Path “access_token”. Reuse it as {{token}} in a Bearer token or any field."/>
+                        <Button DockPanel.Dock="Bottom" x:Name="AddCaptureButton" Content="+ Add capture" Width="130"
+                                HorizontalAlignment="Left" Margin="8" Click="AddCaptureButton_Click"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="CaptureItems" Margin="8,8,8,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="1.4*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBox Grid.Column="1" Text="{Binding Variable, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="token" VerticalContentAlignment="Center" ToolTip="Variable name to save into"/>
+                                            <ComboBox Grid.Column="2" Margin="6,0,0,0" Width="86" VerticalContentAlignment="Center"
+                                                      SelectedIndex="{Binding Source, Converter={StaticResource CaptureSourceConverter}}"
+                                                      ToolTip="Where to read the value from">
+                                                <ComboBoxItem Content="Body"/>
+                                                <ComboBoxItem Content="Header"/>
+                                            </ComboBox>
+                                            <TextBox Grid.Column="3" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="access_token" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                                                     ToolTip="Body: dotted JSON path (data.access_token). Header: the header name."/>
+                                            <Button Grid.Column="4" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
+                                                    Content="&#x2715;" Tag="{Binding}" Click="RemoveCaptureButton_Click" ToolTip="Remove"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
                 </TabItem>
             </TabControl>
 
