@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-07-16
+
+### Added
+- **Pop out the whole response panel** — the pop-out button now offers two choices: open just the
+  selected view in a window (as before), or detach the **entire response panel — tabs and all —**
+  into its own window. With the panel detached, the request editor gets the full main window and a
+  slim bar offers “Bring it back”. The detached panel stays fully live (switch tabs, filter the
+  Network trace, copy or save the body from there), and closing its window docks it back.
+
 ## [1.20.0] - 2026-07-16
 
 ### Added
@@ -265,6 +274,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.21.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.21.0
 [1.20.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.20.0
 [1.19.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.19.0
 [1.18.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.18.0

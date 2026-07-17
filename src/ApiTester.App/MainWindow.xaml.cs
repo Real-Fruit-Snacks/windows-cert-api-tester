@@ -395,8 +395,85 @@ public partial class MainWindow : Window
     // ---------- response pop-out windows ----------
 
     private readonly Dictionary<TabItem, PopOutWindow> _popOuts = new();
+    private PopOutWindow? _panelPopOut;
 
     private void PopOutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (PopOutButton.ContextMenu is { } cm)
+        {
+            cm.PlacementTarget = PopOutButton;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void PopOutPanel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_panelPopOut is { } existing) { existing.Activate(); return; }
+        if (ResponseHost.Content is not UIElement panel) return;
+
+        ResponseHost.Content = BuildPanelPlaceholder();
+
+        // Give the request editor the reclaimed space while the panel is away.
+        ResponseSplitter.Visibility = Visibility.Collapsed;
+        ResponseRow.MinHeight = 0;
+        ResponseRow.Height = GridLength.Auto;
+
+        var window = new PopOutWindow("Response", panel) { Owner = this };
+        _panelPopOut = window;
+        window.Closed += (_, _) =>
+        {
+            _panelPopOut = null;
+            if (window.DetachContent() is { } returned) ResponseHost.Content = returned;
+            ResponseSplitter.Visibility = Visibility.Visible;
+            ResponseRow.MinHeight = 190;
+            ResponseRow.Height = new GridLength(1.5, GridUnitType.Star);
+            StatusText.Text = "The response panel is back in the main window.";
+        };
+        window.Show();
+        StatusText.Text = "The response panel is now its own window — close it to bring it back.";
+    }
+
+    private UIElement BuildPanelPlaceholder()
+    {
+        var text = new TextBlock
+        {
+            Text = "The response panel is open in its own window.",
+            Foreground = (System.Windows.Media.Brush)FindResource("Text.Faint"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var restore = new Button
+        {
+            Content = "Bring it back",
+            Height = 24,
+            FontSize = 11,
+            Padding = new Thickness(10, 0, 10, 0),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        restore.Click += (_, _) => _panelPopOut?.Close();
+
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        row.Children.Add(text);
+        row.Children.Add(restore);
+
+        return new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("Bg.Panel"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("Border"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 9, 12, 9),
+            Child = row
+        };
+    }
+
+    private void PopOutView_Click(object sender, RoutedEventArgs e)
     {
         if (ResponseTabs.SelectedItem is not TabItem tab) return;
         if (_popOuts.TryGetValue(tab, out var existing)) { existing.Activate(); return; }

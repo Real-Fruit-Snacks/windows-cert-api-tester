@@ -160,7 +160,7 @@
                 <RowDefinition Height="Auto"/>                <!-- request line -->
                 <RowDefinition Height="*" MinHeight="188"/>   <!-- request config -->
                 <RowDefinition Height="Auto"/>                <!-- splitter -->
-                <RowDefinition Height="1.5*" MinHeight="190"/><!-- response -->
+                <RowDefinition x:Name="ResponseRow" Height="1.5*" MinHeight="190"/><!-- response -->
                 <RowDefinition Height="Auto"/>                <!-- status -->
             </Grid.RowDefinitions>
 
@@ -367,18 +367,26 @@
                 </TabItem>
             </TabControl>
 
-            <GridSplitter Grid.Row="5" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
+            <GridSplitter x:Name="ResponseSplitter" Grid.Row="5" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
                           VerticalAlignment="Center"/>
 
             <!-- response -->
-            <DockPanel Grid.Row="6">
+            <ContentControl x:Name="ResponseHost" Grid.Row="6" Focusable="False">
+            <DockPanel>
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
                     <TextBlock Text="RESPONSE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="PopOutButton" Height="26" Width="32" Padding="0" Margin="0,0,6,0"
                                 FontFamily="Segoe MDL2 Assets" FontSize="12" Content="&#xE8A7;"
                                 Click="PopOutButton_Click"
-                                ToolTip="Open the selected response view in its own window"/>
+                                ToolTip="Open the response in its own window">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Open this view in a window" Click="PopOutView_Click"/>
+                                    <MenuItem Header="Open the whole response panel in a window" Click="PopOutPanel_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
                         <Button x:Name="CopyBodyButton" Content="Copy body" Height="26" FontSize="11" Padding="10,0"
                                 Margin="0,0,6,0" Click="CopyBodyButton_Click"/>
                         <Button x:Name="CopyCurlButton" Content="Copy as cURL" Height="26" FontSize="11" Padding="10,0"
@@ -553,6 +561,7 @@
                     </TabItem>
                 </TabControl>
             </DockPanel>
+            </ContentControl>
 
             <!-- status bar -->
             <Border Grid.Row="7" Margin="0,8,0,0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
