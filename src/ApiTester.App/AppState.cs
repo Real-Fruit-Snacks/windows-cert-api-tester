@@ -188,6 +188,68 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
     /// <summary>Method badge shown before a saved request's name; a folder mark for folders.</summary>
     [JsonIgnore] public string MethodBadge => IsFolder ? "▸" : Request?.Method ?? "";
 
+    /// <summary>Build the UI-free collection DTO from this node (the reverse of
+    /// <see cref="FromParsed"/>), e.g. to export as an OpenAPI document. Auth values ride along
+    /// in memory, but the OpenAPI exporter only writes the security scheme — never the secrets.</summary>
+    public ParsedCollection ToParsed()
+    {
+        var pc = new ParsedCollection { Name = Name };
+        if (!IsFolder)
+        {
+            if (ToParsedRequest() is { } self) pc.Requests.Add(self);
+        }
+        else
+        {
+            foreach (var child in Children)
+            {
+                if (child.IsFolder) pc.Folders.Add(child.ToParsed());
+                else if (child.ToParsedRequest() is { } r) pc.Requests.Add(r);
+            }
+        }
+        pc.BaseUrl = FirstBase(pc);
+        return pc;
+    }
+
+    private ParsedRequest? ToParsedRequest()
+    {
+        if (Request is not { } r) return null;
+
+        // Merge any query still in the path with the enabled rows of the Params grid.
+        var (path, rawQuery) = QueryString.Split((r.Path ?? "").Trim());
+        var pairs = QueryString.Parse(rawQuery);
+        pairs.AddRange(r.EnabledParams());
+
+        var req = new ParsedRequest
+        {
+            Method = r.Method,
+            BaseUrl = string.IsNullOrWhiteSpace(r.BaseUrl) ? null : r.BaseUrl!.Trim(),
+            Url = QueryString.Compose(path, pairs),
+            Name = Name,
+            Description = HasResult ? StatusSummary : null,
+            Body = string.IsNullOrEmpty(r.Body) ? null : r.Body,
+            ContentType = r.ContentType == "(none)" ? null : r.ContentType,
+            InsecureSkipVerify = r.IgnoreServerCert
+        };
+        foreach (var h in r.Headers)
+            if (h.Enabled && !string.IsNullOrWhiteSpace(h.Name))
+                req.Headers.Add(new(h.Name.Trim(), h.Value ?? ""));
+        switch (r.AuthType)
+        {
+            case "Bearer": req.BearerToken = r.AuthSecret ?? ""; break;
+            case "Basic": req.BasicUser = r.AuthUser ?? ""; req.BasicPassword = r.AuthSecret; break;
+        }
+        return req;
+    }
+
+    private static string? FirstBase(ParsedCollection pc)
+    {
+        foreach (var r in pc.Requests)
+            if (!string.IsNullOrWhiteSpace(r.BaseUrl)) return r.BaseUrl;
+        foreach (var f in pc.Folders)
+            if (FirstBase(f) is { } b) return b;
+        return null;
+    }
+
     /// <summary>Build a collections folder (and its requests) from an imported OpenAPI collection.</summary>
     public static CollectionNode FromParsed(ParsedCollection pc)
     {

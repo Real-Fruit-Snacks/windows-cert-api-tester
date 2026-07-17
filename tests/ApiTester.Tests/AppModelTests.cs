@@ -252,6 +252,67 @@ public class CollectionNodeTests
     }
 
     [Fact]
+    public void ToParsed_reverses_the_tree_and_maps_request_facts()
+    {
+        var folder = new CollectionNode
+        {
+            Name = "users",
+            IsFolder = true,
+            Children =
+            {
+                new CollectionNode
+                {
+                    Name = "Create user",
+                    IsFolder = false,
+                    Request = new RequestModel
+                    {
+                        Method = "POST",
+                        BaseUrl = "https://api/v1",
+                        Path = "/users",
+                        Body = "{\"a\":1}",
+                        ContentType = "application/json",
+                        AuthType = "Bearer",
+                        AuthSecret = "tok",
+                        QueryParams = { new ParamRow { Key = "dry", Value = "1" },
+                                        new ParamRow { Key = "off", Value = "x", Enabled = false } },
+                        Headers = { new HeaderRow { Name = "X-T", Value = "9" },
+                                    new HeaderRow { Name = "Skip", Value = "no", Enabled = false } }
+                    }
+                }
+            }
+        };
+
+        var pc = folder.ToParsed();
+
+        Assert.Equal("users", pc.Name);
+        Assert.Equal("https://api/v1", pc.BaseUrl);
+        var r = Assert.Single(pc.Requests);
+        Assert.Equal("POST", r.Method);
+        Assert.Equal("/users?dry=1", r.Url);                 // enabled params only
+        Assert.Equal("Create user", r.Name);
+        Assert.Equal("{\"a\":1}", r.Body);
+        Assert.Equal("tok", r.BearerToken);
+        var header = Assert.Single(r.Headers);               // disabled headers dropped
+        Assert.Equal("X-T", header.Key);
+        Assert.Null(r.Description);                          // never sent -> no verification note
+    }
+
+    [Fact]
+    public void ToParsed_carries_the_known_good_note_as_the_description()
+    {
+        var node = new CollectionNode
+        {
+            Name = "Health",
+            IsFolder = false,
+            Request = new RequestModel { Method = "GET", Path = "https://h/health" }
+        };
+        node.RecordResult(200, new DateTime(2026, 7, 16, 12, 0, 0, DateTimeKind.Utc));
+
+        var r = Assert.Single(node.ToParsed().Requests);
+        Assert.Contains("known good", r.Description);
+    }
+
+    [Fact]
     public void Source_collection_link_survives_a_json_round_trip()
     {
         var m = new RequestModel { Method = "GET", Path = "/health", SourceCollectionId = "abc123" };

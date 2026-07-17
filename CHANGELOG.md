@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-07-16
+
+### Added
+- **Export as OpenAPI** — a new button at the bottom of the collections sidebar writes the
+  selected folder (or all collections when nothing is selected) as an **OpenAPI 3.0 JSON** file.
+  Folders become tags, each saved request becomes an operation with its query parameters, headers,
+  and body example, the most common website becomes the server, and a request's known-good note
+  (when it was last checked and what it returned) becomes the operation description. The exported
+  file re-imports cleanly — into this app or any OpenAPI-aware tool.
+- Authentication is exported **as a security scheme only** — bearer tokens, usernames, and
+  passwords are never written to the file, so exports are safe to share.
+- Importing an OpenAPI file now also picks up each operation's `description`.
+
 ## [1.17.0] - 2026-07-16
 
 ### Added
@@ -233,6 +246,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.18.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.18.0
 [1.17.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.17.0
 [1.16.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.16.0
 [1.15.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.15.0

@@ -8,6 +8,7 @@ public sealed class ParsedRequest
     public string? BaseUrl { get; set; }              // set for OpenAPI ops; null for a full cURL URL
     public string Url { get; set; } = "";             // full URL (cURL) or path (OpenAPI)
     public string? Name { get; set; }                 // display name (OpenAPI summary/operationId)
+    public string? Description { get; set; }          // OpenAPI operation description
     public List<KeyValuePair<string, string>> Headers { get; set; } = new();
     public string? Body { get; set; }
     public string? ContentType { get; set; }

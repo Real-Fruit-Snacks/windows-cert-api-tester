@@ -387,6 +387,64 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ExportCollectionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_collections.Count == 0)
+        {
+            StatusText.Text = "Nothing to export — save a request to collections first.";
+            return;
+        }
+
+        // Export the selected folder as its own document; otherwise everything.
+        ParsedCollection pc;
+        string defaultName;
+        if (CollectionsTree.SelectedItem is CollectionNode { IsFolder: true } folder)
+        {
+            pc = folder.ToParsed();
+            defaultName = folder.Name;
+        }
+        else
+        {
+            var wrapper = new CollectionNode { Name = "API collection", IsFolder = true, Children = _collections };
+            pc = wrapper.ToParsed();
+            defaultName = "collections";
+        }
+
+        int count = CountRequests(pc);
+        if (count == 0)
+        {
+            StatusText.Text = "Nothing to export — the selection contains no saved requests.";
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = SafeFileName(defaultName) + ".openapi.json",
+            DefaultExt = ".json",
+            Filter = "OpenAPI JSON (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            File.WriteAllText(dialog.FileName, OpenApiExporter.ToJson(pc));
+            StatusText.Text = $"Exported {count} request{(count == 1 ? "" : "s")} to {System.IO.Path.GetFileName(dialog.FileName)}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Export failed: " + ex.Message;
+        }
+    }
+
+    private static int CountRequests(ParsedCollection pc) =>
+        pc.Requests.Count + pc.Folders.Sum(CountRequests);
+
+    private static string SafeFileName(string name)
+    {
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
+        return string.IsNullOrWhiteSpace(name) ? "collections" : name.Trim();
+    }
+
     /// <summary>Find a collection node by id anywhere in the tree.</summary>
     private CollectionNode? FindNodeById(string id, ObservableCollection<CollectionNode>? scope = null)
     {

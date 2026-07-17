@@ -113,6 +113,9 @@
                                 <Button x:Name="DeleteNodeButton" Content="Delete" Height="26" FontSize="11" Padding="9,0"
                                         Margin="6,0,0,0" Click="DeleteNodeButton_Click"/>
                             </StackPanel>
+                            <Button x:Name="ExportCollectionsButton" Content="Export as OpenAPI…" Height="26" FontSize="11"
+                                    Margin="0,6,0,0" Click="ExportCollectionsButton_Click"
+                                    ToolTip="Write the selected folder — or everything — as an OpenAPI 3.0 JSON file. Tokens and passwords are never written."/>
                         </StackPanel>
                         <TextBlock x:Name="CollectionsEmptyHint" DockPanel.Dock="Top" Margin="14,14,14,0"
                                    Foreground="{StaticResource Text.Faint}" FontSize="11" TextWrapping="Wrap"

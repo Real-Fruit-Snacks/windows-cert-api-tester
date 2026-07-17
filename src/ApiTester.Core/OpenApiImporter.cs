@@ -48,7 +48,9 @@ public static class OpenApiImporter
                     Method = opProp.Name.ToUpperInvariant(),
                     BaseUrl = collection.BaseUrl,
                     Url = path,
-                    Name = OperationName(op, opProp.Name, path)
+                    Name = OperationName(op, opProp.Name, path),
+                    Description = op.TryGetProperty("description", out var desc) &&
+                                  desc.ValueKind == JsonValueKind.String ? desc.GetString() : null
                 };
                 FolderFor(Tag(op)).Requests.Add(req);
             }
