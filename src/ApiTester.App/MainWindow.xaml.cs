@@ -1610,11 +1610,16 @@ public partial class MainWindow : Window
 
     private void ApplyCaptures(RequestModel model, ApiResponse response)
     {
+        // Capture writes into _state.Environments; keep it in step with the UI-bound _environments
+        // both before (so the active env is found) and after (so an auto-created env shows up).
+        _state.Environments = _environments.ToList();
         var outcome = CaptureApplier.Apply(
             _state, model.Captures, response.Body, response.ContentType, response.Headers);
         if (outcome.Count == 0) return;
 
-        RefreshEnvCombo();   // a newly created "Captured" env, or updated values, show in the selector
+        foreach (var env in _state.Environments)
+            if (_environments.All(e => e.Id != env.Id)) _environments.Add(env);
+        RefreshEnvCombo();
 
         var ok = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
         var bad = outcome.Where(o => !o.Ok).ToList();
