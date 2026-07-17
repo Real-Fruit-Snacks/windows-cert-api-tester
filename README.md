@@ -64,7 +64,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
   <img alt="Rendered website view" src="docs/assets/shot-rendered.png" width="860" />
 </div>
 
-**Organise saved requests into collections, and switch between environments of `{{variables}}`**
+**Organise saved requests into collections — with known-good markers — and switch between environments of `{{variables}}`**
 
 <div align="center">
   <img alt="Collections sidebar" src="docs/assets/shot-collections.png" width="820" />
