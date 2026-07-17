@@ -106,6 +106,24 @@ public class ServeCommandTests
         Assert.Equal(2, code);
     }
 
+    [Fact]
+    public async Task Forwarded_response_carries_a_content_length()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "12345");
+            var (cts, run, port) = StartServe(upstream, client);
+            try
+            {
+                using var http = new HttpClient();
+                var resp = await Poll(async () => await http.GetAsync($"http://127.0.0.1:{port}/x"));
+                Assert.Equal(5, resp.Content.Headers.ContentLength);
+            }
+            finally { cts.Cancel(); await run; }
+        }
+    }
+
     // Retry a call for up to ~5s while the listener finishes binding.
     private static async Task<T> Poll<T>(Func<Task<T>> action)
     {

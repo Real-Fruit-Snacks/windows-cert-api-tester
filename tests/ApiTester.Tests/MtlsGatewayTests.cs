@@ -104,4 +104,21 @@ public class MtlsGatewayTests
         await Assert.ThrowsAnyAsync<Exception>(async () =>
             await gw.ForwardAsync(new GatewayRequest("GET", "/", Array.Empty<KeyValuePair<string, string>>(), null, null), default));
     }
+
+    [Fact]
+    public async Task Response_content_length_is_preserved()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "abcde");
+            using var gw = new MtlsGateway(new Uri(upstream.BaseUrl), client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30));
+
+            var resp = await gw.ForwardAsync(
+                new GatewayRequest("GET", "/", Array.Empty<KeyValuePair<string, string>>(), null, null), default);
+            using (resp.Lifetime)
+                Assert.Contains(resp.Headers, h =>
+                    h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) && h.Value == "5");
+        }
+    }
 }

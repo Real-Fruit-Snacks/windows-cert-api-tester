@@ -93,7 +93,9 @@ public sealed class MtlsGateway : IDisposable
             if (!HopByHop.Is(h.Key))
                 foreach (var v in h.Value) headers.Add(new(h.Key, v));
         foreach (var h in response.Content.Headers)
-            if (!HopByHop.Is(h.Key))
+            // Content-Length is hop-by-hop for the forwarded *request* (HttpClient sets it), but on
+            // the *response* it frames the body the caller receives, so relay it through.
+            if (!HopByHop.Is(h.Key) || h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
                 foreach (var v in h.Value) headers.Add(new(h.Key, v));
 
         var bodyStream = await response.Content.ReadAsStreamAsync(ct);

@@ -72,6 +72,7 @@ public static class ServeCommand
         var ct = services.Cancel;
         using var stopReg = ct.Register(() => { try { listener.Stop(); } catch { } });
 
+        var inFlight = new System.Collections.Concurrent.ConcurrentDictionary<Task, byte>();
         try
         {
             while (!ct.IsCancellationRequested)
@@ -79,10 +80,19 @@ public static class ServeCommand
                 HttpListenerContext context;
                 try { context = listener.GetContextAsync().GetAwaiter().GetResult(); }
                 catch (Exception) when (ct.IsCancellationRequested) { break; }   // Stop() unblocked us
-                _ = HandleAsync(context, gateway, token, Log, ct);
+
+                var task = HandleAsync(context, gateway, token, Log, ct);
+                inFlight[task] = 0;
+                _ = task.ContinueWith(t => inFlight.TryRemove(t, out _), TaskScheduler.Default);
             }
         }
-        finally { try { listener.Close(); } catch { } }
+        finally
+        {
+            // Let requests already accepted finish before we tear down the gateway/listener.
+            try { Task.WhenAny(Task.WhenAll(inFlight.Keys), Task.Delay(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult(); }
+            catch { }
+            try { listener.Close(); } catch { }
+        }
 
         Log("stopped.");
         return ExitCodes.Ok;
@@ -141,7 +151,7 @@ public static class ServeCommand
                 {
                     if (h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
                     { if (long.TryParse(h.Value, out var cl)) contentLength = cl; continue; }
-                    try { res.Headers.Add(h.Key, h.Value); } catch { /* restricted header — skip */ }
+                    try { res.Headers.Add(h.Key, h.Value); } catch (ArgumentException) { /* restricted header HttpListener manages itself — skip */ }
                 }
                 if (contentLength is { } len) res.ContentLength64 = len;
                 else res.SendChunked = true;
