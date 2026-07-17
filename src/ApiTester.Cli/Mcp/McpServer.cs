@@ -27,6 +27,7 @@ public sealed class McpServer
 
     public void Run(TextReader input, TextWriter output, TextWriter log, CancellationToken ct)
     {
+        output.NewLine = "\n";
         string? line;
         while (!ct.IsCancellationRequested && (line = input.ReadLine()) is not null)
         {
@@ -115,7 +116,7 @@ public sealed class McpServer
 
         ToolResult tr;
         if (!_tools.TryGetValue(name, out var tool))
-            tr = new ToolResult($"{{\"error\":\"unknown tool '{name}'\"}}", IsError: true);
+            tr = new ToolResult(JsonSerializer.Serialize(new { error = $"unknown tool '{name}'" }), IsError: true);
         else
         {
             try { tr = tool.Handler(args); }

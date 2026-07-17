@@ -88,7 +88,7 @@ public static class McpCommand
                 ContentType = body is not null ? (contentType ?? "application/json") : null,
                 Timeout = TimeSpan.FromSeconds(timeout)
             };
-            var response = services.Client.SendAsync(request, cert, insecure, cancellationToken: services.Cancel)
+            var response = services.Client.SendAsync(request, cert, insecure, followRedirects: false, cancellationToken: services.Cancel)
                 .GetAwaiter().GetResult();
             return Envelope(response);
         }
@@ -99,7 +99,7 @@ public static class McpCommand
             JsonNode.Parse("""
                 {"type":"object","required":["url"],"properties":{
                   "method":{"type":"string","description":"HTTP method (default GET)"},
-                  "url":{"type":"string","description":"Absolute https:// URL on an allowed host"},
+                  "url":{"type":"string","description":"Absolute http(s):// URL on an allowed host"},
                   "headers":{"type":"object","additionalProperties":{"type":"string"}},
                   "body":{"type":"string"},
                   "contentType":{"type":"string"}}}

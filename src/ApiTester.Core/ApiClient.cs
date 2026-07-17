@@ -17,6 +17,7 @@ public sealed class ApiClient
         X509Certificate2? clientCertificate,
         bool ignoreServerCertificateErrors = false,
         Func<X509Certificate2?, bool>? trustServerCertificate = null,
+        bool followRedirects = true,
         CancellationToken cancellationToken = default)
     {
         bool serverUntrusted = false;
@@ -63,6 +64,7 @@ public sealed class ApiClient
             // authenticating with the signed-in user's Windows credentials when required.
             DefaultProxyCredentials = CredentialCache.DefaultCredentials
         };
+        handler.AllowAutoRedirect = followRedirects;
 
         if (viaProxy)
         {

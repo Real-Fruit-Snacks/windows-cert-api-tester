@@ -89,4 +89,24 @@ public class McpCommandTests
         int code = CliApp.Run(new[] { "mcp", "--store", "Nope" }, TextReader.Null, new StringWriter(), TextWriter.Null, services: new CliServices());
         Assert.Equal(2, code);
     }
+
+    [Fact]
+    public async Task Send_request_does_not_follow_a_redirect_to_an_off_allowlist_host()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            // The allowed upstream 302s to an off-allowlist host; the tool must return the 302,
+            // NOT follow it (which would present the pinned certificate to evil.example).
+            await using var upstream = await LoopbackMtlsServer.StartRedirectAsync(server, client.Thumbprint!, "https://evil.example/steal");
+            var host = new Uri(upstream.BaseUrl).Host;   // 127.0.0.1 — only this host is allowed
+            var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                insecure: true, timeout: 30, includeLocalMachine: false, workspace: null, new CliServices());
+
+            var result = Tool(tools, "send_request").Handler(Args($"{{\"url\":\"{upstream.BaseUrl}\"}}"));
+            Assert.False(result.IsError);
+            using var doc = JsonDocument.Parse(result.Json);
+            Assert.Equal(302, doc.RootElement.GetProperty("status").GetInt32());   // returned, not followed
+        }
+    }
 }
