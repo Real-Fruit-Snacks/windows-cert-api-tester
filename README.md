@@ -103,12 +103,14 @@ certapi send https://internal.corp/api/orders --workspace team.json --env Captur
 certapi run "internal api" --env Prod
 certapi run --all --json
 
-# utilities
+# utilities and import/export
 certapi certs --filter matt
 certapi selftest
+certapi import openapi .\spec.json --into imported
+certapi export workspace -o team-setup.json
 ```
 
-Run `certapi help <command>` for every option. Response bodies go to stdout and diagnostics to stderr, with script-friendly exit codes (0 success · 1 failure · 2 usage · 3 data).
+Saved requests, collections, and environments come from the app's own state automatically, or from any exported workspace file via `--workspace` — so it works on machines that have never opened the app. Run `certapi help <command>` for every option. Response bodies go to stdout and diagnostics to stderr, with script-friendly exit codes (0 success · 1 failure · 2 usage · 3 data).
 
 ### Local gateway (for apps that can't do client certificates)
 Point any app's base URL at a local port and it reaches a certificate-protected site with your certificate attached:
@@ -188,64 +190,6 @@ To sanity-check the certificate path with no real endpoint, click **Run Self-Tes
 - **Server-cert toggle:** `https://self-signed.badssl.com/` fails as *ServerCertificateUntrusted* until you enable *Ignore server certificate errors*.
 - **General (no cert):** `https://httpbin.org/anything`, `https://postman-echo.com/get`, `https://jsonplaceholder.typicode.com/todos/1`.
 - **Formats:** `https://httpbin.org/xml`, `/html`, `/image/png` (binary → hex dump).
-
-## Headless / command line
-
-`certapi.exe` (a separate download on the releases page) drives everything from scripts:
-
-```powershell
-# one-off request, client cert picked from the Windows store by subject
-certapi send https://internal.corp/api --cert "CN=matt" | jq .status
-
-# run a saved folder as a smoke test — exit code 1 if anything fails
-certapi run "internal api" --env Prod
-certapi run --all --json
-
-# utilities
-certapi certs --filter matt
-certapi selftest
-certapi import openapi .\spec.json --into imported
-certapi export workspace -o team-setup.json
-```
-
-Saved requests, collections, and environments come from the GUI's state automatically, or
-from any exported workspace file via `--workspace` — so it works on machines that have
-never opened the app. Run `certapi help <command>` for every option.
-
-### Local gateway
-
-Let an app that can't do client certificates reach a certificate-protected site — it just changes its base URL:
-
-```powershell
-# terminal 1: forward localhost:8819 to the real site, attaching your certificate
-certapi serve https://internal.corp --port 8819 --cert "CN=matt"
-
-# terminal 2 (or your app): call the local port like the real API
-curl http://localhost:8819/api/orders           # → forwarded to https://internal.corp/api/orders with mTLS
-```
-
-The gateway binds to `127.0.0.1` only. Add `--token <value>` to require callers to send
-`Authorization: Bearer <value>`. Stop it with Ctrl+C.
-
-### MCP server (AI agents)
-
-Give an AI agent controlled use of your certificate over the [Model Context Protocol](https://modelcontextprotocol.io). Configure your MCP host to launch:
-
-```json
-{
-  "mcpServers": {
-    "certapi": {
-      "command": "certapi",
-      "args": ["mcp", "--cert", "CN=matt", "--allow", "internal.corp", "--allow", "api.internal"]
-    }
-  }
-}
-```
-
-The agent gets five tools — `send_request`, `list_certificates`, `list_saved`, `run_saved`,
-`self_test` — but only ever uses the certificate you pinned with `--cert`, and every request is
-checked against the `--allow` host list before it leaves the machine. It speaks JSON-RPC over
-stdio; nothing is exposed on the network.
 
 ## Keyboard shortcuts
 
