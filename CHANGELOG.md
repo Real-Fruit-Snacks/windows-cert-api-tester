@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-07-16
+
+### Added
+- **Save / load workspaces** — “Export workspace…” in the Import ▾ menu writes everything to a
+  single JSON file: open tabs, collections (including each saved request's known-good result),
+  environments, saved websites, and history. “Import workspace…” loads a workspace file back and
+  asks whether to **Merge** it into your current workspace or **Replace** it. Use it to move
+  between machines, keep named snapshots of a project, or hand a teammate a ready-to-use setup.
+  Workspace files include request auth values and history, so treat them as private.
+
 ## [1.18.0] - 2026-07-16
 
 ### Added
@@ -246,6 +256,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.19.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.19.0
 [1.18.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.18.0
 [1.17.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.17.0
 [1.16.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.16.0

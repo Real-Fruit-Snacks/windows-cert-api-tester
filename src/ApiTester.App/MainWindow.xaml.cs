@@ -87,7 +87,20 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         if (ActiveRequest is { } active) CaptureControlsInto(active);
+        CaptureStateForSave();
+        _state.Save();
 
+        _browserSession?.Dispose();
+        _browserCts?.Cancel();
+        _browserCts?.Dispose();
+
+        base.OnClosing(e);
+    }
+
+    /// <summary>Bring <see cref="_state"/> up to date with the UI (window, tabs, collections,
+    /// environments) so it can be persisted or exported.</summary>
+    private void CaptureStateForSave()
+    {
         if (WindowState == WindowState.Normal)
         {
             _state.WindowLeft = Left; _state.WindowTop = Top;
@@ -105,14 +118,6 @@ public partial class MainWindow : Window
         _state.IgnoreServerCertErrors = ActiveRequest?.IgnoreServerCert ?? false;
         _state.TimeoutSeconds = ActiveRequest?.TimeoutSeconds ?? 100;
         _state.LastBaseUrl = string.IsNullOrWhiteSpace(ActiveRequest?.BaseUrl) ? null : ActiveRequest!.BaseUrl!.Trim();
-
-        _state.Save();
-
-        _browserSession?.Dispose();
-        _browserCts?.Cancel();
-        _browserCts?.Dispose();
-
-        base.OnClosing(e);
     }
 
     private static bool IsOnScreen(double l, double t) =>
@@ -385,6 +390,105 @@ public partial class MainWindow : Window
             TabStrip.SelectedItem = tab;
             StatusText.Text = $"Opened “{node.Name}” in a new tab.";
         }
+    }
+
+    // ---------- workspace save/load ----------
+
+    private void ExportWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        if (ActiveRequest is { } active) CaptureControlsInto(active);
+        CaptureStateForSave();
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = "cert-api-tester-workspace.json",
+            DefaultExt = ".json",
+            Filter = "Workspace JSON (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            // Clone so the exported file carries no window geometry.
+            var clone = System.Text.Json.JsonSerializer.Deserialize<AppState>(
+                System.Text.Json.JsonSerializer.Serialize(_state))!;
+            clone.WindowWidth = clone.WindowHeight = clone.WindowLeft = clone.WindowTop = null;
+            clone.WindowMaximized = false;
+            File.WriteAllText(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(
+                clone, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            StatusText.Text = $"Workspace exported to {System.IO.Path.GetFileName(dialog.FileName)} — it includes auth values and history, so treat it as private.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Export failed: " + ex.Message;
+        }
+    }
+
+    private void ImportWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Workspace JSON (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        AppState? ws;
+        try { ws = System.Text.Json.JsonSerializer.Deserialize<AppState>(File.ReadAllText(dialog.FileName)); }
+        catch (Exception ex) { StatusText.Text = "Could not read the workspace file: " + ex.Message; return; }
+        if (ws is null ||
+            (ws.Tabs.Count == 0 && ws.Collections.Count == 0 && ws.Environments.Count == 0 && ws.History.Count == 0))
+        {
+            StatusText.Text = "That file doesn't contain a workspace.";
+            return;
+        }
+
+        int saved = ws.Collections.Sum(CountNodes);
+        var choice = ChoiceDialog.Show(this, "Import workspace",
+            $"“{System.IO.Path.GetFileName(dialog.FileName)}” contains {ws.Tabs.Count} open tab(s), {saved} saved request(s), " +
+            $"{ws.Environments.Count} environment(s), and {ws.History.Count} history " +
+            $"{(ws.History.Count == 1 ? "entry" : "entries")}.\n\n" +
+            "Merge adds them to what you have. Replace discards your current tabs, collections, environments, and history first.",
+            "Merge", "Replace");
+        if (choice == DialogChoice.Cancel) return;
+
+        ApplyWorkspace(ws, merge: choice == DialogChoice.Primary);
+    }
+
+    private static int CountNodes(CollectionNode n) => n.IsFolder ? n.Children.Sum(CountNodes) : 1;
+
+    private void ApplyWorkspace(AppState ws, bool merge)
+    {
+        if (!merge)
+        {
+            _loadedTab = null;
+            _tabs.Clear();
+            _collections.Clear();
+            _environments.Clear();
+            _state.History.Clear();
+            _state.SavedBaseUrls.Clear();
+            _state.ActiveEnvironmentId = ws.ActiveEnvironmentId;
+        }
+
+        foreach (var m in ws.Tabs) _tabs.Add(new RequestTab(m));
+        if (_tabs.Count == 0) AddNewTab();
+        else if (!merge) TabStrip.SelectedIndex = Math.Clamp(ws.ActiveTabIndex, 0, _tabs.Count - 1);
+
+        foreach (var c in ws.Collections) _collections.Add(c);
+        foreach (var env in ws.Environments)
+            if (!merge || _environments.All(x => x.Id != env.Id)) _environments.Add(env);
+
+        foreach (var h in ws.History) _state.History.Add(h);
+        _state.History.Sort((a, b) => b.Timestamp.CompareTo(a.Timestamp));
+        if (_state.History.Count > 30) _state.History.RemoveRange(30, _state.History.Count - 30);
+
+        foreach (var b in ws.SavedBaseUrls)
+            if (!_state.SavedBaseUrls.Contains(b, StringComparer.OrdinalIgnoreCase)) _state.SavedBaseUrls.Add(b);
+
+        RefreshHistoryList();
+        RefreshSavedBases();
+        RefreshEnvCombo();
+        UpdateCollectionsHint();
+        StatusText.Text = merge ? "Workspace merged into your current one." : "Workspace loaded.";
     }
 
     private void ExportCollectionsButton_Click(object sender, RoutedEventArgs e)

@@ -225,6 +225,9 @@ public partial class HelpWindow : Window
         P("Paste a curl command and it opens a ready-to-send tab with the method, URL, query parameters, headers, body, and auth filled in. It understands -X, -H, -d / --data, -u (Basic auth), -k (insecure), an Authorization: Bearer header (mapped to the Bearer helper), quoting, and line continuations."),
         Sub("IMPORT OPENAPI / SWAGGER"),
         P("Choose a JSON OpenAPI 3.x or Swagger 2.0 file and it builds a collection of requests, grouped into folders by tag, with the server (OpenAPI) or host/basePath (Swagger) used as each request's website."),
+        Sub("SAVE / LOAD A WORKSPACE"),
+        P("“Export workspace…” in the Import ▾ menu saves everything — open tabs, collections (with their known-good results), environments, saved websites, and history — to a single JSON file. “Import workspace…” loads one back, either merging into what you have or replacing it. Use it to move between machines, keep named snapshots of a project, or hand a teammate a ready-to-use setup."),
+        NoteBox("A workspace file includes request auth values and response history — treat it as a private file."),
         Sub("EXPORT AS OPENAPI"),
         P("“Export as OpenAPI…” at the bottom of the collections sidebar writes the selected folder — or all collections when nothing is selected — as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its query parameters, headers, and body example, and a request's known-good note (when it was last checked and what it returned) becomes the operation description."),
         NoteBox("Exports are safe to share: authentication is written only as a security scheme — bearer tokens, usernames, and passwords are never written to the file."));

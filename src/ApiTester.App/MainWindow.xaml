@@ -175,11 +175,13 @@
                 </Button>
                 <Button x:Name="ImportButton" DockPanel.Dock="Right" Content="Import &#x25BE;" Width="92"
                         VerticalAlignment="Bottom" Margin="4,0,0,0" Click="ImportButton_Click"
-                        ToolTip="Import a request from a cURL command or an OpenAPI file">
+                        ToolTip="Import a request from a cURL command or an OpenAPI file, or save/load the whole workspace">
                     <Button.ContextMenu>
                         <ContextMenu>
                             <MenuItem Header="Paste cURL command…" Click="ImportCurl_Click"/>
                             <MenuItem Header="Import OpenAPI file…" Click="ImportOpenApi_Click"/>
+                            <MenuItem Header="Import workspace…" Click="ImportWorkspace_Click"/>
+                            <MenuItem Header="Export workspace…" Click="ExportWorkspace_Click"/>
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
