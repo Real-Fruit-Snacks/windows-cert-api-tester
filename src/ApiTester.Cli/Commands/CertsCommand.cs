@@ -30,6 +30,8 @@ public static class CertsCommand
                         c.Thumbprint.Contains(filter, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
+        if (certs.Count == 0) stderr.WriteLine("No client certificates found.");
+
         if (json)
         {
             stdout.WriteLine(JsonSerializer.Serialize(certs.Select(c => new
@@ -44,11 +46,6 @@ public static class CertsCommand
             return ExitCodes.Ok;
         }
 
-        if (certs.Count == 0)
-        {
-            stderr.WriteLine("No client certificates found.");
-            return ExitCodes.Ok;
-        }
         foreach (var c in certs)
         {
             string flags = (c.IsExpired() ? "  [EXPIRED]" : "") + (c.HasClientAuthEku ? "" : "  (no client-auth EKU)");
