@@ -135,7 +135,7 @@ public static class SendCommand
         // ---- output ----
         if (json)
         {
-            if (outFile is not null) File.WriteAllBytes(outFile, response.Body);
+            if (outFile is not null && response.Error is null) File.WriteAllBytes(outFile, response.Body);
             stdout.WriteLine(BuildEnvelope(response, includeBody: outFile is null));
         }
         else if (response.Error is null)
@@ -156,7 +156,7 @@ public static class SendCommand
         return ExitCodes.Ok;
     }
 
-    private static string BuildEnvelope(ApiResponse r, bool includeBody)
+    internal static string BuildEnvelope(ApiResponse r, bool includeBody)
     {
         bool binary = false;
         string? text = null;
@@ -172,7 +172,11 @@ public static class SendCommand
             ["elapsedMs"] = Math.Round(r.Elapsed.TotalMilliseconds),
             ["contentType"] = r.ContentType,
             ["sizeBytes"] = r.Body.LongLength,
-            ["headers"] = r.Headers.ToDictionary(h => h.Key, h => h.Value),
+            ["headers"] = r.Headers
+                .GroupBy(h => h.Key)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Count() == 1 ? (object)g.First().Value : g.Select(h => h.Value).ToArray()),
             ["tlsProtocol"] = r.Connection?.TlsProtocol,
             ["clientCertPresented"] = r.Connection?.ClientCertificateSent ?? false,
             ["error"] = r.Error is null ? null : new { kind = r.Error.Kind.ToString(), message = r.Error.Message }

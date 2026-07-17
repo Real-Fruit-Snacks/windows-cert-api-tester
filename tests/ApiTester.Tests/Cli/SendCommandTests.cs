@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using ApiTester.Cli;
+using ApiTester.Cli.Commands;
 using ApiTester.Core;
 
 namespace ApiTester.Tests.Cli;
@@ -81,5 +82,45 @@ public class SendCommandTests
             so, se, new MemoryStream(), new CliServices());
         Assert.Equal(1, code);
         Assert.Contains("error", se.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Envelope_groups_duplicate_response_headers()
+    {
+        var response = new ApiResponse
+        {
+            StatusCode = 200,
+            ReasonPhrase = "OK",
+            Headers = new[]
+            {
+                new KeyValuePair<string, string>("Set-Cookie", "a=1"),
+                new KeyValuePair<string, string>("Set-Cookie", "b=2"),
+                new KeyValuePair<string, string>("Content-Type", "text/plain")
+            },
+            Body = Encoding.UTF8.GetBytes("hi")
+        };
+
+        var json = SendCommand.BuildEnvelope(response, includeBody: true);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var headers = doc.RootElement.GetProperty("headers");
+        Assert.Equal(2, headers.GetProperty("Set-Cookie").GetArrayLength());
+        Assert.Equal("text/plain", headers.GetProperty("Content-Type").GetString());
+        Assert.Equal("hi", doc.RootElement.GetProperty("body").GetString());
+    }
+
+    [Fact]
+    public void Json_with_output_file_does_not_write_on_transport_error()
+    {
+        var outFile = Path.Combine(Path.GetTempPath(), $"certapi-err-{Guid.NewGuid():N}.bin");
+        try
+        {
+            int code = CliApp.Run(
+                new[] { "send", "https://127.0.0.1:1/", "--timeout", "2", "--json", "-o", outFile },
+                new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices());
+            Assert.Equal(1, code);
+            Assert.False(File.Exists(outFile));
+        }
+        finally { if (File.Exists(outFile)) File.Delete(outFile); }
     }
 }
