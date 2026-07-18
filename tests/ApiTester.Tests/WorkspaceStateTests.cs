@@ -94,6 +94,7 @@ public class WorkspaceStateTests
             {
                 Theme = "Light",
                 AutoTokens = false,
+                AutoCookies = false,
                 IgnoreServerCertErrors = true,
                 TimeoutSeconds = 45,
                 SessionTokens =
@@ -105,6 +106,20 @@ public class WorkspaceStateTests
                         Source = "oauth",
                         CapturedUtc = new DateTime(2026, 7, 18, 12, 0, 0, DateTimeKind.Utc),
                         ExpiresUtc = new DateTime(2026, 7, 18, 13, 0, 0, DateTimeKind.Utc)
+                    }
+                },
+                SessionCookies =
+                {
+                    new SessionCookie
+                    {
+                        Origin = "https://intranet.corp:443",
+                        Name = "SESSIONID",
+                        Value = "abc123",
+                        Path = "/",
+                        Domain = "intranet.corp",
+                        Secure = true,
+                        HttpOnly = true,
+                        ExpiresUtc = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                     }
                 },
                 Tabs =
@@ -134,6 +149,14 @@ public class WorkspaceStateTests
             Assert.Equal("tok-123", token.Token);
             Assert.Equal("oauth", token.Source);
             Assert.Equal(new DateTime(2026, 7, 18, 13, 0, 0, DateTimeKind.Utc), token.ExpiresUtc!.Value.ToUniversalTime());
+
+            Assert.False(back.AutoCookies);
+            var cookie = Assert.Single(back.SessionCookies);
+            Assert.Equal("https://intranet.corp:443", cookie.Origin);
+            Assert.Equal("SESSIONID", cookie.Name);
+            Assert.Equal("abc123", cookie.Value);
+            Assert.True(cookie.Secure);
+            Assert.True(cookie.HttpOnly);
 
             var tab = Assert.Single(back.Tabs);
             Assert.True(tab.IsMultipart);

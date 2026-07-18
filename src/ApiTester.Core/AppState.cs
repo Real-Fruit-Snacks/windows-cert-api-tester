@@ -32,10 +32,15 @@ public sealed class AppState
     public string? ActiveEnvironmentId { get; set; }
 
     public List<SessionToken> SessionTokens { get; set; } = new();
+    public List<SessionCookie> SessionCookies { get; set; } = new();
 
     /// <summary>Master switch for automatic token capture/attach. Detection results are still
     /// stored while off, so turning it back on works immediately.</summary>
     public bool AutoTokens { get; set; } = true;
+
+    /// <summary>Master switch for attaching browser-captured session cookies. Captured cookies
+    /// are still stored while off, so turning it back on works immediately.</summary>
+    public bool AutoCookies { get; set; } = true;
 
     /// <summary>UI theme: "Dark" (default) or "Light". Read at startup to pick the palette
     /// overlay and updated live when the user toggles it from the title bar.</summary>
