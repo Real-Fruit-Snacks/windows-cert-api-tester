@@ -1840,6 +1840,34 @@ public partial class MainWindow : Window
 
     private void SaveResponseButton_Click(object sender, RoutedEventArgs e) => SaveResponse();
 
+    private void ResponseFindBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { e.Handled = true; FindInResponse(); }
+    }
+
+    private void FindNext_Click(object sender, RoutedEventArgs e) => FindInResponse();
+
+    /// <summary>Find the next occurrence of the search term in the response body (the Raw view holds
+    /// the full text), select it, and scroll it into view — wrapping around at the end.</summary>
+    private void FindInResponse()
+    {
+        var term = ResponseFindBox.Text;
+        if (string.IsNullOrEmpty(term)) return;
+        var text = RawBox.Text;
+        if (string.IsNullOrEmpty(text)) { StatusText.Text = "No response to search yet."; return; }
+
+        int from = RawBox.SelectionStart + Math.Max(RawBox.SelectionLength, 0);
+        int idx = text.IndexOf(term, Math.Min(from, text.Length), StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) idx = text.IndexOf(term, 0, StringComparison.OrdinalIgnoreCase);   // wrap to the top
+        if (idx < 0) { StatusText.Text = $"“{term}” not found in the response."; return; }
+
+        ResponseTabs.SelectedIndex = 1;   // the Raw view, where the selection is visible
+        RawBox.Focus();
+        RawBox.Select(idx, term.Length);
+        RawBox.ScrollToLine(RawBox.GetLineIndexFromCharacterIndex(idx));
+        StatusText.Text = $"Found “{term}”.";
+    }
+
     private void SaveResponse()
     {
         if (_lastResponse is null || _lastResponse.Body.Length == 0)

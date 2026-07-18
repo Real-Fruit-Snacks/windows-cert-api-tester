@@ -70,6 +70,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Saved websites** — save a base URL (e.g. `https://internal.corp`) and the URL box becomes just the path after it, so you can fire off `/api/thing`, `/api/other` without retyping the host.
 - **Request history** — a sidebar of recent requests, labelled by path (with the host beneath). Click one to reload the *entire* request — website, certificate, headers, auth, timeout, and body — **and** the response it returned. The app also remembers your window, last certificate, and settings between runs.
 - **Copy as code** — turn the current request into a snippet with **Copy as ▾**: cURL, PowerShell (`Invoke-RestMethod`), Python (`requests`), or C# (`HttpClient`) — variables resolved, headers and body included — to drop into a script or hand to a teammate.
+- **Find in response** — a search box over the response body finds and selects the next match (Enter for next, wrapping around) — handy for locating a value in a large JSON payload.
 - **Copy & export** — copy the response body, copy the request as code, and save any response (including binary) with a sensible file extension.
 - **Clear failure messages** — distinguishes "server refused the certificate," "the server's own certificate isn't trusted," a network/DNS error, and a timeout.
 - **Reach internal sites behind a private CA** — an explicit, off-by-default *Ignore server certificate errors* toggle (clearly labelled insecure).

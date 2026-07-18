@@ -547,6 +547,11 @@
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
                     <TextBlock Text="RESPONSE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBox x:Name="ResponseFindBox" Width="160" Height="26" Padding="7,0" Margin="0,0,6,0"
+                                 VerticalContentAlignment="Center" Tag="find in response…" KeyDown="ResponseFindBox_KeyDown"
+                                 ToolTip="Find text in the response (Enter for next)"/>
+                        <Button x:Name="FindNextButton" Content="Find next" Height="26" FontSize="11" Padding="10,0"
+                                Margin="0,0,6,0" Click="FindNext_Click"/>
                         <Button x:Name="PopOutButton" Height="26" Width="32" Padding="0" Margin="0,0,6,0"
                                 FontFamily="Segoe MDL2 Assets" FontSize="12" Content="&#xE8A7;"
                                 Click="PopOutButton_Click"

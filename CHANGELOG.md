@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-07-18
+
+### Added
+- **Find in response** — a search box above the response finds and selects the next match in the
+  body (Enter for next, wrapping around), so you can locate a value in a large payload quickly.
+
 ## [1.35.0] - 2026-07-18
 
 ### Added
