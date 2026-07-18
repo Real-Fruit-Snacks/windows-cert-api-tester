@@ -148,6 +148,40 @@ public class FuzzCommandTests
     }
 
     [Fact]
+    public void Missing_workspace_file_is_a_data_error()
+    {
+        var so = new StringWriter();
+        var se = new StringWriter();
+        var wlPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".txt");
+        File.WriteAllText(wlPath, "/health");
+        try
+        {
+            int code = CliApp.Run(
+                new[] { "fuzz", "https://x.example", "-w", wlPath, "--workspace", "C:\\no\\such.json" },
+                new StringReader(""), so, se, new MemoryStream(), new CliServices { LiveStatePath = TempState() });
+            Assert.Equal(3, code);
+        }
+        finally { File.Delete(wlPath); }
+    }
+
+    [Fact]
+    public async Task Save_collection_creates_a_missing_workspace_file()
+    {
+        var ws = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".json");
+        if (File.Exists(ws)) File.Delete(ws);
+        try
+        {
+            var r = await RunAsync(new[] { "fuzz", "{URL}", "-w", "{WL}", "--cert", "CliClient", "--insecure",
+                "--workspace", ws, "--save-collection", "Discovered" }, "/\n/health", TempState());
+            Assert.Equal(0, r.Code);
+            Assert.True(File.Exists(ws));
+            var saved = AppState.LoadFrom(ws);
+            Assert.NotNull(saved.Collections.FirstOrDefault(c => c.Name == "Discovered"));
+        }
+        finally { if (File.Exists(ws)) File.Delete(ws); }
+    }
+
+    [Fact]
     public void Help_has_examples()
     {
         Assert.Contains("Examples:", FuzzCommand.Help);

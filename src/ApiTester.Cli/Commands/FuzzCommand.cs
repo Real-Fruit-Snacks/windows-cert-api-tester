@@ -94,6 +94,11 @@ public static class FuzzCommand
         string baseUrl = positionals[0];
         if (wordlist is null) throw new CliUsageException("fuzz needs -w <wordlist> (a file, or '-' for stdin).\n" + Help);
 
+        // An explicit --workspace file that doesn't exist is an error — unless --save-collection is
+        // creating it (a discovery write starts from an empty workspace).
+        if (workspace is not null && saveCollection is null && !File.Exists(workspace))
+            throw new CliDataException($"Workspace file not found: {workspace}");
+
         int timeout = ParsePositive(timeoutRaw, 100, "--timeout");
         int concurrency = ParsePositive(concurrencyRaw, 8, "--concurrency");
         int delay = ParseNonNegative(delayRaw, 0, "--delay");
@@ -157,10 +162,16 @@ public static class FuzzCommand
         }
 
         int lastReported = 0;
+        var progressLock = new object();
         var progress = quiet ? null : new Progress<FuzzProgress>(p =>
         {
-            if (p.Completed - lastReported >= 10 || p.Completed == p.Total)
-            { lastReported = p.Completed; stderr.Write($"\r  probing {p.Completed}/{p.Total}…"); stderr.Flush(); }
+            // Workers report from concurrent threads with no SynchronizationContext on a console,
+            // so serialize the counter update and the \r write to stop them interleaving.
+            lock (progressLock)
+            {
+                if (p.Completed - lastReported >= 10 || p.Completed == p.Total)
+                { lastReported = p.Completed; stderr.Write($"\r  probing {p.Completed}/{p.Total}…"); stderr.Flush(); }
+            }
         });
 
         services.Log.Debug($"fuzz {baseUrl} · {entries.Count} entries × {methods.Length} method(s) · concurrency {concurrency}");
