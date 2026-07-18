@@ -512,8 +512,18 @@
                         </Button>
                         <Button x:Name="CopyBodyButton" Content="Copy body" Height="26" FontSize="11" Padding="10,0"
                                 Margin="0,0,6,0" Click="CopyBodyButton_Click"/>
-                        <Button x:Name="CopyCurlButton" Content="Copy as cURL" Height="26" FontSize="11" Padding="10,0"
-                                Margin="0,0,6,0" Click="CopyCurlButton_Click"/>
+                        <Button x:Name="CopyCurlButton" Content="Copy as &#x25BE;" Height="26" FontSize="11" Padding="10,0"
+                                Margin="0,0,6,0" Click="CopyCodeButton_Click"
+                                ToolTip="Copy this request as a code snippet">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="cURL" Tag="curl" Click="CopyAs_Click"/>
+                                    <MenuItem Header="PowerShell" Tag="powershell" Click="CopyAs_Click"/>
+                                    <MenuItem Header="Python (requests)" Tag="python" Click="CopyAs_Click"/>
+                                    <MenuItem Header="C# (HttpClient)" Tag="csharp" Click="CopyAs_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
                         <Button x:Name="SaveResponseButton" Content="Save…" Height="26" FontSize="11" Padding="10,0"
                                 Click="SaveResponseButton_Click"/>
                     </StackPanel>

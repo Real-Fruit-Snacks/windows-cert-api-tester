@@ -1766,35 +1766,37 @@ public partial class MainWindow : Window
         TrySetClipboard(_lastRawText, "Copied response body.");
     }
 
-    private void CopyCurlButton_Click(object sender, RoutedEventArgs e)
+    private void CopyCodeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ActiveRequest is not { } model) return;
+        if (sender is Button { ContextMenu: { } cm } b)
+        {
+            cm.PlacementTarget = b;
+            cm.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void CopyAs_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string lang } item) return;
+        if (CurrentCodeRequest() is not { } req) { StatusText.Text = "Enter a URL first."; return; }
+        TrySetClipboard(CodeGenerator.Generate(lang, req), $"Copied as {item.Header}.");
+    }
+
+    /// <summary>The active request (with variables resolved) as a language-agnostic code spec.</summary>
+    private CodeRequest? CurrentCodeRequest()
+    {
+        if (ActiveRequest is not { } model) return null;
         CaptureControlsInto(model);
-        if (string.IsNullOrWhiteSpace(model.EffectiveUrl())) { StatusText.Text = "Enter a URL first."; return; }
-        TrySetClipboard(BuildCurl(), "Copied cURL command.");
+        var (url, headers, body, _) = ResolveActive();
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        return new CodeRequest(model.Method, url, headers, body, model.IgnoreServerCert, model.CertThumbprint);
     }
 
     private void TrySetClipboard(string text, string ok)
     {
         try { Clipboard.SetText(text); StatusText.Text = ok; }
         catch (Exception ex) { StatusText.Text = "Copy failed: " + ex.Message; }
-    }
-
-    private string BuildCurl()
-    {
-        var m = ActiveRequest!;
-        var (url, headers, body, _) = ResolveActive();
-        var sb = new StringBuilder();
-        sb.Append("curl -X ").Append(m.Method).Append(" \"").Append(url).Append('"');
-        foreach (var h in headers)
-            sb.Append(" \\\n  -H \"").Append(h.Key).Append(": ").Append(h.Value.Replace("\"", "\\\"")).Append('"');
-        if (m.CertThumbprint is not null)
-            sb.Append(" \\\n  --cert \"").Append(m.CertThumbprint).Append("\"   # client cert from the Windows store (curl built with Schannel)");
-        if (m.IgnoreServerCert)
-            sb.Append(" \\\n  -k");
-        if (!string.IsNullOrEmpty(body))
-            sb.Append(" \\\n  --data \"").Append(body.Replace("\"", "\\\"")).Append('"');
-        return sb.ToString();
     }
 
     private void SaveResponseButton_Click(object sender, RoutedEventArgs e) => SaveResponse();
