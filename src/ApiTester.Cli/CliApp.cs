@@ -43,6 +43,7 @@ public static class CliApp
           ws <url>          Open a WebSocket, send messages, print what arrives
           certs             List client certificates
           selftest          Prove the mTLS path end-to-end against a loopback server
+          mock              Run a local test server to fire requests at (http/tls/mtls)
           import            Import a cURL command or an OpenAPI file into collections
           export            Export collections as OpenAPI, or the whole workspace
           serve <upstream>  Run a local mTLS gateway that forwards to <upstream>
@@ -135,6 +136,7 @@ public static class CliApp
                 "token" => Commands.TokenCommand.Run(new Args(rest), stdout, err, services),
                 "fuzz" => Commands.FuzzCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
                 "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, err),
+                "mock" => Commands.MockCommand.Run(new Args(rest), stdout, err, services),
                 "import" => Commands.ImportCommand.Run(new Args(rest), stdout, err, services),
                 "export" => Commands.ExportCommand.Run(new Args(rest), stdout, err, services),
                 "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, err, services),
@@ -167,6 +169,7 @@ public static class CliApp
             "sse" => Commands.SseCommand.Help,
             "ws" => Commands.WsCommand.Help,
             "selftest" => Commands.SelfTestCommand.Help,
+            "mock" => Commands.MockCommand.Help,
             "import" => Commands.ImportCommand.Help,
             "export" => Commands.ExportCommand.Help,
             "serve" => Commands.ServeCommand.Help,

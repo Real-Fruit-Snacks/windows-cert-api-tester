@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-07-18
+
+### Added
+- **`certapi mock` — a standing local test server** to fire requests at (the persistent counterpart
+  to `selftest`). It echoes each request back as JSON (method, path, query, headers, body, and, under
+  mTLS, the client certificate you presented) and serves fixed routes: `/status/<code>`, `/sse`
+  (a `text/event-stream`), `/token` (an OAuth 2.0 token), and a WebSocket echo on any path. Runs over
+  plain HTTP (`--http`, default), HTTPS (`--tls`), or mutual TLS (`--mtls`, which requires and accepts
+  any client certificate); `--tls`/`--mtls` write the generated server cert and a ready-to-use client
+  `.pfx` to `--cert-dir`. So the app can be pointed at itself — `certapi send`, `sse`, `ws`, and
+  `token` all work against it end to end.
+
 ## [1.42.0] - 2026-07-18
 
 ### Fixed
