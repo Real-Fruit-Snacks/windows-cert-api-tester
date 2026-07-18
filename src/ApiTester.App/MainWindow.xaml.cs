@@ -172,7 +172,7 @@ public partial class MainWindow : Window
         base.OnStateChanged(e);
         if (MaxButton is null) return;
         bool maximized = WindowState == WindowState.Maximized;
-        MaxButton.Content = maximized ? "" : ""; // restore / maximize glyph (Segoe MDL2 Assets)
+        MaxButton.Content = ((char)(maximized ? 0xE923 : 0xE922)).ToString(); // restore / maximize glyph (Segoe MDL2 Assets)
         MaxButton.ToolTip = maximized ? "Restore" : "Maximize";
         RootContainer.Margin = maximized ? new Thickness(7) : new Thickness(0);
     }

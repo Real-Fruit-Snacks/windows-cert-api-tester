@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.2] - 2026-07-18
+
+### Fixed
+- **Maximize button glyph** — the title-bar maximize/restore button went blank after the window was
+  first maximized or restored (its glyph was cleared on the window-state change). It now shows the
+  correct maximize and restore icons.
+
 ## [1.47.1] - 2026-07-18
 
 ### Fixed
