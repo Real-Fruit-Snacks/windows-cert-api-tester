@@ -148,6 +148,7 @@
       <div class="card"><h3>Environments &amp; variables</h3><p>Define <code>{{variable}}</code> values per environment and switch from the ENV selector. Substituted in URL, query, headers, body, and auth when you send; unresolved tokens are flagged.</p></div>
       <div class="card"><h3>Capture &amp; reuse auth tokens</h3><p>Grab a value from a response &mdash; a JSON field like <code>access_token</code> or a header &mdash; into a <code>{{variable}}</code>. Call your auth endpoint once, then send <code>Authorization: Bearer {{token}}</code> on every later request. In the app (a Capture tab) and headless (<code>certapi send --capture</code>) &mdash; or skip the setup entirely with automatic detection.</p></div>
       <div class="card"><h3>Automatic tokens</h3><p>Log in once &mdash; the token in the response is detected, scoped to that host, and attached to follow-on requests automatically. GUI, CLI, and MCP server alike.</p></div>
+      <div class="card"><h3>Endpoint discovery</h3><p>Probe a wordlist against a website to map an undocumented API &mdash; in the app's Discover window or headless with <code>certapi fuzz</code>. Hits open as tabs or save as a collection.</p></div>
       <div class="card"><h3>Import from cURL</h3><p>Paste a <code>curl</code> command and it opens a ready-to-send tab — method, URL, query, headers, body, and auth all filled in. Understands the common flags, quoting, and line continuations.</p></div>
       <div class="card"><h3>Import OpenAPI</h3><p>Point it at a JSON OpenAPI 3.x or Swagger 2.0 file to generate a collection of requests, foldered by tag, with the server as each request's website.</p></div>
       <div class="card"><h3>Export as OpenAPI</h3><p>Write a folder &mdash; or all collections &mdash; as an OpenAPI 3.0 JSON file: folders become tags, requests become operations with parameters and body examples, and known-good notes become descriptions. Auth is exported as a scheme only &mdash; never the secrets.</p></div>
@@ -229,7 +230,10 @@ dotnet publish src/ApiTester.Cli -c Release \
 
 # see exactly what a command did, on screen or in a file:
 certapi send https://api.example.com/x --debug
-certapi run --all --log-file certapi.log</code></pre>
+certapi run --all --log-file certapi.log
+
+# no docs? probe a wordlist to map an undocumented API:
+certapi fuzz https://api.example.com -w wordlists/common-api-endpoints.txt</code></pre>
       </div>
     </div>
   </div>

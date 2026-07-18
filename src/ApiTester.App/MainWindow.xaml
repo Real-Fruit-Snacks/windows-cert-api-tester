@@ -192,6 +192,9 @@
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
+                <Button x:Name="DiscoverButton" DockPanel.Dock="Right" Content="Discover…" Width="92"
+                        VerticalAlignment="Bottom" Margin="4,0,0,0" Click="DiscoverButton_Click"
+                        ToolTip="Probe a wordlist of endpoints against this website to see which ones exist"/>
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <ListBox x:Name="TabStrip" Style="{StaticResource TabStripList}" VerticalAlignment="Bottom"
                              SelectionChanged="TabStrip_SelectionChanged"
