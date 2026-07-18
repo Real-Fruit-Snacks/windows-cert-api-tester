@@ -68,6 +68,48 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         return Task.FromResult(server);
     }
 
+    /// <summary>A server that sets a cookie (Set-Cookie: srv=ok) and echoes any Cookie header it
+    /// received in the response body — lets a test prove a cookie jar carries cookies across calls.</summary>
+    public static Task<LoopbackMtlsServer> StartCookieEchoAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleCookieEchoAsync(client, serverCertificate, expectedClientThumbprint, ct));
+        return Task.FromResult(server);
+    }
+
+    private static async Task HandleCookieEchoAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
+        var buffer = new byte[4096];
+        var request = new StringBuilder();
+        while (!request.ToString().Contains("\r\n\r\n"))
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.ASCII.GetString(buffer, 0, n));
+        }
+        string received = "none";
+        foreach (var line in request.ToString().Split("\r\n"))
+            if (line.StartsWith("Cookie:", StringComparison.OrdinalIgnoreCase))
+                received = line["Cookie:".Length..].Trim();
+
+        var bodyBytes = Encoding.UTF8.GetBytes(received);
+        var head =
+            "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: text/plain\r\n" +
+            "Set-Cookie: srv=ok; Path=/\r\n" +
+            $"Content-Length: {bodyBytes.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
+    }
+
     private async Task AcceptLoopAsync(Func<TcpClient, CancellationToken, Task> handleClient)
     {
         try

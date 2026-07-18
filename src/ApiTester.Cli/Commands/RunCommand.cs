@@ -27,6 +27,8 @@ public static class RunCommand
                                   off for workspace files; skipped while the GUI is running)
           --strict-vars           Unresolved {{tokens}} fail the request
           --no-auto-token         Don't capture or attach session tokens during this run
+          --cookies               Keep a cookie jar for the run, so a login's Set-Cookie is sent
+                                  on later requests (cookie-based sessions)
           --json                  JSON results instead of the table
 
         Requests whose Auth is "Auto" attach the captured token for their host; a token
@@ -67,6 +69,7 @@ public static class RunCommand
         bool json = args.Flag("--json");
         bool noAutoToken = args.Flag("--no-auto-token");
         string? dataFile = args.Value("--data");
+        bool useCookies = args.Flag("--cookies");
         var positionals = args.Positionals();
         if (positionals.Count > 1 || (positionals.Count == 0 && !all)) throw new CliUsageException(Help);
 
@@ -104,6 +107,8 @@ public static class RunCommand
             stderr.WriteLine("note: the GUI is running — results were not recorded (it would overwrite them on close).");
         }
 
+        // One cookie jar for the whole run, so a login's Set-Cookie carries to later requests.
+        var jar = useCookies ? new System.Net.CookieContainer() : null;
         bool capturedAny = false;
         bool tokensCaptured = false;
         var results = new List<(string Path, RequestModel Model, ApiResponse Response)>();
@@ -117,7 +122,7 @@ public static class RunCommand
             foreach (var (path, node) in targets)
             {
                 string id = label + path;
-                var (response, url) = Execute(id, node.Request!, state, noAutoToken, vars, strictVars, stderr, services);
+                var (response, url) = Execute(id, node.Request!, state, noAutoToken, vars, strictVars, jar, stderr, services);
                 results.Add((id, node.Request!, response));
                 if (!noAutoToken && response.Error is null &&
                     TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
@@ -206,7 +211,8 @@ public static class RunCommand
 
     private static (ApiResponse Response, string Url) Execute(
         string path, RequestModel m, AppState state, bool noAutoToken,
-        Dictionary<string, string> vars, bool strictVars, TextWriter stderr, CliServices services)
+        Dictionary<string, string> vars, bool strictVars, System.Net.CookieContainer? cookies,
+        TextWriter stderr, CliServices services)
     {
         var unresolved = new List<string>();
         string R(string s)
@@ -269,7 +275,7 @@ public static class RunCommand
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
         var response = services.Client.SendAsync(request, cert, m.IgnoreServerCert,
-            cancellationToken: services.Cancel).GetAwaiter().GetResult();
+            cookies: cookies, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug($"{path}: " + (response.Error is null
             ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
             : $"[{response.Error.Kind}] {response.Error.Message}"));

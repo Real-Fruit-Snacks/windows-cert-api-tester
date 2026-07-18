@@ -283,6 +283,10 @@ public partial class HelpWindow : Window
         P("The same capture-and-reuse works headless: certapi send and certapi run print a note " +
           "when they capture or use a token (--no-auto-token disables it), and the MCP server " +
           "keeps a per-session token store so agent login flows just work."),
+        Sub("SESSION COOKIES"),
+        P("The app keeps a cookie jar for the session, like a browser: a Set-Cookie in any response " +
+          "is stored and sent back on later requests to that host, so cookie-based logins work across " +
+          "sends. Headless, add --cookies to certapi run to share a jar across a suite."),
         NoteBox("Explicit auth always wins: a Bearer/Basic setting or a manual Authorization " +
                 "header is never overridden, and expired tokens are never sent. Captured tokens " +
                 "are saved with your workspace in plain text — treat exported workspaces as private."));

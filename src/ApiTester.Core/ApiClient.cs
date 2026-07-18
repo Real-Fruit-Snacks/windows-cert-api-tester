@@ -18,6 +18,7 @@ public sealed class ApiClient
         bool ignoreServerCertificateErrors = false,
         Func<X509Certificate2?, bool>? trustServerCertificate = null,
         bool followRedirects = true,
+        System.Net.CookieContainer? cookies = null,
         CancellationToken cancellationToken = default)
     {
         bool serverUntrusted = false;
@@ -65,6 +66,9 @@ public sealed class ApiClient
             DefaultProxyCredentials = CredentialCache.DefaultCredentials
         };
         handler.AllowAutoRedirect = followRedirects;
+        // A shared cookie jar carries Set-Cookie values across requests (session testing); without
+        // one, the per-handler default container means cookies don't persist between calls.
+        if (cookies is not null) { handler.CookieContainer = cookies; handler.UseCookies = true; }
 
         if (viaProxy)
         {

@@ -21,6 +21,7 @@ public partial class MainWindow : Window
 {
     private readonly CertificateStoreService _certService = new();
     private readonly ApiClient _apiClient = new();
+    private readonly System.Net.CookieContainer _cookieJar = new();   // browser-like session cookies across sends
     private readonly ResponseFormatter _formatter = new();
     private readonly AppState _state = AppState.Load();
 
@@ -1661,7 +1662,7 @@ public partial class MainWindow : Window
         try
         {
             var response = await _apiClient.SendAsync(
-                request, cert, model.IgnoreServerCert, cancellationToken: _cts.Token);
+                request, cert, model.IgnoreServerCert, cookies: _cookieJar, cancellationToken: _cts.Token);
             RenderResponse(response);
             ShowAssertionResults(model, response);
             if (_unresolvedVars.Count > 0)
