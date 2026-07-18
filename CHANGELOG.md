@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
 ## [1.47.2] - 2026-07-18
 
 ### Fixed
@@ -620,36 +622,62 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[1.26.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.26.0
-[1.25.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.25.0
-[1.24.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.24.0
-[1.23.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.23.0
-[1.22.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.1
-[1.22.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.22.0
-[1.21.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.21.0
-[1.20.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.20.0
-[1.19.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.19.0
-[1.18.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.18.0
-[1.17.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.17.0
-[1.16.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.16.0
-[1.15.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.15.0
-[1.14.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.1
-[1.14.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.14.0
-[1.13.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.1
-[1.13.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.13.0
-[1.12.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.12.0
-[1.11.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.3
-[1.11.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.2
-[1.11.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.1
-[1.11.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.11.0
-[1.10.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.10.0
-[1.9.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.9.0
-[1.8.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.8.0
-[1.7.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.7.0
-[1.6.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.6.0
-[1.5.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.5.0
-[1.4.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.4.0
-[1.3.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.3.0
-[1.2.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.2.0
-[1.1.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.1.0
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.2...HEAD
+[1.47.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.1...v1.47.2
+[1.47.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.0...v1.47.1
+[1.47.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.46.1...v1.47.0
+[1.46.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.46.0...v1.46.1
+[1.46.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.45.0...v1.46.0
+[1.45.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.44.0...v1.45.0
+[1.44.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.43.0...v1.44.0
+[1.43.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.42.0...v1.43.0
+[1.42.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.41.0...v1.42.0
+[1.41.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.40.0...v1.41.0
+[1.40.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.39.0...v1.40.0
+[1.39.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.38.0...v1.39.0
+[1.38.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.37.0...v1.38.0
+[1.37.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.36.0...v1.37.0
+[1.36.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.35.0...v1.36.0
+[1.35.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.34.0...v1.35.0
+[1.34.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.33.0...v1.34.0
+[1.33.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.32.0...v1.33.0
+[1.32.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.31.0...v1.32.0
+[1.31.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.30.0...v1.31.0
+[1.30.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.29.0...v1.30.0
+[1.29.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.28.1...v1.29.0
+[1.28.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.28.0...v1.28.1
+[1.28.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.27.0...v1.28.0
+[1.27.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.26.0...v1.27.0
+[1.26.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.25.0...v1.26.0
+[1.25.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.24.0...v1.25.0
+[1.24.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.23.0...v1.24.0
+[1.23.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.22.1...v1.23.0
+[1.22.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.22.0...v1.22.1
+[1.22.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.21.0...v1.22.0
+[1.21.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.20.0...v1.21.0
+[1.20.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.19.0...v1.20.0
+[1.19.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.18.0...v1.19.0
+[1.18.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.17.0...v1.18.0
+[1.17.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.16.0...v1.17.0
+[1.16.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.15.0...v1.16.0
+[1.15.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.14.1...v1.15.0
+[1.14.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.14.0...v1.14.1
+[1.14.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.13.1...v1.14.0
+[1.13.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.13.0...v1.13.1
+[1.13.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.12.0...v1.13.0
+[1.12.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.11.3...v1.12.0
+[1.11.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.11.2...v1.11.3
+[1.11.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.11.1...v1.11.2
+[1.11.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.11.0...v1.11.1
+[1.11.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.10.0...v1.11.0
+[1.10.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.9.0...v1.10.0
+[1.9.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.0.0
