@@ -13,7 +13,8 @@ All notable changes to this project are documented here. The format follows
   (the default) attach it automatically; explicit auth is never overridden, tokens never cross
   hosts, and expired tokens are never sent. Works in the app (with a status-bar token chip to
   inspect, clear, or disable), in `certapi send`/`run` (`--no-auto-token` to opt out), and in
-  the MCP server (per-session store, so agent login flows chain naturally).
+  the MCP server (per-session store, so agent login flows chain naturally). Tokens persist in
+  the workspace in plain text, like existing auth secrets.
 - **Collection defaults** — a collection or folder can hold a default website and client
   certificate ("Set website & certificate…" on right-click, or auto-remembered from the first
   successful send). Endpoints opened from a collection fill their blanks from the nearest

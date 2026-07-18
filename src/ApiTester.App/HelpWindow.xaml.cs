@@ -245,7 +245,8 @@ public partial class HelpWindow : Window
           "when they capture or use a token (--no-auto-token disables it), and the MCP server " +
           "keeps a per-session token store so agent login flows just work."),
         NoteBox("Explicit auth always wins: a Bearer/Basic setting or a manual Authorization " +
-                "header is never overridden, and expired tokens are never sent."));
+                "header is never overridden, and expired tokens are never sent. Captured tokens " +
+                "are saved with your workspace in plain text — treat exported workspaces as private."));
 
     private UIElement Importing() => Section("Importing & exporting",
         P("Bring requests in from elsewhere with the Import ▾ menu next to the tabs."),

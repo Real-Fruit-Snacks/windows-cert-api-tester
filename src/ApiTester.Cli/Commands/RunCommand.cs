@@ -39,8 +39,8 @@ public static class RunCommand
           # A login-first suite: the login response's token carries through the suite
           certapi run "api/login then browse" --env Staging
 
-          # CI: machine-readable results, no writes, fail the job on any failure
-          certapi run --all --workspace .\suite.json --no-record --json
+          # CI: machine-readable results, no writes at all, fail the job on any failure
+          certapi run --all --workspace .\suite.json --no-record --no-auto-token --json
 
           # Investigate a flaky suite with full diagnostics
           certapi run api --debug --log-file suite-debug.log

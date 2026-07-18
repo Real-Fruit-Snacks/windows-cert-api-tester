@@ -41,7 +41,9 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Capture & reuse auth tokens** — grab a value from a response (a JSON field like `access_token` or a response header) and save it into a `{{variable}}` automatically. Call your auth endpoint once, then send `Authorization: Bearer {{token}}` on every later request — no copy-paste. Works in the app (a **Capture** tab) and headless (`certapi send --capture token=access_token`).
 - **Automatic bearer tokens** — login once and follow-on requests to the same host carry the
   captured token automatically, in the GUI, `certapi send`/`run`, and the MCP server. Host-scoped,
-  never overriding explicit auth; `--no-auto-token` / a status-bar toggle opt out.
+  never overriding explicit auth; `--no-auto-token` / a status-bar toggle opt out. Captured tokens
+  are stored in your workspace in plain text, like other secrets — treat exported workspaces as
+  private.
 - **Collection defaults** — collections remember their website + client certificate, so opening
   any endpoint is immediately sendable.
 - **`--debug` / `--log-file`** — every certapi command can explain exactly what it sent, looked
