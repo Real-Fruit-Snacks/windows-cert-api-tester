@@ -23,6 +23,9 @@ public sealed class SessionCaptureController : IDisposable
     /// so the window can run token detection.</summary>
     public event Action<byte[], string?, IReadOnlyList<KeyValuePair<string, string>>, string>? ResponseBody;
 
+    /// <summary>Raised on the UI thread when a resource fetch fails, with the error message.</summary>
+    public event Action<string>? Failed;
+
     public SessionCaptureController(WebView2 browser, X509Certificate2? cert, bool ignoreServerCertErrors)
     {
         _browser = browser;
@@ -80,10 +83,12 @@ public sealed class SessionCaptureController : IDisposable
                 ResponseBody?.Invoke(result.Body ?? Array.Empty<byte>(), result.ContentType, observedHeaders, uri);
             });
         }
-        catch
+        catch (Exception ex)
         {
             e.Response = _browser.CoreWebView2.Environment.CreateWebResourceResponse(
                 new MemoryStream(Array.Empty<byte>()), 502, "Bad Gateway", "");
+            var msg = ex.Message;
+            _browser.Dispatcher.Invoke(() => Failed?.Invoke(msg));
         }
         finally { deferral.Complete(); }
     }

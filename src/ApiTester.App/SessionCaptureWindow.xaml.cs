@@ -32,6 +32,7 @@ public partial class SessionCaptureWindow : Window
         _controller = new SessionCaptureController(Browser, cert, ignoreServerCertErrors);
         _controller.CallObserved += OnCall;
         _controller.ResponseBody += OnBodyForToken;
+        _controller.Failed += msg => CaptureSummary.Text = $"Last request failed: {msg}";
         Loaded += async (_, _) =>
         {
             if (!await _controller.InitializeAsync())
@@ -41,7 +42,12 @@ public partial class SessionCaptureWindow : Window
                 FinishButton.IsEnabled = false;
                 return;
             }
-            if (!string.IsNullOrWhiteSpace(startUrl)) { AddressBox.Text = startUrl; _controller.Navigate(startUrl); }
+            // Only auto-navigate to a genuine absolute http(s) URL — never to placeholder text.
+            if (Uri.TryCreate(startUrl, UriKind.Absolute, out var u) && (u.Scheme == "http" || u.Scheme == "https"))
+            {
+                AddressBox.Text = u.ToString();
+                _controller.Navigate(u.ToString());
+            }
         };
     }
 
@@ -97,10 +103,22 @@ public partial class SessionCaptureWindow : Window
     {
         if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(AddressBox.Text))
         {
-            var url = AddressBox.Text.Trim();
-            if (!url.Contains("://")) url = "https://" + url;
+            var url = NormalizeUrl(AddressBox.Text.Trim());
+            AddressBox.Text = url;
             _controller.Navigate(url);
         }
+    }
+
+    /// <summary>Add a scheme when the user omits it. Loopback / bare-IP hosts default to http so a
+    /// local mock or dev server works; everything else defaults to https.</summary>
+    private static string NormalizeUrl(string input)
+    {
+        if (input.Contains("://")) return input;
+        var host = input.Split('/')[0];
+        bool loopback = host.StartsWith("127.", StringComparison.Ordinal) ||
+                        host.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ||
+                        host.StartsWith("[::1]", StringComparison.Ordinal);
+        return (loopback ? "http://" : "https://") + input;
     }
 
     private void Back_Click(object sender, RoutedEventArgs e) { if (Browser.CanGoBack) Browser.GoBack(); }
