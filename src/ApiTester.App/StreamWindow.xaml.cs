@@ -26,8 +26,27 @@ public partial class StreamWindow : Window
         _cert = cert;
         _insecure = insecure;
         UrlBox.Text = initialUrl ?? "";
+        UpdateModeHint();
         Loaded += (_, _) => { UrlBox.Focus(); UrlBox.SelectAll(); };
     }
+
+    /// <summary>Reflect which protocol the current URL will use, so it's clear before connecting
+    /// whether typing an http(s) URL gives SSE or a ws(s) URL gives a WebSocket.</summary>
+    private void UpdateModeHint()
+    {
+        if (ModeText is null) return;   // TextChanged can fire during InitializeComponent
+        string url = UrlBox.Text.Trim();
+        ModeText.Text = Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? uri.Scheme switch
+            {
+                "ws" or "wss" => "→ WebSocket — send messages, watch replies",
+                "http" or "https" => "→ Server-Sent Events — watch events stream in",
+                _ => $"Unsupported scheme '{uri.Scheme}' — use ws/wss or http/https"
+            }
+            : "WebSocket (ws/wss) or Server-Sent Events (http/https)";
+    }
+
+    private void UrlBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) => UpdateModeHint();
 
     protected override void OnSourceInitialized(EventArgs e)
     {

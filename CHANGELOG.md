@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-07-18
+
+### Fixed
+- **Light theme now applies everywhere** — colours that were hardcoded for the dark palette and
+  didn't follow a theme switch now do: the primary-button hover/pressed states, selected-row and
+  secondary-button highlights, JSON/XML syntax highlighting (deeper, readable hues on white), the
+  endpoint-discovery result colours, and the rendered-view error page. Toggling the theme also
+  re-highlights the currently shown response.
+
+### Changed
+- **Stream console shows the live mode** — as you type the URL, the header indicates whether it will
+  open a WebSocket (ws/wss) or stream Server-Sent Events (http/https).
+
 ## [1.39.0] - 2026-07-18
 
 ### Added

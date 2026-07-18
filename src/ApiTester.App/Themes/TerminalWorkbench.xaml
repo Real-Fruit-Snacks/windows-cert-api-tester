@@ -17,6 +17,11 @@
     <SolidColorBrush x:Key="Text.Faint"  Color="#63736f"/>
     <SolidColorBrush x:Key="Text.OnAccent" Color="#07100d"/>
     <SolidColorBrush x:Key="Red"         Color="#ff6e7a"/>
+    <!-- Accent interaction states + a translucent selection tint, so buttons and selected rows
+         track the theme instead of a fixed mint. Overridden in Palette.Light.xaml. -->
+    <SolidColorBrush x:Key="Accent.Hover"   Color="#7bf6bb"/>
+    <SolidColorBrush x:Key="Accent.Pressed" Color="#4fd396"/>
+    <SolidColorBrush x:Key="Accent.Tint"    Color="#1b63f2ab"/>
 
     <FontFamily x:Key="Mono">Cascadia Code, Consolas, Courier New</FontFamily>
 
@@ -138,9 +143,9 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource Accent}"/>
-                            <Setter TargetName="bd" Property="Background" Value="#202a2f"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource Bg.Raised}"/>
                         </Trigger>
-                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="bd" Property="Background" Value="#13191c"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource Bg.Input}"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -162,10 +167,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="#7bf6bb"/>
-                            <Setter TargetName="bd" Property="BorderBrush" Value="#7bf6bb"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource Accent.Hover}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource Accent.Hover}"/>
                         </Trigger>
-                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="bd" Property="Background" Value="#4fd396"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource Accent.Pressed}"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -235,7 +240,7 @@
                             <Setter Property="Foreground" Value="{DynamicResource Text.Normal}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="#1b63f2ab"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource Accent.Tint}"/>
                             <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -389,7 +394,7 @@
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource Bg.Raised}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="#1b63f2ab"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource Accent.Tint}"/>
                             <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource Accent}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -517,7 +522,7 @@
                             <Setter TargetName="hb" Property="Background" Value="{DynamicResource Bg.Raised}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="hb" Property="Background" Value="#1b63f2ab"/>
+                            <Setter TargetName="hb" Property="Background" Value="{DynamicResource Accent.Tint}"/>
                             <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource Accent}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -692,7 +697,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="cell" Property="Background" Value="#1b63f2ab"/>
+                            <Setter TargetName="cell" Property="Background" Value="{DynamicResource Accent.Tint}"/>
                             <Setter Property="Foreground" Value="{DynamicResource Text.Normal}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>

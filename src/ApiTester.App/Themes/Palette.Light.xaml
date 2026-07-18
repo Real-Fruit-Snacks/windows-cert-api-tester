@@ -20,5 +20,10 @@
     <SolidColorBrush x:Key="Text.Faint"  Color="#8a968f"/>
     <SolidColorBrush x:Key="Text.OnAccent" Color="#ffffff"/>
     <SolidColorBrush x:Key="Red"         Color="#cf3341"/>
+    <!-- Accent interaction states tuned for the darker light-mode accent, and a pale-green
+         selection tint that reads on white. -->
+    <SolidColorBrush x:Key="Accent.Hover"   Color="#12b877"/>
+    <SolidColorBrush x:Key="Accent.Pressed" Color="#0b7d4e"/>
+    <SolidColorBrush x:Key="Accent.Tint"    Color="#d8efe3"/>
 
 </ResourceDictionary>

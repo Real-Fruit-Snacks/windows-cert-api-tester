@@ -44,7 +44,7 @@
                 <Button x:Name="DisconnectButton" DockPanel.Dock="Right" Content="Disconnect" Width="96"
                         Margin="8,0,0,0" IsEnabled="False" Click="Disconnect_Click"/>
                 <TextBox x:Name="UrlBox" VerticalContentAlignment="Center" Padding="10,7"
-                         KeyDown="UrlBox_KeyDown"
+                         KeyDown="UrlBox_KeyDown" TextChanged="UrlBox_TextChanged"
                          ToolTip="wss://host/socket for a WebSocket, or https://host/events for SSE"/>
             </DockPanel>
 

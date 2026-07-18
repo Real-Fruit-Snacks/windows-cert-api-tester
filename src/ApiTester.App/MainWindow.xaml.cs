@@ -91,6 +91,15 @@ public partial class MainWindow : Window
         _state.Save();
         NativeTheme.ApplyTitleBar(this, next == "Light");
         UpdateThemeToggleGlyph();
+
+        // Re-highlight the shown response so the Pretty view swaps to the new theme's syntax colours
+        // (the highlighter builds a static document, so it doesn't repaint on its own).
+        if (_lastResponse is { } r)
+        {
+            if (r.Error is not null) SetPretty(r.Error.Message, BodyKind.Text);
+            else { var f = _formatter.Format(r); SetPretty(f.Text, f.Kind); }
+        }
+
         StatusText.Text = $"{next} theme applied.";
     }
 
@@ -1017,8 +1026,11 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            bool light = ((App)Application.Current).CurrentTheme == "Light";
+            string bg = light ? "#ffffff" : "#0e1214";
+            string fg = light ? "#cf3341" : "#ff6e7a";
             var bytes = Encoding.UTF8.GetBytes(
-                "<html><body style='font-family:Consolas;background:#0e1214;color:#ff6e7a;padding:24px'>" +
+                $"<html><body style='font-family:Consolas;background:{bg};color:{fg};padding:24px'>" +
                 "<h2>Could not load this resource</h2><pre>" +
                 System.Net.WebUtility.HtmlEncode(ex.Message) + "</pre></body></html>");
             e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(

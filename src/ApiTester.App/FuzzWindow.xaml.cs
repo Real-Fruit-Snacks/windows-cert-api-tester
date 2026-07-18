@@ -29,14 +29,23 @@ public partial class FuzzWindow : Window
         public FuzzResult Result { get; init; } = null!;
     }
 
-    // Per-outcome text colours, frozen once and reused so rows don't each allocate a brush.
-    private static readonly Brush CFound = Frozen("#63F2AB");
-    private static readonly Brush CUnauthorized = Frozen("#F2C94C");
-    private static readonly Brush CMethodNotAllowed = Frozen("#56CCF2");
-    private static readonly Brush CRedirect = Frozen("#9B8CF2");
-    private static readonly Brush CServerError = Frozen("#F2637A");
-    private static readonly Brush CError = Frozen("#E06C75");
-    private static readonly Brush CMuted = Frozen("#8A97A0");
+    // Per-outcome text colours, frozen once and reused so rows don't each allocate a brush. Two
+    // sets: bright hues for the dark theme, deeper hues that read on white for the light theme.
+    private sealed record OutcomePalette(
+        Brush Found, Brush Unauthorized, Brush MethodNotAllowed, Brush Redirect,
+        Brush ServerError, Brush Error, Brush Muted);
+
+    private static readonly OutcomePalette DarkOutcomes = new(
+        Found: Frozen("#63F2AB"), Unauthorized: Frozen("#F2C94C"), MethodNotAllowed: Frozen("#56CCF2"),
+        Redirect: Frozen("#9B8CF2"), ServerError: Frozen("#F2637A"), Error: Frozen("#E06C75"), Muted: Frozen("#8A97A0"));
+
+    private static readonly OutcomePalette LightOutcomes = new(
+        Found: Frozen("#0f8a52"), Unauthorized: Frozen("#9a7010"), MethodNotAllowed: Frozen("#0b6b8a"),
+        Redirect: Frozen("#6d3bd1"), ServerError: Frozen("#cf3341"), Error: Frozen("#c0392b"), Muted: Frozen("#5c6b64"));
+
+    private static OutcomePalette Outcomes =>
+        string.Equals((Application.Current as App)?.CurrentTheme, "Light", System.StringComparison.OrdinalIgnoreCase)
+            ? LightOutcomes : DarkOutcomes;
 
     private static Brush Frozen(string hex)
     {
@@ -45,16 +54,20 @@ public partial class FuzzWindow : Window
         return brush;
     }
 
-    private static Brush OutcomeBrush(FuzzOutcome o) => o switch
+    private static Brush OutcomeBrush(FuzzOutcome o)
     {
-        FuzzOutcome.Found => CFound,
-        FuzzOutcome.Unauthorized => CUnauthorized,
-        FuzzOutcome.MethodNotAllowed => CMethodNotAllowed,
-        FuzzOutcome.Redirect => CRedirect,
-        FuzzOutcome.ServerError => CServerError,
-        FuzzOutcome.Error => CError,
-        _ => CMuted
-    };
+        var pal = Outcomes;
+        return o switch
+        {
+            FuzzOutcome.Found => pal.Found,
+            FuzzOutcome.Unauthorized => pal.Unauthorized,
+            FuzzOutcome.MethodNotAllowed => pal.MethodNotAllowed,
+            FuzzOutcome.Redirect => pal.Redirect,
+            FuzzOutcome.ServerError => pal.ServerError,
+            FuzzOutcome.Error => pal.Error,
+            _ => pal.Muted
+        };
+    }
 
     private readonly AppState _state;
     private readonly ApiClient _client;
