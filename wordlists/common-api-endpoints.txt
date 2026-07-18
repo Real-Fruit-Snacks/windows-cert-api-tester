@@ -1,49 +1,319 @@
-# Common API endpoints to probe when no documentation is available.
-# One per line; "METHOD path" pins a method; blank lines and #comments are ignored.
+# Certificate API Tester — starter endpoint wordlist for `certapi fuzz` / the Discover window.
+#
+# A curated list of paths worth probing on an undocumented API or web service: operational
+# endpoints, API roots and docs, authentication, common resources, and paths that are often
+# left exposed by mistake. It is a fast first pass — bring your own larger list (-w <file>) for
+# a thorough sweep.
+#
+# Format: one entry per line. A bare path (/users) is probed with the chosen method(s); a
+# "METHOD path" line pins a verb (POST /login). Blank lines and lines starting with # are
+# ignored. Identical entries are de-duplicated automatically.
+#
+# Use this only against systems you are authorized to test.
+
+# --- Operational health & liveness ---
 /
 /health
+/health/live
+/health/ready
 /healthz
+/livez
+/readyz
 /ready
+/alive
 /status
 /ping
+/heartbeat
+
+# --- Version, build & info ---
 /version
+/api/version
+/build
+/buildinfo
 /info
+/about
+
+# --- Metrics & monitoring ---
 /metrics
+/prometheus
+/stats
+/actuator
+/actuator/health
+/actuator/info
+/actuator/metrics
+/actuator/env
+/actuator/mappings
+/actuator/configprops
+/actuator/loggers
+/actuator/prometheus
+/actuator/threaddump
+/actuator/heapdump
+
+# --- API roots & versioning ---
 /api
 /api/v1
 /api/v2
+/api/v3
+/v1
+/v2
+/rest
+/graphql
+POST /graphql
+/graphiql
+/api/graphql
+/playground
+
+# --- API documentation & specifications ---
 /openapi.json
+/openapi.yaml
 /swagger.json
+/swagger.yaml
+/swagger
 /swagger/index.html
+/swagger-ui.html
+/swagger-ui/index.html
+/api-docs
+/v2/api-docs
+/v3/api-docs
+/api/docs
+/docs
+/redoc
 /.well-known/openapi
-/users
-/user
-/accounts
-/account
+/.well-known/openid-configuration
+/.well-known/security.txt
+/wsdl
+
+# --- Authentication & identity ---
+/auth
+/auth/login
+POST /auth/login
+/auth/logout
+/auth/token
+POST /auth/token
+/auth/refresh
+POST /auth/refresh
 /login
 POST /login
 /logout
-/auth
-POST /auth/token
+/signin
+/signup
+/register
+POST /register
 /token
+POST /token
+/oauth
+/oauth/authorize
+/oauth/token
+POST /oauth/token
+/oauth2/token
+/sso
+/saml
+/mfa
+/verify
+/forgot-password
+/reset-password
+/password/reset
 /session
+/sessions
+/whoami
+/me
+/userinfo
+
+# --- Users, accounts & profiles ---
+/users
+/user
+/users/me
+/accounts
+/account
+/profile
+/profiles
+/members
+/customers
+/customer
+/contacts
+/employees
+/people
+
+# --- Admin & management ---
 /admin
-/config
-/settings
-/products
-/orders
-/items
-/search
-/files
-/upload
-/download
-/events
-/logs
-/jobs
-/tasks
-/notifications
-/webhooks
+/administrator
+/admin/login
+/management
+/manage
+/console
+/dashboard
+/internal
+/system
+/ops
+
+# --- Access control ---
 /roles
+/role
 /permissions
+/permission
 /groups
+/group
 /teams
+/team
+/policies
+/scopes
+/apikeys
+/api-keys
+/keys
+/tokens
+
+# --- Common business resources ---
+/products
+/product
+/orders
+/order
+/items
+/item
+/cart
+/carts
+/checkout
+/payments
+/payment
+/invoices
+/invoice
+/transactions
+/subscriptions
+/plans
+/catalog
+/inventory
+/categories
+/tags
+/reviews
+/comments
+/posts
+/articles
+/messages
+/chats
+/projects
+/organizations
+/orgs
+/tenants
+/companies
+
+# --- Search & query ---
+/search
+/query
+/lookup
+/autocomplete
+/suggest
+/filter
+
+# --- Files, media & storage ---
+/files
+/file
+/upload
+POST /upload
+/uploads
+/download
+/downloads
+/media
+/images
+/assets
+/static
+/documents
+/attachments
+/export
+/import
+
+# --- Configuration & settings ---
+/config
+/configuration
+/settings
+/preferences
+/features
+/feature-flags
+/flags
+/environment
+
+# --- Jobs, events & async ---
+/jobs
+/job
+/tasks
+/task
+/queue
+/queues
+/workers
+/events
+/event
+/webhooks
+/webhook
+/notifications
+/subscribe
+/stream
+/sse
+
+# --- Logs & audit ---
+/logs
+/log
+/audit
+/audit-log
+/activity
+/history
+/trace
+
+# --- Cache & data ---
+/cache
+/db
+/database
+/data
+
+# --- Debug, dev & test (frequently left exposed) ---
+/debug
+/debug/pprof
+/test
+/tests
+/echo
+/example
+/examples
+/demo
+/sandbox
+/dev
+/_debug
+/_status
+/_health
+
+# --- Sensitive exposure (authorized testing only) ---
+/.env
+/.git/config
+/.git/HEAD
+/.svn/entries
+/.htaccess
+/.htpasswd
+/config.json
+/config.yml
+/config.yaml
+/settings.json
+/secrets
+/credentials
+/.aws/credentials
+/.npmrc
+/docker-compose.yml
+/package.json
+/composer.json
+/web.config
+/appsettings.json
+/phpinfo.php
+/server-status
+/.DS_Store
+/robots.txt
+/sitemap.xml
+/crossdomain.xml
+/backup
+/backup.zip
+/backup.sql
+/dump.sql
+/database.sql
+
+# --- Framework & platform-specific ---
+/wp-json
+/wp-json/wp/v2/users
+/wp-login.php
+/xmlrpc.php
+/rails/info/routes
+/hasura/console
+/api/swagger.json

@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-07-18
+
+### Changed
+- **Professional starter wordlist** — the built-in endpoint list for `certapi fuzz` and the Discover
+  window is now a curated ~270-entry list organized by category — operational/health, version & build,
+  metrics (including Spring Actuator), API roots & versioning, API docs & specs, authentication &
+  identity, users/accounts, admin, access control, common business resources, search, files/media,
+  configuration, jobs/events, logs/audit, debug/dev, commonly-exposed sensitive paths
+  (`.env`, `.git/config`, backups, …), and framework-specific paths — up from ~47. Key POST-only
+  endpoints (login, token, register, graphql, …) are method-pinned. It's still a fast first pass; bring
+  your own larger list with `-w <file>` for a thorough sweep.
+
 ## [1.47.2] - 2026-07-18
 
 ### Fixed
@@ -622,7 +634,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.2...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.48.0...HEAD
+[1.48.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.2...v1.48.0
 [1.47.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.1...v1.47.2
 [1.47.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.0...v1.47.1
 [1.47.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.46.1...v1.47.0

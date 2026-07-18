@@ -24,8 +24,10 @@ certapi fuzz https://api.example.com -w .\paths.txt -X GET,POST --cert "CN=My Cl
 ```
 
 - **`-w, --wordlist <file|->`** — endpoints to probe, one per line (`-` reads stdin). **Omit it** to
-  use the built-in starter list — handy for a quick look, but bring your own larger list for real
-  mapping. Lines starting with `#` are comments.
+  use the built-in starter list — a curated ~270 paths organized by category (operational, API roots &
+  docs, authentication, common resources, debug, and commonly-exposed sensitive paths). Handy for a
+  fast first pass, but bring your own larger list for exhaustive mapping. Lines starting with `#` are
+  comments.
 - **`-X, --methods <list>`** — comma-separated methods per path (default `GET`).
 
 ## Reading the results

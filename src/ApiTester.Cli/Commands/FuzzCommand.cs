@@ -15,9 +15,9 @@ public static class FuzzCommand
         overrides the base URL.
 
         Wordlist:
-          -w, --wordlist <file|->  Endpoints to probe (omit for the built-in starter list;
-                                   '-' reads them from stdin). For a thorough sweep, supply your
-                                   own larger list — the built-in one is only a quick look.
+          -w, --wordlist <file|->  Endpoints to probe (omit for the built-in starter list — a
+                                   curated ~270 paths by category; '-' reads them from stdin).
+                                   For an exhaustive sweep, supply your own larger list.
           -X, --methods <list>     Comma-separated methods to try per path (default GET)
 
         TLS / certificates:
