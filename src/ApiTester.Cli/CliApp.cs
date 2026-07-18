@@ -53,7 +53,7 @@ public static class CliApp
         Examples:
           certapi certs
           certapi send https://api.example.com/health --cert "CN=My Client"
-          certapi send https://api.example.com/login -X POST -d "{\"user\":\"me\"}"
+          certapi send https://api.example.com/login -X POST -d '{"user":"me"}'
               # a token in the response (access_token / id_token / …) is captured
               # automatically and reused for later requests to the same host
           certapi run smoke-suite --env Staging

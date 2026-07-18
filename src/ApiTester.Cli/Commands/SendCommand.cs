@@ -51,22 +51,25 @@ public static class SendCommand
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
         Examples:
+          (Examples use PowerShell quoting; in cmd.exe write JSON bodies as "{\"user\":\"me\"}".)
+
           # Simple GET with a client certificate picked by subject
           certapi send https://api.example.com/users --cert "CN=My Client"
 
           # POST JSON, pretty-print the response
-          certapi send https://api.example.com/users -X POST -d "{\"name\":\"Ada\"}" --pretty
+          certapi send https://api.example.com/users -X POST -d '{"name":"Ada"}' --pretty
 
           # Log in once, then call the API — the token is captured and reused automatically
-          certapi send https://api.example.com/login -X POST -d "{\"user\":\"me\",\"pass\":\"…\"}"
-          certapi send https://api.example.com/orders          # sends Authorization: Bearer …
+          certapi send https://api.example.com/login -X POST -d '{"user":"me","pass":"..."}'
+          # the follow-on call sends Authorization: Bearer … automatically
+          certapi send https://api.example.com/orders
 
           # Headers, query strings, and a file body
           certapi send "https://api.example.com/search?q=abc" -H "Accept: application/json"
           certapi send https://api.example.com/upload -X PUT --data-file .\payload.json
 
           # Environments and capture rules
-          certapi send https://{{host}}/login --env Staging --capture session=data.session_id
+          certapi send "https://{{host}}/login" --env Staging --capture session=data.session_id
 
           # Save a binary body, keep stderr clean, fail the build on HTTP errors
           certapi send https://api.example.com/report.pdf -o report.pdf -q --fail
