@@ -133,6 +133,7 @@ public sealed class HistoryEntry
     public int? StatusCode { get; set; }
     public ResponseSnapshot? Response { get; set; }
     public List<CaptureRule> Captures { get; set; } = new();
+    public List<AssertionRule> Assertions { get; set; } = new();
 
     [JsonIgnore] public string EffectiveUrl => UrlHelper.Combine(BaseUrl, Url);
 

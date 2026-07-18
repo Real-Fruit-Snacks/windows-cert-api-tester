@@ -37,6 +37,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Query parameters** — a dedicated **Params** tab with an enable/key/value grid. Paste a URL with a `?query` and it splits into the grid automatically; the grid is recombined (correctly encoded) onto the URL when you send.
 - **Collections** — save named requests into folders and reopen them in a tab. Switch the sidebar between **History** and **Collections**; save the current request, organise it in folders, rename, or delete. Collections persist between sessions.
 - **Known-good endpoints** — every saved request remembers its last result: send it and a dot appears next to its name (mint for a 2xx, red for a failure or error status), with a tooltip showing when it was last checked and what it returned. See at a glance which endpoints are verified working.
+- **Response assertions (tests)** — a **Tests** tab on any request: assert on the **status**, **response time**, a **header**, a **JSON body path**, or the **body text**, with `==` / `!=` / contains / matches / exists / absent / `<` / `>`. `certapi run` then passes a request only when its assertions all pass (a request with no assertions still passes on any 2xx), so a collection becomes a real pass/fail test suite — failed assertions are listed on stderr and in the JSON output.
 - **Environments & variables** — define `{{variable}}` values per environment (Dev / Staging / Prod) and switch from the **ENV** selector in the title bar. Variables are substituted in the URL, query, headers, body, and auth when you send — stored requests keep the raw `{{tokens}}`, and any token with no value is flagged in the status line.
 - **Capture & reuse auth tokens** — grab a value from a response (a JSON field like `access_token` or a response header) and save it into a `{{variable}}` automatically. Call your auth endpoint once, then send `Authorization: Bearer {{token}}` on every later request — no copy-paste. Works in the app (a **Capture** tab) and headless (`certapi send --capture token=access_token`).
 - **Automatic bearer tokens** — login once and follow-on requests to the same host carry the
@@ -115,6 +116,23 @@ log in first and then discover the endpoints that need it. The same run headless
 <p align="center">
   <img alt="certapi fuzz discovering endpoints from the command line" src="docs/assets/shot-fuzz.svg" width="820" />
 </p>
+
+### Testing responses
+
+Turn a saved request into a real test with the **Tests** tab: add assertions on the response and
+`certapi run` will pass the request only when they all hold.
+
+- **Target:** Status · Time (ms) · a Header · a Body JSON path (e.g. `data.id`) · the Body text
+- **Comparison:** `==` · `!=` · contains · matches (regex) · exists · absent · `<` · `>`
+
+For example, assert `Status == 200`, `Body data.id exists`, and `Time < 500`. Run the suite:
+
+    certapi run smoke-suite --json
+
+A request with no assertions still passes on any 2xx (unchanged), so adding tests is opt-in per
+request. Failed assertions are printed on stderr (`… assertion failed — Status == 200 (got 503)`)
+and included in `--json`, and the app shows a `✓ tests 3/3 passed` summary with the detail in the
+**Diagnostics** view.
 
 ### Environments & variables
 Open the **ENV** selector (title bar) → **Edit** to define `{{variable}}` values per environment (Dev / Staging / Prod). Use `{{name}}` anywhere — URL, query, headers, body, or the auth fields — and it's substituted when you send. Switch environments to point the same requests at a different backend.

@@ -245,6 +245,7 @@ public partial class MainWindow : Window
             UrlBox.Text = m.Path;
             HeadersItems.ItemsSource = m.Headers;
             CaptureItems.ItemsSource = m.Captures;
+            AssertItems.ItemsSource = m.Assertions;
             ParamsItems.ItemsSource = m.QueryParams;
             BodyBox.Text = m.Body ?? "";
             SelectContentType(m.ContentType);
@@ -1435,6 +1436,31 @@ public partial class MainWindow : Window
         if (sender is Button { Tag: CaptureRule row }) ActiveRequest?.Captures.Remove(row);
     }
 
+    /// <summary>After a send, evaluate the request's assertions: append a pass/fail summary to the
+    /// status line and list each result at the top of the Diagnostics view.</summary>
+    private void ShowAssertionResults(RequestModel model, ApiResponse response)
+    {
+        if (!model.Assertions.Any(a => a.Enabled)) return;
+        var results = AssertionEvaluator.Evaluate(model.Assertions, response);
+        int passed = results.Count(r => r.Passed);
+        int total = results.Count;
+        StatusText.Text += $"   {(passed == total ? "✓" : "✗")} tests {passed}/{total} passed";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"ASSERTIONS  ({passed}/{total} passed)");
+        foreach (var r in results)
+            sb.AppendLine($"  {(r.Passed ? "✓" : "✗")} {r.Description}" + (r.Passed ? "" : $"   → got {r.Actual ?? "∅"}"));
+        DiagnosticsBox.Text = sb.ToString().TrimEnd() +
+            (string.IsNullOrEmpty(DiagnosticsBox.Text) ? "" : "\n\n" + DiagnosticsBox.Text);
+    }
+
+    private void AddAssertionButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.Assertions.Add(new AssertionRule());
+
+    private void RemoveAssertionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AssertionRule row }) ActiveRequest?.Assertions.Remove(row);
+    }
+
     private void AddParamButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.QueryParams.Add(new ParamRow());
 
     private void RemoveParamButton_Click(object sender, RoutedEventArgs e)
@@ -1554,6 +1580,7 @@ public partial class MainWindow : Window
             var response = await _apiClient.SendAsync(
                 request, cert, model.IgnoreServerCert, cancellationToken: _cts.Token);
             RenderResponse(response);
+            ShowAssertionResults(model, response);
             if (_unresolvedVars.Count > 0)
                 StatusText.Text += "   ⚠ unresolved " +
                     string.Join(", ", _unresolvedVars.Select(v => "{{" + v + "}}"));

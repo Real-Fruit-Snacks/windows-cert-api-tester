@@ -27,6 +27,7 @@ public partial class HelpWindow : Window
             ("Certificates & mTLS", Certificates),
             ("Collections & history", Collections),
             ("Discovering endpoints", Discovery),
+            ("Testing responses", Testing),
             ("Environments & variables", Environments),
             ("Automatic tokens", AutoTokens),
             ("Importing & exporting", Importing),
@@ -232,6 +233,20 @@ public partial class HelpWindow : Window
         NoteBox("The same discovery runs headless: certapi fuzz <website> (with no wordlist it uses the " +
                 "built-in starter list; pass -w <file> for a thorough sweep). The starter list also ships " +
                 "as wordlists/common-api-endpoints.txt."));
+
+    private UIElement Testing() => Section("Testing responses",
+        P("Add assertions on a request's Tests tab to turn it into a real test. Each assertion checks " +
+          "one thing about the response and either passes or fails."),
+        Sub("WHAT YOU CAN CHECK"),
+        P("Target: Status · Time (ms) · a Header · a Body JSON path (like data.id) · the Body text. " +
+          "Comparison: == , != , contains, matches (regex), exists, absent, < , > . For example: " +
+          "Status == 200, Body data.id exists, Time < 500, Header Content-Type contains json."),
+        Sub("HOW IT'S USED"),
+        P("After you send, the status line shows a ✓ tests 3/3 passed summary and the Diagnostics view " +
+          "lists each result. In suites, certapi run passes a request only when all its assertions pass — " +
+          "a request with no assertions still passes on any 2xx, so tests are opt-in per request."),
+        NoteBox("Run a suite headless with certapi run <collection>; failed assertions are printed on " +
+                "stderr and included in --json output, and the exit code is non-zero if any request fails."));
 
     private UIElement Environments() => Section("Environments & variables",
         P("Define values once and reuse them anywhere with {{name}} placeholders — ideal for switching between Dev, Staging, and Prod without editing every request."),

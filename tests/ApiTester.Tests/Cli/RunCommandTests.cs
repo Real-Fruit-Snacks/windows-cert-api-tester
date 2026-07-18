@@ -69,6 +69,59 @@ public class RunCommandTests
         finally { File.Delete(live); }
     }
 
+    private static string WriteStateWithAssertions(Loopback l, params AssertionRule[] assertions)
+    {
+        var state = new AppState();
+        var folder = new CollectionNode { Name = "suite", IsFolder = true };
+        var req = new RequestModel
+        {
+            Method = "GET", Path = l.Server.BaseUrl, IgnoreServerCert = true, CertThumbprint = l.Client.Thumbprint
+        };
+        foreach (var a in assertions) req.Assertions.Add(a);
+        folder.Children.Add(new CollectionNode { Name = "check", Request = req });
+        state.Collections.Add(folder);
+        var ws = Path.Combine(Path.GetTempPath(), $"certapi-assert-{Guid.NewGuid():N}.json");
+        state.SaveTo(ws);
+        return ws;
+    }
+
+    [Fact]
+    public async Task A_failing_assertion_fails_an_otherwise_2xx_request()
+    {
+        await using var l = await Loopback.StartAsync();
+        // The loopback returns {"ok":true} with 200; this assertion expects ok == false, so it fails.
+        var ws = WriteStateWithAssertions(l,
+            new AssertionRule { Target = AssertTarget.Body, Op = AssertOp.Equals, Path = "ok", Value = "false" });
+        try
+        {
+            var so = new StringWriter(); var se = new StringWriter();
+            int code = CliApp.Run(new[] { "run", "--all", "--workspace", ws, "--no-record" }, so, se, services: Services(l, false, ws));
+            Assert.Equal(1, code);
+            Assert.Contains("FAIL", so.ToString());
+            Assert.Contains("assertion failed", se.ToString());
+            Assert.Contains("Body ok == false", se.ToString());
+        }
+        finally { File.Delete(ws); }
+    }
+
+    [Fact]
+    public async Task Passing_assertions_pass_the_request()
+    {
+        await using var l = await Loopback.StartAsync();
+        var ws = WriteStateWithAssertions(l,
+            new AssertionRule { Target = AssertTarget.Status, Op = AssertOp.Equals, Value = "200" },
+            new AssertionRule { Target = AssertTarget.Body, Op = AssertOp.Equals, Path = "ok", Value = "true" });
+        try
+        {
+            var so = new StringWriter(); var se = new StringWriter();
+            int code = CliApp.Run(new[] { "run", "--all", "--workspace", ws, "--no-record" }, so, se, services: Services(l, false, ws));
+            Assert.Equal(0, code);
+            Assert.Contains("PASS", so.ToString());
+            Assert.Contains("2 assertions", so.ToString());
+        }
+        finally { File.Delete(ws); }
+    }
+
     [Fact]
     public async Task Live_state_runs_record_results_unless_the_gui_is_open()
     {

@@ -13,7 +13,9 @@ public static class RunCommand
                certapi run --all [options]
 
         Runs saved requests. A folder or collection path runs everything beneath it as a
-        suite; a request path runs that one request. Pass = a 2xx response.
+        suite; a request path runs that one request. A request passes when its assertions all
+        pass (Status / Time / Header / Body / Body-text checks set on it in the app); a request
+        with no assertions passes on any 2xx response. Failed assertions are listed on stderr.
 
         Options:
           --all                   Run every saved request in the workspace
@@ -94,6 +96,9 @@ public static class RunCommand
                 tokensCaptured = true;
             }
             if (record) node.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+            if (node.Request!.Assertions.Any(a => a.Enabled))
+                foreach (var ar in AssertionEvaluator.Evaluate(node.Request!.Assertions, response).Where(a => !a.Passed))
+                    stderr.WriteLine($"{path}: assertion failed — {ar.Description} (got {ar.Actual ?? "∅"})");
             if (response.Error is null && node.Request!.Captures.Count > 0)
             {
                 var outcome = CaptureApplier.Apply(state, node.Request!.Captures, response.Body, response.ContentType, response.Headers);
@@ -120,7 +125,7 @@ public static class RunCommand
             stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
         }
 
-        int passed = results.Count(r => r.Response.IsSuccess);
+        int passed = results.Count(r => Passed(r.Model, r.Response));
         int failed = results.Count - passed;
 
         if (json)
@@ -135,7 +140,11 @@ public static class RunCommand
                     status = r.Response.StatusCode,
                     elapsedMs = Math.Round(r.Response.Elapsed.TotalMilliseconds),
                     sizeBytes = r.Response.Body.LongLength,
-                    passed = r.Response.IsSuccess,
+                    passed = Passed(r.Model, r.Response),
+                    assertions = r.Model.Assertions.Any(a => a.Enabled)
+                        ? AssertionEvaluator.Evaluate(r.Model.Assertions, r.Response)
+                            .Select(a => new { a.Description, a.Passed, actual = a.Actual })
+                        : null,
                     error = r.Response.Error?.Message
                 }),
                 summary = new { total = results.Count, passed, failed, elapsedMs = clock.ElapsedMilliseconds }
@@ -143,11 +152,13 @@ public static class RunCommand
         }
         else
         {
-            foreach (var (path, _, r) in results)
+            foreach (var (path, model, r) in results)
             {
-                string verdict = r.IsSuccess ? "PASS" : "FAIL";
+                string verdict = Passed(model, r) ? "PASS" : "FAIL";
                 string status = r.Error is not null ? "ERR" : r.StatusCode?.ToString() ?? "—";
-                string detail = r.Error is not null ? $"  ({r.Error.Message})" : "";
+                int assertCount = model.Assertions.Count(a => a.Enabled);
+                string detail = r.Error is not null ? $"  ({r.Error.Message})"
+                    : assertCount > 0 ? $"  ({assertCount} assertion{(assertCount == 1 ? "" : "s")})" : "";
                 stdout.WriteLine(
                     $"{verdict}  {status,4}  {r.Elapsed.TotalMilliseconds,6:F0} ms  {OutputText.Size(r.Body.LongLength),9}  {path}{detail}");
             }
@@ -156,6 +167,11 @@ public static class RunCommand
 
         return failed == 0 ? ExitCodes.Ok : ExitCodes.Failure;
     }
+
+    /// <summary>A request passes when its enabled assertions all pass; with no assertions it falls
+    /// back to the historical "a 2xx response is a pass" behaviour.</summary>
+    private static bool Passed(RequestModel m, ApiResponse r) =>
+        m.Assertions.Any(a => a.Enabled) ? AssertionEvaluator.AllPass(m.Assertions, r) : r.IsSuccess;
 
     private static (ApiResponse Response, string Url) Execute(
         string path, RequestModel m, AppState state, bool noAutoToken,

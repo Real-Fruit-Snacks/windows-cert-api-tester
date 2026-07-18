@@ -21,6 +21,8 @@
         <local:StatusToBrushConverter x:Key="StatusBrush"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <local:CaptureSourceConverter x:Key="CaptureSourceConverter"/>
+        <local:AssertTargetConverter x:Key="AssertTargetConverter"/>
+        <local:AssertOpConverter x:Key="AssertOpConverter"/>
     </Window.Resources>
 
     <DockPanel x:Name="RootContainer">
@@ -413,6 +415,63 @@
                                                      ToolTip="Body: dotted JSON path (data.access_token). Header: the header name."/>
                                             <Button Grid.Column="4" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
                                                     Content="&#x2715;" Tag="{Binding}" Click="RemoveCaptureButton_Click" ToolTip="Remove"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="Tests">
+                    <DockPanel Margin="2">
+                        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{StaticResource Text.Faint}"
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Text="Assert on the response so 'certapi run' and the suite can pass/fail — e.g. Status == 200, Body data.id exists, Time &lt; 500, Header Content-Type contains json. A request with no tests passes on any 2xx."/>
+                        <Button DockPanel.Dock="Bottom" x:Name="AddAssertionButton" Content="+ Add test" Width="120"
+                                HorizontalAlignment="Left" Margin="8" Click="AddAssertionButton_Click"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="AssertItems" Margin="8,8,8,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <ComboBox Grid.Column="1" Width="96" VerticalContentAlignment="Center"
+                                                      SelectedIndex="{Binding Target, Converter={StaticResource AssertTargetConverter}}"
+                                                      ToolTip="What to check">
+                                                <ComboBoxItem Content="Status"/>
+                                                <ComboBoxItem Content="Time (ms)"/>
+                                                <ComboBoxItem Content="Header"/>
+                                                <ComboBoxItem Content="Body (JSON)"/>
+                                                <ComboBoxItem Content="Body text"/>
+                                            </ComboBox>
+                                            <TextBox Grid.Column="2" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="header name / JSON path" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                                                     ToolTip="Header: the header name. Body: dotted JSON path (data.id). Ignored for Status / Time / Body text."/>
+                                            <ComboBox Grid.Column="3" Width="94" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                                                      SelectedIndex="{Binding Op, Converter={StaticResource AssertOpConverter}}"
+                                                      ToolTip="Comparison">
+                                                <ComboBoxItem Content="=="/>
+                                                <ComboBoxItem Content="!="/>
+                                                <ComboBoxItem Content="contains"/>
+                                                <ComboBoxItem Content="matches"/>
+                                                <ComboBoxItem Content="exists"/>
+                                                <ComboBoxItem Content="absent"/>
+                                                <ComboBoxItem Content="&lt;"/>
+                                                <ComboBoxItem Content="&gt;"/>
+                                            </ComboBox>
+                                            <TextBox Grid.Column="4" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                     Tag="expected value" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                                                     ToolTip="Expected value (ignored for exists / absent)."/>
+                                            <Button Grid.Column="5" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
+                                                    Content="&#x2715;" Tag="{Binding}" Click="RemoveAssertionButton_Click" ToolTip="Remove"/>
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

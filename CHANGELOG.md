@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-07-18
+
+### Added
+- **Response assertions (tests)** — a **Tests** tab on any request lets you assert on the response:
+  the **status**, **response time**, a **header**, a **JSON body path**, or the **body text**, with
+  `==` / `!=` / contains / matches (regex) / exists / absent / `<` / `>`. `certapi run` now passes a
+  request only when its assertions all pass — a request with no assertions still passes on any 2xx,
+  so a collection becomes a real pass/fail test suite. Failed assertions are listed on stderr and in
+  the `--json` output; the app shows a `✓ tests 3/3 passed` summary with the detail in Diagnostics.
+
 ## [1.28.1] - 2026-07-18
 
 ### Changed
