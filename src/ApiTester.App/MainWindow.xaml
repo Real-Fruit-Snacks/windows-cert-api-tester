@@ -122,7 +122,13 @@
                                    Foreground="{StaticResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
                                    Text="No saved requests yet. Send a request, then “Save current request…” to keep it here."/>
                         <TreeView x:Name="CollectionsTree" ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                  MouseDoubleClick="CollectionsTree_MouseDoubleClick">
+                                  MouseDoubleClick="CollectionsTree_MouseDoubleClick"
+                                  PreviewMouseRightButtonDown="CollectionsTree_PreviewMouseRightButtonDown">
+                            <TreeView.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Set website &amp; certificate…" Click="SetCollectionDefaults_Click"/>
+                                </ContextMenu>
+                            </TreeView.ContextMenu>
                             <TreeView.ItemTemplate>
                                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                     <StackPanel Orientation="Horizontal" ToolTip="{Binding StatusSummary}">
@@ -214,6 +220,7 @@
                 <Button x:Name="ForgetBaseButton" DockPanel.Dock="Right" Content="Forget" Width="74" Margin="8,0,0,0"
                         Click="ForgetBaseButton_Click"/>
                 <TextBox x:Name="BaseUrlBox" VerticalContentAlignment="Center"
+                         TextChanged="BaseUrlBox_TextChanged"
                          Tag="https://internal.corp   (optional base URL)"
                          ToolTip="Base URL, e.g. https://internal.corp — the URL box below is appended to this. Leave blank to type full URLs."/>
             </DockPanel>
@@ -343,11 +350,15 @@
                             <TextBlock Text="TYPE" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="60"/>
                             <ComboBox x:Name="AuthTypeCombo" Width="180" SelectedIndex="0"
                                       SelectionChanged="AuthTypeCombo_SelectionChanged">
-                                <ComboBoxItem>None</ComboBoxItem>
+                                <ComboBoxItem>Auto (captured token)</ComboBoxItem>
+                                <ComboBoxItem>None (never send auth)</ComboBoxItem>
                                 <ComboBoxItem>Bearer token</ComboBoxItem>
                                 <ComboBoxItem>Basic</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
+                        <TextBlock x:Name="AutoAuthHint" FontSize="12" Foreground="{StaticResource Text.Muted}"
+                                   TextWrapping="Wrap" Margin="60,0,0,8"
+                                   Text="Sends the bearer token captured from this website's last auth response, when one exists. Other websites never receive it."/>
                         <StackPanel x:Name="BearerPanel" Orientation="Horizontal" Margin="0,0,0,8" Visibility="Collapsed">
                             <TextBlock Text="TOKEN" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="60"/>
                             <TextBox x:Name="BearerTokenBox" Width="520" VerticalContentAlignment="Center"
@@ -610,6 +621,13 @@
                 <DockPanel>
                     <Button x:Name="SelfTestButton" Content="Run Self-Test" Width="118"
                             DockPanel.Dock="Right" Click="SelfTestButton_Click"/>
+                    <Border x:Name="TokenChip" DockPanel.Dock="Right" Visibility="Collapsed" Margin="0,0,10,0"
+                            VerticalAlignment="Center" Background="{StaticResource Bg.Input}"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10"
+                            Padding="10,3" Cursor="Hand" MouseLeftButtonUp="TokenChip_Click"
+                            ToolTip="A bearer token was captured for this website — click for details">
+                        <TextBlock x:Name="TokenChipText" FontSize="12" Foreground="{StaticResource Text.Soft}"/>
+                    </Border>
                     <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{StaticResource Text.Soft}"
                                TextTrimming="CharacterEllipsis" Text="Ready."/>
                 </DockPanel>

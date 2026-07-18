@@ -27,6 +27,7 @@ public partial class HelpWindow : Window
             ("Certificates & mTLS", Certificates),
             ("Collections & history", Collections),
             ("Environments & variables", Environments),
+            ("Automatic tokens", AutoTokens),
             ("Importing & exporting", Importing),
             ("Command line", CommandLine),
             ("Rendered website", Rendered),
@@ -207,6 +208,10 @@ public partial class HelpWindow : Window
             "Double-click a saved request to open it in a new tab. Rename or Delete with the buttons.",
             "Each saved request remembers its last result: after you send it, a dot appears next to its name — mint when the last send returned a 2xx (known good), red when it failed or returned an error status. Hover the entry for when it was last checked and what it returned.",
             "Collections persist between sessions, including each request's last result."),
+        P("Right-click a collection or folder and choose “Set website & certificate…” to give it " +
+          "defaults: endpoints opened from it inherit that website and certificate when they don't " +
+          "carry their own. The first successful send from a collection remembers the pair " +
+          "automatically, so clicking through an imported API just works."),
         Sub("HISTORY"),
         P("History lists your recent requests, labelled by path with the host beneath. Click one to reload the entire request — website, certificate, headers, auth, timeout, and body — and the response it returned. The app also remembers your window, last certificate, and settings between runs."));
 
@@ -222,6 +227,26 @@ public partial class HelpWindow : Window
         P("With base = https://api.internal.corp and userId = 42, that request is sent to https://api.internal.corp/users/42."),
         Sub("CAPTURE A TOKEN FROM A RESPONSE"),
         P("A request's Capture tab can save a value from its response into a {{variable}}: set a Variable name, choose Body (a dotted JSON path like data.access_token) or Header (a header name), and the value is written to your active environment when you send — a “Captured” environment is created if you don't have one selected. Reuse it as {{token}} in a Bearer token or any field. This turns an auth call + token reuse into two clicks."));
+
+    private UIElement AutoTokens() => Section("Automatic tokens",
+        P("Call a login endpoint and the app spots the bearer token in the response — access_token, " +
+          "id_token, token, accessToken, or jwt in the JSON body (top level or under data/result), " +
+          "or an X-Auth-Token / X-Access-Token header. No setup needed."),
+        Sub("SCOPED TO THE WEBSITE"),
+        P("A captured token belongs to the exact website it came from (scheme, host, and port). " +
+          "Requests to any other website never receive it."),
+        Sub("USING IT"),
+        P("Requests whose Auth type is “Auto (captured token)” — the default — attach the token " +
+          "automatically. A chip in the status bar shows the active website's token and its expiry; " +
+          "click it to inspect, clear, or turn automatic tokens off. Pick “None (never send auth)” " +
+          "on a request to opt out."),
+        Sub("EVERYWHERE"),
+        P("The same capture-and-reuse works headless: certapi send and certapi run print a note " +
+          "when they capture or use a token (--no-auto-token disables it), and the MCP server " +
+          "keeps a per-session token store so agent login flows just work."),
+        NoteBox("Explicit auth always wins: a Bearer/Basic setting or a manual Authorization " +
+                "header is never overridden, and expired tokens are never sent. Captured tokens " +
+                "are saved with your workspace in plain text — treat exported workspaces as private."));
 
     private UIElement Importing() => Section("Importing & exporting",
         P("Bring requests in from elsewhere with the Import ▾ menu next to the tabs."),

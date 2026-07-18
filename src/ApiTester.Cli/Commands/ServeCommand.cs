@@ -23,6 +23,12 @@ public static class ServeCommand
           --workspace <file>      Resolve a saved-website <upstream> from a workspace file
           -q, --quiet             No startup banner or per-request log
 
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          certapi serve https://internal-api.example.com --cert "CN=My Client" --port 8443
+          certapi serve https://internal-api.example.com --cert "CN=My Client" --port 8443 --insecure
+
         Loopback only; stop with Ctrl+C. Exit 0 clean shutdown, 2 usage, 3 data error.
         """;
 

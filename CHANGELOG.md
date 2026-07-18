@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-07-17
+
+### Added
+- **Automatic bearer tokens** — a token returned by any response (`access_token`, `id_token`,
+  `token`, `accessToken`, `jwt`, or an `X-Auth-Token`/`X-Access-Token` header) is captured with
+  zero setup and scoped to the website it came from. Requests with the new **Auto** auth mode
+  (the default) attach it automatically; explicit auth is never overridden, tokens never cross
+  hosts, and expired tokens are never sent. Works in the app (with a status-bar token chip to
+  inspect, clear, or disable), in `certapi send`/`run` (`--no-auto-token` to opt out), and in
+  the MCP server (per-session store, so agent login flows chain naturally). Tokens persist in
+  the workspace in plain text, like existing auth secrets.
+- **Collection defaults** — a collection or folder can hold a default website and client
+  certificate ("Set website & certificate…" on right-click, or auto-remembered from the first
+  successful send). Endpoints opened from a collection fill their blanks from the nearest
+  folder default or the active tab — no more re-picking the website and cert for every endpoint.
+- **`--debug` and `--log-file <path>`** on every certapi command: resolved URLs, sent headers
+  (Authorization masked), certificate lookup, TLS details, timings, and full stack traces on
+  stderr and/or appended to a log file.
+- **Examples in every help screen** — `certapi help <command>` now shows realistic, copy-paste
+  command examples, including login-then-call token flows and CI patterns.
+
+### Changed
+- Requests saved with auth **None** by earlier versions are treated as **Auto** (that value
+  used to mean "nothing configured"); the new explicit **None (never send auth)** is preserved.
+  State files are stamped with a schema version so the migration runs exactly once.
+
 ## [1.25.0] - 2026-07-16
 
 ### Added
@@ -337,6 +363,7 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
+[1.26.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.26.0
 [1.25.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.25.0
 [1.24.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.24.0
 [1.23.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/tag/v1.23.0

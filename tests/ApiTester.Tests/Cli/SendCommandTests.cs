@@ -8,6 +8,11 @@ namespace ApiTester.Tests.Cli;
 
 public class SendCommandTests
 {
+    // certapi send always reads the live state now (for auto-token reuse), so tests must point
+    // it at a per-test temp path — otherwise they'd read (and a corrupt copy could poison
+    // exit-code assertions with) the developer's real %AppData%\CertApiTester\state.json.
+    private static string TempState() => Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".json");
+
     private static async Task<(int Code, string Out, string Err, byte[] Body)> RunAsync(
         string[] args, string responseBody = "{\"ok\":true}")
     {
@@ -18,6 +23,7 @@ public class SendCommandTests
 
         var services = new CliServices
         {
+            LiveStatePath = TempState(),
             ListCertificates = _ => new[]
             {
                 new CertificateInfo
@@ -68,7 +74,7 @@ public class SendCommandTests
         Assert.Contains("missing", r.Err);       // unresolved-token warning
 
         var so = new StringWriter(); var se = new StringWriter();
-        Assert.Equal(2, CliApp.Run(new[] { "send" }, so, se, new MemoryStream(), new CliServices()));
+        Assert.Equal(2, CliApp.Run(new[] { "send" }, so, se, new MemoryStream(), new CliServices { LiveStatePath = TempState() }));
     }
 
     [Fact]
@@ -79,7 +85,7 @@ public class SendCommandTests
         var so = new StringWriter(); var se = new StringWriter();
         int code = CliApp.Run(
             new[] { "send", "https://127.0.0.1:1/", "--timeout", "2" },
-            so, se, new MemoryStream(), new CliServices());
+            so, se, new MemoryStream(), new CliServices { LiveStatePath = TempState() });
         Assert.Equal(1, code);
         Assert.Contains("error", se.ToString(), StringComparison.OrdinalIgnoreCase);
     }
@@ -117,7 +123,7 @@ public class SendCommandTests
         {
             int code = CliApp.Run(
                 new[] { "send", "https://127.0.0.1:1/", "--timeout", "2", "--json", "-o", outFile },
-                new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices());
+                new StringWriter(), new StringWriter(), new MemoryStream(), new CliServices { LiveStatePath = TempState() });
             Assert.Equal(1, code);
             Assert.False(File.Exists(outFile));
         }
@@ -131,7 +137,7 @@ public class SendCommandTests
         {
             var se = new StringWriter();
             int code = CliApp.Run(new[] { "send", "https://h/", "--timeout", bad },
-                                  new StringWriter(), se, new MemoryStream(), new CliServices());
+                                  new StringWriter(), se, new MemoryStream(), new CliServices { LiveStatePath = TempState() });
             Assert.Equal(2, code);
             Assert.Contains("--timeout", se.ToString());
         }
@@ -165,7 +171,7 @@ public class SendCommandTests
     {
         var se = new StringWriter();
         int code = CliApp.Run(new[] { "send", "https://h/", "-X", "BAD METHOD" },
-                              new StringWriter(), se, new MemoryStream(), new CliServices());
+                              new StringWriter(), se, new MemoryStream(), new CliServices { LiveStatePath = TempState() });
         Assert.Equal(1, code);
         Assert.Contains("error:", se.ToString());
         Assert.DoesNotContain("   at ", se.ToString());

@@ -10,6 +10,12 @@ public static class SelfTestCommand
 
         Stands up a local mutual-TLS server with generated certificates and proves the
         whole client-certificate path end to end — no real endpoint needed.
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          certapi selftest
+          certapi selftest --debug
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr)

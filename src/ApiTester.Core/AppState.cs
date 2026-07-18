@@ -31,6 +31,17 @@ public sealed class AppState
     public List<ApiEnvironment> Environments { get; set; } = new();
     public string? ActiveEnvironmentId { get; set; }
 
+    public List<SessionToken> SessionTokens { get; set; } = new();
+
+    /// <summary>Master switch for automatic token capture/attach. Detection results are still
+    /// stored while off, so turning it back on works immediately.</summary>
+    public bool AutoTokens { get; set; } = true;
+
+    /// <summary>File-format version. 0 = files from before the Auto/None auth split.</summary>
+    public int SchemaVersion { get; set; }
+
+    public const int CurrentSchemaVersion = 1;
+
     /// <summary>The live GUI state file under %AppData%. Computing the path has no side
     /// effects; <see cref="SaveTo"/> creates the directory when it first writes.</summary>
     public static string DefaultPath =>
@@ -44,8 +55,30 @@ public sealed class AppState
     }
 
     /// <summary>Load from an explicit file. Throws on missing/corrupt files — callers decide.</summary>
-    public static AppState LoadFrom(string path) =>
-        JsonSerializer.Deserialize<AppState>(File.ReadAllText(path)) ?? new AppState();
+    public static AppState LoadFrom(string path)
+    {
+        var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(path)) ?? new AppState();
+        state.Migrate();
+        return state;
+    }
+
+    /// <summary>Upgrade older states in place. Version 0 → 1: auth "None" predates the
+    /// Auto/None split and meant "nothing configured", so it becomes "Auto".</summary>
+    public void Migrate()
+    {
+        if (SchemaVersion >= CurrentSchemaVersion) return;
+        foreach (var t in Tabs) MigrateAuth(t);
+        foreach (var h in History) if (h.AuthType == "None") h.AuthType = "Auto";
+        foreach (var c in Collections) MigrateNode(c);
+        SchemaVersion = CurrentSchemaVersion;
+
+        static void MigrateAuth(RequestModel m) { if (m.AuthType == "None") m.AuthType = "Auto"; }
+        static void MigrateNode(CollectionNode n)
+        {
+            if (n.Request is { } r) MigrateAuth(r);
+            foreach (var child in n.Children) MigrateNode(child);
+        }
+    }
 
     public void Save()
     {
@@ -56,6 +89,7 @@ public sealed class AppState
     /// <summary>Write atomically: serialize to a temp file, then replace the target.</summary>
     public void SaveTo(string path)
     {
+        SchemaVersion = CurrentSchemaVersion;   // a written file is by definition current
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
         if (Path.GetDirectoryName(path) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
         var tmp = path + ".tmp";
@@ -130,6 +164,11 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
     public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
     public System.Collections.ObjectModel.ObservableCollection<CollectionNode> Children { get; set; } = new();
     public RequestModel? Request { get; set; }   // populated when this is a saved request (not a folder)
+
+    /// <summary>Folder-level defaults: the website and client certificate a request opened from
+    /// this folder inherits when it doesn't carry its own. The nearest ancestor with a value wins.</summary>
+    public string? DefaultBaseUrl { get; set; }
+    public string? DefaultCertThumbprint { get; set; }
 
     /// <summary>The status code the last send of this saved request returned (null if it failed
     /// without a response, or if it has never been sent — see <see cref="LastCheckedUtc"/>).</summary>

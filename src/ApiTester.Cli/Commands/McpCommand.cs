@@ -25,6 +25,17 @@ public static class McpCommand
           --insecure              Ignore upstream server-certificate errors (internal CAs)
           --timeout <seconds>     Per-request upstream timeout (default 100)
           --workspace <file>      Load saved requests / environments from a workspace file
+          --no-auto-token         Don't capture/reuse bearer tokens across the session's calls
+
+        Tokens returned by one tool call (e.g. a login via send_request) are captured in
+        memory for this session and attached to later calls to the same host.
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          certapi mcp --cert "CN=Agent Client" --allow api.example.com
+          certapi mcp --cert 4A8823… --allow api.example.com --allow auth.example.com --insecure
+          certapi mcp --cert "CN=Agent Client" --allow api.example.com --workspace .\suite.json
 
         Speaks JSON-RPC 2.0 over stdin/stdout; diagnostics go to stderr. Stop with Ctrl+C or by
         closing stdin. Exit 0 clean shutdown, 2 usage, 3 data error.
@@ -38,6 +49,7 @@ public static class McpCommand
         bool insecure = args.Flag("--insecure");
         string? timeoutRaw = args.Value("--timeout");
         string? workspace = args.Value("--workspace");
+        bool noAutoToken = args.Flag("--no-auto-token");
         if (args.Positionals().Count > 0) throw new CliUsageException(Help);
 
         int timeout = 100;
@@ -55,7 +67,7 @@ public static class McpCommand
         stderr.WriteLine($"certapi mcp ready · cert: {cert?.Subject ?? "none"} · " +
             (allowHosts.Count == 0 ? "allow: ANY HOST (no --allow given)" : "allow: " + string.Join(", ", allowHosts)));
 
-        var server = new McpServer(BuildTools(cert, allow, insecure, timeout, localMachine, workspace, services), Version());
+        var server = new McpServer(BuildTools(cert, allow, insecure, timeout, localMachine, workspace, noAutoToken, services), Version());
         server.Run(input, stdout, stderr, services.Cancel);
         return ExitCodes.Ok;
     }
@@ -70,27 +82,43 @@ public static class McpCommand
 
     internal static IReadOnlyList<ToolDef> BuildTools(
         X509Certificate2? cert, HostAllowlist allow, bool insecure, int timeout,
-        bool includeLocalMachine, string? workspace, CliServices services)
+        bool includeLocalMachine, string? workspace, bool noAutoToken, CliServices services)
     {
-        ToolResult Envelope(ApiResponse r) =>
-            new(SendCommand.BuildEnvelope(r, includeBody: true), IsError: r.Error is not null);
+        // Session-scoped token store: lives for this MCP process only, never written to disk.
+        var tokenState = new AppState();
 
-        ToolResult SendUrl(string method, string url, IEnumerable<KeyValuePair<string, string>> headers, string? body, string? contentType)
+        ToolResult SendUrl(string method, string url, IEnumerable<KeyValuePair<string, string>> headers,
+            string? body, string? contentType, bool allowAutoToken = true)
         {
             if (!allow.IsAllowed(url))
                 return new ToolResult(JsonSerializer.Serialize(new { error = $"host for '{url}' is not allowed" }), true);
+
+            var headerList = headers.ToList();
+            var notes = new List<string>();
+            if (!noAutoToken && allowAutoToken)
+            {
+                var used = TokenService.AutoAttach(tokenState, url, headerList, out var expired);
+                if (used is not null) notes.Add($"using captured token for {TokenService.HostOf(url)}");
+                else if (expired is not null) notes.Add($"captured token for {TokenService.HostOf(url)} has expired");
+            }
+
             var request = new ApiRequest
             {
                 Method = new HttpMethod(method.ToUpperInvariant()),
                 Url = url,
-                Headers = headers.ToList(),
+                Headers = headerList,
                 Body = body,
                 ContentType = body is not null ? (contentType ?? "application/json") : null,
                 Timeout = TimeSpan.FromSeconds(timeout)
             };
             var response = services.Client.SendAsync(request, cert, insecure, followRedirects: false, cancellationToken: services.Cancel)
                 .GetAwaiter().GetResult();
-            return Envelope(response);
+
+            if (!noAutoToken && response.Error is null &&
+                TokenService.Capture(tokenState, url, response.Body, response.ContentType, response.Headers) is { } captured)
+                notes.Add($"captured bearer token for {TokenService.HostOf(url)} ({captured.Source})");
+
+            return new ToolResult(SendCommand.BuildEnvelope(response, includeBody: true, notes), IsError: response.Error is not null);
         }
 
         // ---- send_request ----
@@ -189,7 +217,9 @@ public static class McpCommand
                 string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
                 if (unresolved.Count > 0)
                     return Err("unresolved variables: " + string.Join(", ", unresolved.Select(u => "{{" + u + "}}")));
-                return SendUrl(m.Method, url, headers, body, m.ContentType == "(none)" ? null : m.ContentType);
+                return SendUrl(m.Method, url, headers, body,
+                    m.ContentType == "(none)" ? null : m.ContentType,
+                    allowAutoToken: m.AuthType == "Auto");
             });
 
         // ---- self_test ----

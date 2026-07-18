@@ -24,6 +24,9 @@ public sealed class CliServices
 
     public Func<Uri, System.Security.Cryptography.X509Certificates.X509Certificate2?, bool, TimeSpan, ApiTester.Core.MtlsGateway> GatewayFactory
     { get; init; } = (upstream, cert, insecure, timeout) => new ApiTester.Core.MtlsGateway(upstream, cert, insecure, timeout);
+
+    /// <summary>Diagnostic sink for --debug / --log-file; set per invocation by CliApp.</summary>
+    public CliLog Log { get; set; } = CliLog.None;
 }
 
 public static class CliApp
@@ -42,6 +45,21 @@ public static class CliApp
           mcp               Run an MCP server so AI agents can make mTLS calls
           help [command]    Show help (for one command, or this overview)
 
+        Global options (work on every command, anywhere on the line):
+          --debug           Rich diagnostics on stderr: resolved URLs, headers (Authorization
+                            masked), certificate lookup, TLS details, timings, full stack traces
+          --log-file <path> Append everything (diagnostics + all stderr output) to a log file
+
+        Examples:
+          certapi certs
+          certapi send https://api.example.com/health --cert "CN=My Client"
+          certapi send https://api.example.com/login -X POST -d '{"user":"me"}'
+              # a token in the response (access_token / id_token / …) is captured
+              # automatically and reused for later requests to the same host
+          certapi run smoke-suite --env Staging
+          certapi selftest
+          certapi send https://api.example.com/x --debug --log-file certapi.log
+
         Run 'certapi help <command>' for options. 'certapi --version' prints the version.
         """;
 
@@ -51,10 +69,17 @@ public static class CliApp
         services ??= new CliServices();
         if (args.Length > 0 && args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase))
         {
-            try { return Commands.McpCommand.Run(new Args(args.Skip(1).ToArray()), input, stdout, stderr, services); }
+            (string[] Remaining, bool Debug, string? LogFile) g;
+            try { g = GlobalOptions.Extract(args.Skip(1).ToArray()); }
             catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
-            catch (CliDataException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Data; }
-            catch (Exception ex) { stderr.WriteLine("error: " + ex.Message); return ExitCodes.Failure; }
+
+            using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
+            services.Log = log;
+            var err = log.WrapStderr(stderr);
+            try { return Commands.McpCommand.Run(new Args(g.Remaining), input, stdout, err, services); }
+            catch (CliUsageException ex) { err.WriteLine(ex.Message); return ExitCodes.Usage; }
+            catch (CliDataException ex) { err.WriteLine(ex.Message); return ExitCodes.Data; }
+            catch (Exception ex) { err.WriteLine("error: " + log.Describe(ex)); return ExitCodes.Failure; }
         }
         return Run(args, stdout, stderr, bodyOut, services);
     }
@@ -63,29 +88,37 @@ public static class CliApp
                           Stream? bodyOut = null, CliServices? services = null)
     {
         services ??= new CliServices();
+        if (args.Length == 0) { stderr.WriteLine(Usage); return ExitCodes.Usage; }
+
+        (string[] Remaining, bool Debug, string? LogFile) g;
+        try { g = GlobalOptions.Extract(args); }
+        catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
+
+        using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
+        services.Log = log;
+        var err = log.WrapStderr(stderr);
         try
         {
-            if (args.Length == 0) { stderr.WriteLine(Usage); return ExitCodes.Usage; }
-
-            string command = args[0].ToLowerInvariant();
-            var rest = args.Skip(1).ToArray();
+            if (g.Remaining.Length == 0) { err.WriteLine(Usage); return ExitCodes.Usage; }
+            string command = g.Remaining[0].ToLowerInvariant();
+            var rest = g.Remaining.Skip(1).ToArray();
             return command switch
             {
                 "--version" or "-v" => Version(stdout),
                 "help" or "--help" or "-h" => Help(rest, stdout),
-                "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, stderr, services),
-                "send" => Commands.SendCommand.Run(new Args(rest), stdout, stderr, bodyOut ?? new MemoryStream(), services),
-                "run" => Commands.RunCommand.Run(new Args(rest), stdout, stderr, services),
-                "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, stderr),
-                "import" => Commands.ImportCommand.Run(new Args(rest), stdout, stderr, services),
-                "export" => Commands.ExportCommand.Run(new Args(rest), stdout, stderr, services),
-                "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, stderr, services),
-                _ => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
+                "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, err, services),
+                "send" => Commands.SendCommand.Run(new Args(rest), stdout, err, bodyOut ?? new MemoryStream(), services),
+                "run" => Commands.RunCommand.Run(new Args(rest), stdout, err, services),
+                "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, err),
+                "import" => Commands.ImportCommand.Run(new Args(rest), stdout, err, services),
+                "export" => Commands.ExportCommand.Run(new Args(rest), stdout, err, services),
+                "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, err, services),
+                _ => throw new CliUsageException($"Unknown command '{g.Remaining[0]}'.\n{Usage}")
             };
         }
-        catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
-        catch (CliDataException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Data; }
-        catch (Exception ex) { stderr.WriteLine("error: " + ex.Message); return ExitCodes.Failure; }
+        catch (CliUsageException ex) { err.WriteLine(ex.Message); return ExitCodes.Usage; }
+        catch (CliDataException ex) { err.WriteLine(ex.Message); return ExitCodes.Data; }
+        catch (Exception ex) { err.WriteLine("error: " + log.Describe(ex)); return ExitCodes.Failure; }
     }
 
     private static int Version(TextWriter stdout)
