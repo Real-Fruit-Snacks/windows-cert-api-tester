@@ -22,6 +22,9 @@ public static class SendCommand
         TLS / certificates:
           --cert <thumb|subject>  Client certificate from the Windows store
           --store <location>      CurrentUser (default); LocalMachine searches both stores
+          --cert-file <path>      Client certificate from a file (.pfx/.p12 or .pem/.crt) instead
+          --cert-password <pw>    Password for a .pfx/.p12 certificate file
+          --key-file <path>       Private-key file for a PEM cert whose key is in a separate file
           --insecure              Ignore server certificate errors
 
         Automatic tokens:
@@ -91,7 +94,6 @@ public static class SendCommand
         string? contentType = args.Value("--content-type");
         string? bearer = args.Value("--bearer");
         string? basic = args.Value("--basic");
-        string? certQuery = args.Value("--cert");
         string store = args.Value("--store") ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? timeoutRaw = args.Value("--timeout");
@@ -110,6 +112,9 @@ public static class SendCommand
         bool quiet = args.Flag("-q", "--quiet");
         var captureSpecs = args.Values("--capture");
         bool noAutoToken = args.Flag("--no-auto-token");
+        // Resolve the certificate here (Windows store or a file) so its options are consumed
+        // before Positionals() rejects anything option-shaped that's left over.
+        var cert = CliCert.Resolve(args, store, services, stderr);
 
         var positionals = args.Positionals();
         if (positionals.Count != 1) throw new CliUsageException(Help);
@@ -193,12 +198,6 @@ public static class SendCommand
             }
         }
 
-        // ---- certificate ----
-        bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
-        if (!localMachine && !store.Equals("CurrentUser", StringComparison.OrdinalIgnoreCase))
-            throw new CliUsageException("--store must be CurrentUser or LocalMachine.");
-        var cert = certQuery is null ? null
-            : CertPicker.Resolve(services.ListCertificates(localMachine), certQuery, stderr).Certificate;
 
         // ---- send ----
         var request = new ApiRequest

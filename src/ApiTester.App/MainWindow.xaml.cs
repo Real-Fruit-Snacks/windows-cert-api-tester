@@ -1300,6 +1300,51 @@ public partial class MainWindow : Window
 
     private void RefreshCertsButton_Click(object sender, RoutedEventArgs e) => LoadCertificates();
 
+    /// <summary>Load a client certificate from a file (.pfx/.p12 or .pem/.crt) into the picker for
+    /// this session, for endpoints whose certificate isn't in the Windows store.</summary>
+    private void LoadCertFromFile_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Load client certificate",
+            Filter = "Certificate (*.pfx;*.p12;*.pem;*.crt)|*.pfx;*.p12;*.pem;*.crt|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        string path = dlg.FileName;
+
+        X509Certificate2 cert;
+        try
+        {
+            cert = CertificateFileLoader.Load(path);
+        }
+        catch (CertificateFileException ex)
+        {
+            // A .pfx/.p12 usually needs a password — prompt once and retry.
+            string extension = System.IO.Path.GetExtension(path).ToLowerInvariant();
+            if (extension is not (".pfx" or ".p12")) { StatusText.Text = ex.Message; return; }
+            var pw = InputDialog.Show(this, "Certificate password",
+                $"Password for {System.IO.Path.GetFileName(path)}", "");
+            if (string.IsNullOrEmpty(pw)) { StatusText.Text = ex.Message; return; }
+            try { cert = CertificateFileLoader.Load(path, pw); }
+            catch (CertificateFileException ex2) { StatusText.Text = ex2.Message; return; }
+        }
+
+        string eku = HasClientAuthEku(cert) ? "" : " (no client-auth EKU)";
+        var option = new CertOption($"{cert.Subject}  —  {cert.Thumbprint}{eku}  (from file)", cert, cert.Thumbprint);
+        _allOptions.Add(option);
+        ApplyCertFilter();
+        SelectCertByThumbprint(cert.Thumbprint);
+        StatusText.Text = $"Loaded {System.IO.Path.GetFileName(path)} for this session — it stays until you press Refresh.";
+    }
+
+    private static bool HasClientAuthEku(X509Certificate2 cert)
+    {
+        foreach (var ext in cert.Extensions.OfType<X509EnhancedKeyUsageExtension>())
+            foreach (var oid in ext.EnhancedKeyUsages)
+                if (oid.Value == "1.3.6.1.5.5.7.3.2") return true;
+        return false;
+    }
+
     private X509Certificate2? SelectedCert()
     {
         int i = CertCombo.SelectedIndex;

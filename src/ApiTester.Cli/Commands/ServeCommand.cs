@@ -16,6 +16,9 @@ public static class ServeCommand
           --port <n>              Local port to listen on (127.0.0.1 only)
           --cert <thumb|subject>  Client certificate from the Windows store
           --store <location>      CurrentUser (default); LocalMachine searches both stores
+          --cert-file <path>      Client certificate from a file (.pfx/.p12 or .pem/.crt) instead
+          --cert-password <pw>    Password for a .pfx/.p12 certificate file
+          --key-file <path>       Private-key file for a PEM cert whose key is separate
           --insecure              Ignore upstream server-certificate errors (internal CAs)
           --token <value>         Require callers to send this token (Authorization: Bearer
                                   <value> or X-Certapi-Token: <value>); off by default
@@ -35,13 +38,14 @@ public static class ServeCommand
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
         string? portRaw = args.Value("--port");
-        string? certQuery = args.Value("--cert");
         string store = args.Value("--store") ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? token = args.Value("--token");
         string? timeoutRaw = args.Value("--timeout");
         string? workspace = args.Value("--workspace");
         bool quiet = args.Flag("-q", "--quiet");
+        // Resolve the certificate before Positionals() rejects its options (store or a file).
+        var cert = CliCert.Resolve(args, store, services, stderr);
 
         var positionals = args.Positionals();
         if (positionals.Count != 1) throw new CliUsageException(Help);
@@ -55,13 +59,6 @@ public static class ServeCommand
 
         // Resolve the upstream: an absolute http(s) URL, or a saved-website name.
         Uri upstream = ResolveUpstream(positionals[0], workspace, services);
-
-        // Resolve the certificate once, up front.
-        bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
-        if (!localMachine && !store.Equals("CurrentUser", StringComparison.OrdinalIgnoreCase))
-            throw new CliUsageException("--store must be CurrentUser or LocalMachine.");
-        var cert = certQuery is null ? null
-            : CertPicker.Resolve(services.ListCertificates(localMachine), certQuery, stderr).Certificate;
 
         using var gateway = services.GatewayFactory(upstream, cert, insecure, TimeSpan.FromSeconds(timeoutSeconds));
 

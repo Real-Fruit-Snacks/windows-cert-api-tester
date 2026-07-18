@@ -23,6 +23,9 @@ public static class FuzzCommand
         TLS / certificates:
           --cert <thumb|subject>   Client certificate from the Windows store
           --store <location>       CurrentUser (default); LocalMachine searches both stores
+          --cert-file <path>       Client certificate from a file (.pfx/.p12 or .pem/.crt) instead
+          --cert-password <pw>     Password for a .pfx/.p12 certificate file
+          --key-file <path>        Private-key file for a PEM cert whose key is separate
           --insecure               Ignore server certificate errors
           --timeout <seconds>      Per-probe timeout (default 100)
 
@@ -80,7 +83,6 @@ public static class FuzzCommand
         string? methodsRaw = args.Value("-X", "--methods");
         var headers = args.Values("-H", "--header");
         string? bearer = args.Value("--bearer");
-        string? certQuery = args.Value("--cert");
         string store = args.Value("--store") ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? timeoutRaw = args.Value("--timeout");
@@ -97,6 +99,8 @@ public static class FuzzCommand
         string? saveCollection = args.Value("--save-collection");
         string? workspace = args.Value("--workspace");
         bool quiet = args.Flag("-q", "--quiet");
+        // Resolve the certificate (store or file) before Positionals() rejects its options.
+        var cert = CliCert.Resolve(args, store, services, stderr);
 
         var positionals = args.Positionals();
         if (positionals.Count != 1) throw new CliUsageException(Help);
@@ -140,13 +144,6 @@ public static class FuzzCommand
             headerPairs.Add(new(R(raw[..colon].Trim()), R(raw[(colon + 1)..].Trim())));
         }
         if (bearer is not null) headerPairs.Add(new("Authorization", "Bearer " + R(bearer)));
-
-        // ---- certificate ----
-        bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
-        if (!localMachine && !store.Equals("CurrentUser", StringComparison.OrdinalIgnoreCase))
-            throw new CliUsageException("--store must be CurrentUser or LocalMachine.");
-        var cert = certQuery is null ? null
-            : CertPicker.Resolve(services.ListCertificates(localMachine), certQuery, stderr).Certificate;
 
         var plan = new FuzzPlan
         {

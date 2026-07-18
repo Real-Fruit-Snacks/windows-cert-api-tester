@@ -175,13 +175,15 @@ public partial class HelpWindow : Window
         NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window."));
 
     private UIElement RequestsAndTabs() => Section("Requests & tabs",
-        P("A request is built from the request line (method, URL, timeout) plus four tabs beneath it."),
+        P("A request is built from the request line (method, URL, timeout) plus six tabs beneath it."),
         Sub("THE REQUEST TABS"),
         Bullets(
             "Params — a key/value grid for the query string. Type a ?query in the URL and it splits into the grid; the grid is recombined onto the URL, correctly encoded, when you send.",
             "Headers — a key/value grid; tick a row to include it.",
             "Body — a request body with a content-type selector.",
-            "Auth — None, Bearer token, or Basic (username / password). The helper builds the Authorization header for you."),
+            "Auth — Auto (use a captured token, the default), None, Bearer token, or Basic (username / password). The helper builds the Authorization header for you.",
+            "Capture — save a value from the response into a {{variable}} for later requests (see Automatic tokens).",
+            "Tests — assert on the response so a suite can pass/fail (see Testing responses)."),
         Sub("WORKING IN TABS"),
         Bullets(
             "Keep several requests open at once — each tab has its own website, certificate, and response.",
@@ -194,6 +196,7 @@ public partial class HelpWindow : Window
         P("When a site asks for a client certificate, the app presents the one you picked and lets Windows sign the TLS handshake — the private key never leaves the store, so non-exportable and smart-card certificates work."),
         Bullets(
             "The picker lists certificates from CurrentUser\\My with subject, thumbprint, and expiry. Use the filter box to narrow a long list; press F5 to refresh.",
+            "Not in the store? “From file…” loads a client certificate from a .pfx/.p12 (with an optional password) or a .pem/.crt for this session — headless, use --cert-file / --cert-password / --key-file.",
             "Certificates without a client-authentication EKU, and expired ones, are flagged in the list.",
             "“Ignore server cert errors” (off by default, clearly labelled insecure) lets you reach internal sites whose server certificate isn't publicly trusted."),
         Sub("DIAGNOSTICS"),
@@ -298,7 +301,8 @@ public partial class HelpWindow : Window
         P("certapi.exe — a separate download on the releases page — is the tester without the window, built for scripts and scheduled tasks."),
         Bullets(
             "certapi send <url> sends a one-off request; pick a client certificate from the Windows store with --cert <thumbprint or subject>. The body goes to stdout, diagnostics to stderr.",
-            "certapi run <collection or folder> runs saved requests as a pass/fail suite and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
+            "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
+            "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
             "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app.",
             "certapi mcp runs a Model Context Protocol server so an AI agent can make mTLS calls with a certificate you pin at launch, bounded by a host allowlist — send_request, list_certificates, list_saved, run_saved, and self_test tools over stdio.",

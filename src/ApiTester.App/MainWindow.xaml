@@ -238,6 +238,9 @@
                           Content="Ignore server cert errors (insecure)" VerticalAlignment="Center" Margin="16,0,0,0"/>
                 <Button x:Name="RefreshCertsButton" DockPanel.Dock="Right" Content="Refresh" Width="82" Margin="8,0,0,0"
                         Click="RefreshCertsButton_Click"/>
+                <Button x:Name="LoadCertFileButton" DockPanel.Dock="Right" Content="From file…" Width="90" Margin="8,0,0,0"
+                        Click="LoadCertFromFile_Click"
+                        ToolTip="Load a client certificate from a .pfx/.p12 or .pem/.crt file (for this session)"/>
                 <TextBox x:Name="CertFilter" DockPanel.Dock="Right" Width="140" Margin="8,0,0,0" Tag="filter…"
                          VerticalContentAlignment="Center" ToolTip="Filter certificates" TextChanged="CertFilter_TextChanged"/>
                 <ComboBox x:Name="CertCombo" DisplayMemberPath="."/>

@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-07-18
+
+### Added
+- **Client certificate from a file** — use a certificate that isn't in the Windows store: load a
+  `.pfx`/`.p12` (with an optional password) or a `.pem`/`.crt` (key in the same file or a separate
+  one). In the app, **From file…** on the certificate row loads it for the session; headless, use
+  `--cert-file` with `--cert-password` / `--key-file` on `send`, `fuzz`, `serve`, and `mcp`.
+
+### Fixed
+- The in-app Help was updated for the current UI: the request now has six tabs (Params, Headers,
+  Body, Auth, Capture, Tests) and the command-line section documents `certapi fuzz`.
+
 ## [1.29.0] - 2026-07-18
 
 ### Added

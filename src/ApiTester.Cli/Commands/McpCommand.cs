@@ -20,6 +20,8 @@ public static class McpCommand
 
           --cert <thumb|subject>  Certificate all tools use (pinned; the agent can't change it)
           --store <location>      CurrentUser (default); LocalMachine searches both stores
+          --cert-file <path>      Pin a certificate from a file (.pfx/.p12 or .pem/.crt) instead
+          --cert-password <pw>    Password for a .pfx/.p12 certificate file
           --allow <host>          Allowed upstream host (repeatable); a URL must match or be a
                                   subdomain of one. Omit to allow any host (prints a warning).
           --insecure              Ignore upstream server-certificate errors (internal CAs)
@@ -43,25 +45,20 @@ public static class McpCommand
 
     public static int Run(Args args, TextReader input, TextWriter stdout, TextWriter stderr, CliServices services)
     {
-        string? certQuery = args.Value("--cert");
         string store = args.Value("--store") ?? "CurrentUser";
         var allowHosts = args.Values("--allow");
         bool insecure = args.Flag("--insecure");
         string? timeoutRaw = args.Value("--timeout");
         string? workspace = args.Value("--workspace");
         bool noAutoToken = args.Flag("--no-auto-token");
+        // Resolve the certificate before Positionals() rejects its options (store or a file).
+        var cert = CliCert.Resolve(args, store, services, stderr);
+        bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
         if (args.Positionals().Count > 0) throw new CliUsageException(Help);
 
         int timeout = 100;
         if (timeoutRaw is not null && (!int.TryParse(timeoutRaw, out timeout) || timeout <= 0))
             throw new CliUsageException($"--timeout expects a positive number of seconds, got '{timeoutRaw}'.");
-
-        bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
-        if (!localMachine && !store.Equals("CurrentUser", StringComparison.OrdinalIgnoreCase))
-            throw new CliUsageException("--store must be CurrentUser or LocalMachine.");
-
-        var cert = certQuery is null ? null
-            : CertPicker.Resolve(services.ListCertificates(localMachine), certQuery, stderr).Certificate;
 
         var allow = new HostAllowlist(allowHosts);
         stderr.WriteLine($"certapi mcp ready · cert: {cert?.Subject ?? "none"} · " +
