@@ -34,6 +34,12 @@ jobs:
           dotnet publish src/ApiTester.App -c Release -r win-x64 --self-contained -o publish
           dotnet publish src/ApiTester.Cli -c Release -r win-x64 --self-contained -o publish-cli
 
+      - name: Bundle the full repository source
+        shell: bash
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        run: git archive --format=zip --prefix="certapi-${TAG}/" -o "certapi-source-${TAG}.zip" HEAD
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,5 +50,6 @@ jobs:
             "publish/ApiTester.App.exe#Certificate API Tester (Windows x64, self-contained)" \
             "publish-cli/certapi.exe#certapi command-line client (Windows x64, self-contained)" \
             "wordlists/common-api-endpoints.txt#Starter endpoint wordlist for 'certapi fuzz'" \
+            "certapi-source-${TAG}.zip#Full source — the entire repository at this tag" \
             --title "Certificate API Tester $TAG" \
             --generate-notes

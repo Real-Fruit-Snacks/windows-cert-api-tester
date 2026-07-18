@@ -110,8 +110,11 @@ public static class AssertionEvaluator
 
     private static bool TryRegex(string pattern, string input)
     {
-        try { return Regex.IsMatch(input, pattern); }
-        catch (ArgumentException) { return false; }   // an invalid pattern never matches
+        // The pattern is user-supplied and runs against a whole response body, so bound the match
+        // time — a catastrophic-backtracking pattern must fail the assertion, not hang the run.
+        try { return Regex.IsMatch(input, pattern, RegexOptions.None, TimeSpan.FromSeconds(2)); }
+        catch (ArgumentException) { return false; }         // an invalid pattern never matches
+        catch (RegexMatchTimeoutException) { return false; } // a runaway pattern never matches
     }
 
     private static bool TryNum(string? s, out double n) =>

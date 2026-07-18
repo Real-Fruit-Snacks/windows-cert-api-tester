@@ -20,6 +20,22 @@ public class AssertionEvaluatorTests
     private static bool Pass(AssertionRule r, ApiResponse resp) => AssertionEvaluator.Evaluate(new[] { r }, resp)[0].Passed;
 
     [Fact]
+    public void Matches_bounds_a_catastrophic_pattern_instead_of_hanging()
+    {
+        // A classic ReDoS pattern against non-matching input would backtrack for a very long time
+        // without a timeout. The evaluator must return (fail) quickly rather than hang the run.
+        var resp = Resp(200, new string('a', 40) + "!");
+        var rule = Rule(AssertTarget.BodyText, AssertOp.Matches, "(a+)+$");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool passed = Pass(rule, resp);
+        sw.Stop();
+
+        Assert.False(passed);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"regex should have been bounded, took {sw.Elapsed}");
+    }
+
+    [Fact]
     public void Status_equals()
     {
         Assert.True(Pass(Rule(AssertTarget.Status, AssertOp.Equals, "200"), Resp(200)));

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-07-18
+
+### Fixed
+- **Assertion regex is bounded** — a `Matches` assertion runs a user-supplied pattern against the
+  whole response body, so it now has a 2-second match timeout: a catastrophic-backtracking pattern
+  fails the assertion instead of hanging `certapi run` or the GUI Tests tab.
+
+### Changed
+- **Releases include the full source** — each release now attaches `certapi-source-<tag>.zip`, a
+  clean archive of the entire repository at that tag (all tracked files, no build output).
+
 ## [1.44.0] - 2026-07-18
 
 ### Added
