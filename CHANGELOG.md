@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-07-18
+
+### Added
+- **GraphQL** — `certapi send <url> --graphql "<query>" --gql-variables '{"id":1}'` posts a
+  correctly-formed GraphQL request (JSON `{ query, variables }`, application/json, POST), with the
+  query escaped and the variables validated.
+
 ## [1.36.0] - 2026-07-18
 
 ### Added

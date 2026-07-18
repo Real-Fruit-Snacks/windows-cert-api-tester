@@ -17,6 +17,8 @@ public static class SendCommand
           -F, --form name=value   multipart/form-data field; name=@path uploads a file
                                   (name=@path;type=<ct> sets its content type). Repeatable;
                                   implies POST. Mutually exclusive with -d.
+          --graphql <query>       Send a GraphQL query (POST, application/json)
+          --gql-variables <json>  A JSON object of GraphQL variables
           --content-type <ct>     Body content type (default application/json)
           --bearer <token>        Authorization: Bearer …
           --basic <user:pass>     Authorization: Basic …
@@ -77,6 +79,9 @@ public static class SendCommand
           # Upload a file (and a text field) as multipart/form-data (implies POST)
           certapi send https://api.example.com/upload -F "notes=cover page" -F "file=@.\report.pdf"
 
+          # A GraphQL query with variables
+          certapi send https://api.example.com/graphql --graphql "query($id:ID!){ user(id:$id){ name } }" --gql-variables "{\"id\":1}"
+
           # Environments and capture rules
           certapi send "https://{{host}}/login" --env Staging --capture session=data.session_id
 
@@ -98,8 +103,10 @@ public static class SendCommand
         string? data = args.Value("-d", "--data");
         string? dataFile = args.Value("--data-file");
         var formSpecs = args.Values("-F", "--form");
-        // -F implies a POST unless a method is given explicitly (curl's behaviour).
-        string method = methodOpt ?? (formSpecs.Count > 0 ? "POST" : "GET");
+        string? graphql = args.Value("--graphql");
+        string? gqlVars = args.Value("--gql-variables");
+        // -F and --graphql imply a POST unless a method is given explicitly (curl's behaviour).
+        string method = methodOpt ?? (formSpecs.Count > 0 || graphql is not null ? "POST" : "GET");
         string? contentType = args.Value("--content-type");
         string? bearer = args.Value("--bearer");
         string? basic = args.Value("--basic");
@@ -149,6 +156,8 @@ public static class SendCommand
             throw new CliUsageException("-d/--data and --data-file are mutually exclusive.");
         if (formSpecs.Count > 0 && (data is not null || dataFile is not null))
             throw new CliUsageException("-F/--form (multipart) and -d/--data are mutually exclusive.");
+        if (graphql is not null && (data is not null || dataFile is not null || formSpecs.Count > 0))
+            throw new CliUsageException("--graphql cannot be combined with -d/--data or -F/--form.");
         if (bearer is not null && basic is not null)
             throw new CliUsageException("--bearer and --basic are mutually exclusive.");
 
@@ -206,6 +215,12 @@ public static class SendCommand
         if (basic is not null) headerPairs.Add(new("Authorization",
             "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(R(basic)))));
         if (body is not null) body = R(body);
+        if (graphql is not null)
+        {
+            try { body = GraphQL.BuildBody(R(graphql), string.IsNullOrWhiteSpace(gqlVars) ? null : R(gqlVars)); }
+            catch (System.Text.Json.JsonException ex)
+            { throw new CliDataException($"--gql-variables must be a JSON object: {ex.Message}"); }
+        }
 
         if (unresolved.Count > 0)
         {

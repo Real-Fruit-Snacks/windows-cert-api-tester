@@ -55,6 +55,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
   app (**Discover…**) or headless (`certapi fuzz`). Discoveries open as tabs or save as a collection.
 - **`--debug` / `--log-file`** — every certapi command can explain exactly what it sent, looked
   up, and negotiated, on screen or into a log file.
+- **GraphQL** — `certapi send <url> --graphql "<query>" --gql-variables '{"id":1}'` posts a correctly-formed GraphQL request (JSON `{ query, variables }`), so you can hit GraphQL endpoints from the command line.
 - **Import from cURL** — paste a `curl` command and it opens a ready-to-send tab with the method, URL, query, headers, body, and auth filled in (understands `-X`, `-H`, `-d`, `-u`, `-k`, Bearer headers, quoting, and line continuations).
 - **Import OpenAPI / Swagger** — point it at a JSON OpenAPI 3.x or Swagger 2.0 file to generate a collection of requests, foldered by tag, with the server as each request's website.
 - **Export as OpenAPI** — write the selected folder (or all collections) as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its parameters, headers, and body example, and each known-good note becomes the operation description. Tokens and passwords are never written — auth is exported as a security scheme only.
