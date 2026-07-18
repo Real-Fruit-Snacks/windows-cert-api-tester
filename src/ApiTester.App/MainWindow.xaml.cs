@@ -75,6 +75,7 @@ public partial class MainWindow : Window
         InitializeEnvironments();
 
         PreviewKeyDown += Window_PreviewKeyDown;
+        UpdateTokenChip();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -190,6 +191,7 @@ public partial class MainWindow : Window
             _loadedTab = newTab;
             ShowTabResponse(newTab);
             BindNetwork(newTab);
+            UpdateTokenChip();
         }
         finally { _switching = false; }
     }
@@ -246,7 +248,7 @@ public partial class MainWindow : Window
             ParamsItems.ItemsSource = m.QueryParams;
             BodyBox.Text = m.Body ?? "";
             SelectContentType(m.ContentType);
-            AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 1, "Basic" => 2, _ => 0 };
+            AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 2, "Basic" => 3, "None" => 1, _ => 0 };
             BearerTokenBox.Text = m.AuthType == "Bearer" ? m.AuthSecret ?? "" : "";
             BasicUserBox.Text = m.AuthUser ?? "";
             BasicPassBox.Text = m.AuthType == "Basic" ? m.AuthSecret ?? "" : "";
@@ -274,9 +276,9 @@ public partial class MainWindow : Window
 
         m.Body = BodyBox.Text;
         m.ContentType = SelectedContentType();
-        m.AuthType = AuthTypeCombo.SelectedIndex switch { 1 => "Bearer", 2 => "Basic", _ => "None" };
+        m.AuthType = AuthTypeCombo.SelectedIndex switch { 2 => "Bearer", 3 => "Basic", 1 => "None", _ => "Auto" };
         m.AuthUser = BasicUserBox.Text;
-        m.AuthSecret = AuthTypeCombo.SelectedIndex == 1 ? BearerTokenBox.Text : BasicPassBox.Text;
+        m.AuthSecret = AuthTypeCombo.SelectedIndex == 2 ? BearerTokenBox.Text : BasicPassBox.Text;
         m.CertThumbprint = SelectedThumbprint();
         m.IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true;
         m.TimeoutSeconds = ParseTimeout();
@@ -1247,6 +1249,61 @@ public partial class MainWindow : Window
         CertCombo.SelectedIndex = idx >= 0 ? idx : 0;
     }
 
+    // ---------- session token chip ----------
+
+    /// <summary>The URL the editor currently points at (base + path), without touching the model.</summary>
+    private string CurrentEditorUrl() => UrlHelper.Combine(BaseUrlBox.Text, UrlBox.Text);
+
+    private void UpdateTokenChip()
+    {
+        var url = CurrentEditorUrl();
+        var origin = TokenService.OriginOf(url);
+        var token = origin is null ? null : _state.SessionTokens.FirstOrDefault(t => t.Origin == origin);
+        if (token is null) { TokenChip.Visibility = Visibility.Collapsed; return; }
+
+        TokenChip.Visibility = Visibility.Visible;
+        string suffix =
+            !_state.AutoTokens ? " · auto off"
+            : token.IsExpired ? " · expired"
+            : token.ExpiresUtc is { } e ? $" · expires in {Math.Max(1, (int)(e - DateTime.UtcNow).TotalMinutes)}m"
+            : "";
+        TokenChipText.Text = $"Token: {new Uri(url).Host}{suffix}";
+    }
+
+    private void TokenChip_Click(object sender, MouseButtonEventArgs e)
+    {
+        var url = CurrentEditorUrl();
+        var origin = TokenService.OriginOf(url);
+        var token = origin is null ? null : _state.SessionTokens.FirstOrDefault(t => t.Origin == origin);
+        if (token is null) { UpdateTokenChip(); return; }
+
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem
+        {
+            Header = $"{token.Source} · captured {token.CapturedUtc.ToLocalTime():HH:mm}" +
+                     (token.ExpiresUtc is { } ex ? $" · expires {ex.ToLocalTime():HH:mm}" : ""),
+            IsEnabled = false
+        });
+        menu.Items.Add(new Separator());
+
+        var clearOne = new MenuItem { Header = $"Clear token for {new Uri(url).Host}" };
+        clearOne.Click += (_, _) => { _state.SessionTokens.Remove(token); UpdateTokenChip(); };
+        menu.Items.Add(clearOne);
+
+        var clearAll = new MenuItem { Header = "Clear all captured tokens" };
+        clearAll.Click += (_, _) => { _state.SessionTokens.Clear(); UpdateTokenChip(); };
+        menu.Items.Add(clearAll);
+
+        menu.Items.Add(new Separator());
+        var toggle = new MenuItem { Header = "Automatically use captured tokens", IsCheckable = true, IsChecked = _state.AutoTokens };
+        toggle.Click += (_, _) => { _state.AutoTokens = toggle.IsChecked; UpdateTokenChip(); };
+        menu.Items.Add(toggle);
+
+        menu.PlacementTarget = TokenChip;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+        menu.IsOpen = true;
+    }
+
     // ---------- website (base URL) ----------
 
     private void RefreshSavedBases()
@@ -1287,6 +1344,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BaseUrlBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (TokenChip is null) return; // during init
+        UpdateTokenChip();
+    }
+
     // ---------- headers / params / auth ----------
 
     private void AddHeaderButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.Headers.Add(new HeaderRow());
@@ -1313,8 +1376,9 @@ public partial class MainWindow : Window
     private void AuthTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (BearerPanel is null) return; // during init
-        BearerPanel.Visibility = AuthTypeCombo.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
-        BasicPanel.Visibility = AuthTypeCombo.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        AutoAuthHint.Visibility = AuthTypeCombo.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
+        BearerPanel.Visibility = AuthTypeCombo.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        BasicPanel.Visibility = AuthTypeCombo.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---------- send ----------
@@ -1350,6 +1414,8 @@ public partial class MainWindow : Window
     {
         var m = ActiveRequest!;
         var (url, headers, body, unresolved) = ResolveActive();
+        if (m.AuthType == "Auto")
+            TokenService.AutoAttach(_state, url, headers, out _);
         _unresolvedVars = unresolved;
         string? contentType = body is not null && m.ContentType != "(none)" ? m.ContentType : null;
 
@@ -1437,7 +1503,10 @@ public partial class MainWindow : Window
                     ClientCertPresented = response.Connection?.ClientCertificateSent ?? false,
                     Error = response.Error?.Message,
                     Source = "Request",
-                    RequestHeaders = request.Headers?.ToList() ?? new List<KeyValuePair<string, string>>(),
+                    RequestHeaders = (request.Headers ?? new List<KeyValuePair<string, string>>())
+                        .Select(h => h.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                            ? new KeyValuePair<string, string>(h.Key, TokenService.MaskAuthorization(h.Value))
+                            : h).ToList(),
                     ResponseHeaders = response.Headers?.ToList() ?? new List<KeyValuePair<string, string>>()
                 });
             }
@@ -1447,6 +1516,9 @@ public partial class MainWindow : Window
                 FindNodeById(srcId) is { IsFolder: false, Request: { } saved } srcNode &&
                 saved.Method == model.Method && saved.EffectiveUrl() == model.EffectiveUrl())
                 srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+            if (response.Error is null)
+                TokenService.Capture(_state, request.Url, response.Body, response.ContentType, response.Headers);
+            UpdateTokenChip();
             if (response.Error is null && model.Captures.Count > 0)
                 ApplyCaptures(model, response);
             AddToHistory(response);
@@ -1792,6 +1864,7 @@ public partial class MainWindow : Window
     {
         if (_loading || ActiveRequest is null) return;
         ActiveRequest.Path = UrlBox.Text; // keeps the tab title in step as you type
+        UpdateTokenChip();
     }
 
     private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
