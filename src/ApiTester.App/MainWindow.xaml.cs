@@ -1517,7 +1517,8 @@ public partial class MainWindow : Window
                 saved.Method == model.Method && saved.EffectiveUrl() == model.EffectiveUrl())
                 srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
             if (response.Error is null)
-                TokenService.Capture(_state, request.Url, response.Body, response.ContentType, response.Headers);
+                TokenService.Capture(_state, request.Url, response.Body ?? Array.Empty<byte>(),
+                    response.ContentType, response.Headers ?? new List<KeyValuePair<string, string>>());
             UpdateTokenChip();
             if (response.Error is null && model.Captures.Count > 0)
                 ApplyCaptures(model, response);
