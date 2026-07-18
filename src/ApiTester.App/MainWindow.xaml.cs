@@ -780,6 +780,11 @@ public partial class MainWindow : Window
     private void DiscoverButton_Click(object sender, RoutedEventArgs e)
     {
         if (ActiveRequest is { } m) CaptureControlsInto(m);
+        // The Discover window appends any saved discoveries to _state.Collections, and we rebuild
+        // the sidebar from it afterwards. Sync the live UI collections into _state first so that
+        // rebuild reflects this session's edits too — otherwise unsaved top-level collection
+        // changes would be reverted.
+        _state.Collections = _collections.ToList();
         var certs = _allOptions.Select(o => new FuzzWindow.CertChoice(o.Label, o.Cert, o.Thumbprint)).ToList();
         var win = new FuzzWindow(_state, _apiClient,
             ActiveRequest?.BaseUrl ?? BaseUrlBox.Text.Trim(),
