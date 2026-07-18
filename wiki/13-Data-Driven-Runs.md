@@ -5,7 +5,8 @@ Great for testing an endpoint across many inputs, or a login-then-browse flow pe
 
 ## The idea
 
-Point `certapi run` at a **CSV or JSON** dataset with `--data`. For each row, the row's columns become
+Point `certapi run` at a **CSV (comma-separated values) or JSON (JavaScript Object Notation)**
+dataset with `--data`. For each row, the row's columns become
 variables that fill `{{placeholders}}` in the request(s). One request × N rows = N sends, each
 independently pass/fail.
 
@@ -23,7 +24,8 @@ id,expected
 certapi run "api/Get user" --data .\users.csv
 ```
 
-A request whose URL is `https://{{host}}/users/{{id}}` runs once per row with `id` = 1, 2, … The run
+A request whose URL (Uniform Resource Locator) is `https://{{host}}/users/{{id}}` runs once per row
+with `id` = 1, 2, … The run
 output labels each iteration `[row 1]`, `[row 2]`, ….
 
 The CSV parser is quote-aware, so values containing commas can be `"quoted, like this"`.
@@ -61,7 +63,7 @@ turning one request into a table-driven test.
 ## Recording and CI
 
 By default a live-state run records known-good results; a `--workspace` run doesn't unless you add
-`--record`. For CI, run a workspace file read-only and emit JSON:
+`--record`. For CI (continuous integration), run a workspace file read-only and emit JSON:
 
 ```powershell
 certapi run --all --workspace .\suite.json --data .\cases.csv --no-record --strict-vars --json

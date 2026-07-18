@@ -10,13 +10,17 @@ Before blaming an endpoint, prove your machine can do mTLS at all:
 certapi selftest          # CLI
 ```
 
-or click **Run Self-Test** in the app. It generates a CA + server + client certificate in memory,
-stands up a loopback mTLS server, and makes one authenticated round-trip. If this fails, the problem
-is local (certificate loading, the TLS stack) — not the target API.
+or click **Run Self-Test** in the app. It generates a CA (certificate authority) + server + client
+certificate in memory,
+stands up a loopback mTLS (mutual Transport Layer Security) server, and makes one authenticated
+round-trip. If this fails, the problem
+is local (certificate loading, the TLS stack) — not the target API (application programming
+interface).
 
 ## Turn on diagnostics
 
-Add `--debug` (optionally `--log-file diag.log`) to any CLI command for a full trace — resolved URL,
+Add `--debug` (optionally `--log-file diag.log`) to any CLI (command-line interface) command for a
+full trace — resolved URL (Uniform Resource Locator),
 headers (Authorization masked), certificate lookup, TLS version/cipher, timings, and full stack
 traces. In the app, the **Diagnostics** response tab shows the connection details.
 
@@ -25,9 +29,11 @@ traces. In the app, the **Diagnostics** response tab shows the connection detail
 The TLS handshake completed but the server rejected your client certificate. Check:
 
 - You picked the **right certificate** (`certapi certs` to list; match subject/thumbprint).
-- The certificate has the **Client Authentication** EKU and a usable **private key**.
+- The certificate has the **Client Authentication** EKU (Extended Key Usage) and a usable
+  **private key**.
 - The server actually **trusts** your certificate's issuer.
-- For a file certificate, that the **private key loaded** — a keyless PEM fails with a clear message;
+- For a file certificate, that the **private key loaded** — a keyless PEM (Privacy-Enhanced Mail)
+  fails with a clear message;
   supply `--key-file` or use a `.pfx`.
 
 ## "The server's own certificate isn't trusted"
@@ -38,8 +44,10 @@ separate from your client cert. Tick **Ignore server certificate errors** (app) 
 
 ## A network / DNS error
 
-The connection never reached TLS — DNS failure, wrong host/port, firewall, or the service is down.
-Verify the URL, and remember the app **honors your machine proxy** (WPAD/PAC) using your Windows
+The connection never reached TLS — DNS (Domain Name System) failure, wrong host/port, firewall, or
+the service is down.
+Verify the URL, and remember the app **honors your machine proxy** (WPAD/PAC — Web Proxy
+Auto-Discovery / proxy auto-configuration) using your Windows
 credentials; a misconfigured proxy shows up here.
 
 ## A timeout
@@ -55,8 +63,10 @@ Press **F5** to refresh after importing one. Add the machine store with `--store
 
 ## Windows Integrated Auth isn't working
 
-- For **SSO**, you must be signed in with an account the target accepts (usually domain-joined).
-- **Kerberos** needs the target's SPN registered; otherwise it falls back to **NTLM** — try explicit
+- For **SSO** (single sign-on), you must be signed in with an account the target accepts (usually
+  domain-joined).
+- **Kerberos** needs the target's SPN (service principal name) registered; otherwise it falls back to
+  **NTLM** (NT LAN Manager) — try explicit
   `--windows-user DOMAIN\user --windows-password …` to isolate a credential problem.
 - Test the mechanism locally against the mock's `/windows-auth` route (see [Mock Server](18-Mock-Server.md)).
 

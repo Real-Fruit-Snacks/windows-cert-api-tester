@@ -30,8 +30,8 @@ Paths, methods, base servers, and operation names come across so you can start s
 
 ## Export as OpenAPI
 
-Export your collections (or a folder) as an OpenAPI document — useful for sharing an API's shape or
-seeding another tool:
+Export your collections (or a folder) as an OpenAPI document — useful for sharing the shape of an
+API (application programming interface) or seeding another tool:
 
 ```powershell
 certapi export openapi -o api.json                 # everything
@@ -55,7 +55,7 @@ travel with a workspace — treat exported workspaces accordingly.
 ## Round-tripping with the app
 
 Imports land in the live workspace (or a `--workspace` file) that the app reads, so anything you
-import on the CLI shows up in the app, and vice versa. See
+import on the CLI (command-line interface) shows up in the app, and vice versa. See
 [Collections & History](10-Collections-and-History.md).
 
 Next: [Mock Server](18-Mock-Server.md).

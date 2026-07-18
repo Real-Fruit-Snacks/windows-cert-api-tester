@@ -1,16 +1,20 @@
 # 8. Authentication
 
-The app supports the full authentication story for enterprise Windows APIs. This chapter covers every
-type. (Client-certificate / mTLS is separate — see [Certificates & mTLS](06-Certificates-and-mTLS.md)
+The app supports the full authentication story for enterprise Windows APIs (application programming
+interfaces). This chapter covers every
+type. (Client-certificate / mTLS — mutual Transport Layer Security — is separate — see
+[Certificates & mTLS](06-Certificates-and-mTLS.md)
 — and composes with everything here.)
 
-Pick the type on the **Auth** tab. On the CLI, `certapi send` has one-off flags; saved requests carry
+Pick the type on the **Auth** tab. On the CLI (command-line interface), `certapi send` has one-off
+flags; saved requests carry
 their auth through `certapi run`.
 
 ## Auto (captured token) — the default
 
 Call a login endpoint and the app spots the bearer token in the response — `access_token`, `id_token`,
-`token`, `accessToken`, or `jwt` in the JSON body (top level or under `data`/`result`), or an
+`token`, `accessToken`, or `jwt` in the JSON (JavaScript Object Notation) body (top level or under
+`data`/`result`), or an
 `X-Auth-Token` / `X-Access-Token` header. It **captures** the token, scopes it to that exact website
 (scheme + host + port), and attaches it automatically to later requests there. No copy-paste.
 
@@ -43,15 +47,17 @@ certapi send https://api.example.com/x --basic "alice:secret"
 
 ## Windows Integrated Auth (Negotiate / NTLM)
 
-For internal sites that authenticate with your **Windows identity** (IIS-hosted APIs, SharePoint,
+For internal sites that authenticate with your **Windows identity** (IIS (Internet Information
+Services)-hosted APIs, SharePoint,
 intranet services). Pick **Windows (integrated)**:
 
 - **Use my signed-in Windows account** (default) — single sign-on with your logged-in credentials, no
   password typed.
 - Untick it to supply an explicit `DOMAIN\user` + password.
 
-The handler negotiates **Kerberos** (if the target has an SPN and you're domain-joined) or falls back
-to **NTLM** automatically. CLI:
+The handler negotiates **Kerberos** (if the target has an SPN — service principal name — and you're
+domain-joined) or falls back
+to **NTLM** (NT LAN Manager) automatically. CLI:
 
 ```powershell
 # single sign-on with your account
@@ -74,7 +80,7 @@ Supported grants:
 | **Client credentials** | Machine-to-machine (client id + secret) |
 | **Password** | Resource-owner password (username + password) |
 | **Refresh token** | Exchange a refresh token for a new access token |
-| **Authorization code** | Interactive — opens your browser, catches the redirect on a loopback port, with **PKCE** |
+| **Authorization code** | Interactive — opens your browser, catches the redirect on a loopback port, with **PKCE** (Proof Key for Code Exchange) |
 
 The dialog sends client credentials in the body (`client_secret_post`) or as a Basic header
 (`client_secret_basic`), supports scopes and extra parameters, and the **token endpoint itself can

@@ -1,13 +1,13 @@
 # 15. Live Streaming (WebSocket & SSE)
 
 Beyond request/response: connect to a **WebSocket** and exchange messages, or watch a **Server-Sent
-Events** stream arrive. Both reuse your selected client certificate and the insecure toggle, so they
-work against mTLS endpoints.
+Events (SSE)** stream arrive. Both reuse your selected client certificate and the insecure toggle, so
+they work against mTLS (mutual Transport Layer Security) endpoints.
 
 ## In the app
 
 The **Stream** button on the request line opens a live console. It picks the protocol from the URL
-scheme:
+(Uniform Resource Locator) scheme:
 
 - `ws://` or `wss://` → **WebSocket** — type a message and press Enter (or **Send**); every message
   the server sends back appears in the transcript, tagged with time and direction.
@@ -17,7 +17,7 @@ scheme:
 **Connect** / **Disconnect** control the session; **Clear** empties the transcript. Closing the window
 disconnects. A live indicator shows which mode the current URL will use.
 
-## WebSocket on the CLI
+## WebSocket on the CLI (command-line interface)
 
 ```powershell
 # Send messages and wait for a set number of replies (good for scripts)
@@ -43,7 +43,8 @@ certapi sse https://api.example.com/stream --max-events 5 --json
 ```
 
 - **`--max-events <n>`** — stop after `n` events.
-- **`--json`** — print one JSON object per event (`{event,data,id,retry}`), i.e. ndjson.
+- **`--json`** — print one JSON (JavaScript Object Notation) object per event
+  (`{event,data,id,retry}`), i.e. ndjson (newline-delimited JSON).
 - **`-H`** request headers, plus the usual cert/insecure flags.
 
 Events go to stdout; the connecting/ended notices to stderr.

@@ -4,7 +4,7 @@ Shortcuts in the desktop app.
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+Enter` / `Enter` | Send the request (Enter works in the URL box) |
+| `Ctrl+Enter` / `Enter` | Send the request (Enter works in the URL (Uniform Resource Locator) box) |
 | `Esc` | Cancel an in-flight request |
 | `Ctrl+L` | Focus the URL box |
 | `Ctrl+S` | Save the response to a file |

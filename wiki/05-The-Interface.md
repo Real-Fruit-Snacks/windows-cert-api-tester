@@ -1,6 +1,7 @@
 # 5. The Interface
 
-A guided tour of the desktop app. (CLI users can skip to the [CLI Reference](21-CLI-Reference.md).)
+A guided tour of the desktop app. (CLI (command-line interface) users can skip to the
+[CLI Reference](21-CLI-Reference.md).)
 
 ## The title bar
 
@@ -21,9 +22,10 @@ The heart of the app:
 
 - **CERTIFICATE** — pick the client certificate to present (or *— no certificate —*).
 - **Method** — GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS.
-- **URL** — the address. If you've saved a website as a base URL, the box becomes just the path after
+- **URL** (Uniform Resource Locator) — the address. If you've saved a website as a base URL, the box
+  becomes just the path after
   it. Type a `?query` and it splits into the Params grid.
-- **Stream** — open the [WebSocket / SSE console](15-Live-Streaming.md) for this URL.
+- **Stream** — open the [WebSocket / SSE (Server-Sent Events) console](15-Live-Streaming.md) for this URL.
 - **Cancel** — abort an in-flight request (`Esc`).
 - **Send** (`Ctrl+Enter`) — go.
 - **TIMEOUT** — per-request timeout in seconds.
@@ -49,12 +51,12 @@ After you send, the lower panel fills in:
 
 | Tab | Shows |
 |---|---|
-| **Pretty** | Syntax-highlighted JSON/XML (hex for binary) |
+| **Pretty** | Syntax-highlighted JSON/XML (JavaScript Object Notation / Extensible Markup Language); hex for binary |
 | **Raw** | The exact response bytes as text, with a **find** box |
 | **Headers** | Response headers |
-| **Diagnostics** | TLS version, cipher, whether your client cert was presented, the server chain |
+| **Diagnostics** | TLS (Transport Layer Security) version, cipher, whether your client cert was presented, the server chain |
 | **Rendered** | The URL loaded as a web page (with your certificate) |
-| **Network** | A browser-style trace of every HTTP call, including resources the Rendered view fetched |
+| **Network** | A browser-style trace of every HTTP (Hypertext Transfer Protocol) call, including resources the Rendered view fetched |
 
 Use the **pop-out** button to detach a view — or the whole panel — into its own window. See
 [Response Views](16-Response-Views.md).

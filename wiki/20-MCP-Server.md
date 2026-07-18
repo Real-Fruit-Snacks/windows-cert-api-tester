@@ -1,9 +1,12 @@
 # 20. MCP Server (for AI agents)
 
-`certapi mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server so an AI agent
-can make **mutual-TLS** API calls — using a certificate **you** pin at launch, bounded by a host
+`certapi mcp` runs a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server so an AI
+(artificial intelligence) agent
+can make **mutual-TLS (mTLS — Transport Layer Security)** API (application programming interface)
+calls — using a certificate **you** pin at launch, bounded by a host
 allowlist. The agent never handles the certificate itself; it just asks the server to make calls. It
-speaks JSON-RPC over **stdio** — nothing on the network.
+speaks JSON-RPC (JavaScript Object Notation Remote Procedure Call) over **stdio** — nothing on the
+network.
 
 ## Start it
 
@@ -11,14 +14,15 @@ speaks JSON-RPC over **stdio** — nothing on the network.
 certapi mcp --cert "CN=Agent Client" --allow api.example.com
 ```
 
-Wire that command into your MCP-capable client (an agent framework, an IDE assistant, etc.) as a
+Wire that command into your MCP-capable client (an agent framework, an IDE (integrated development
+environment) assistant, etc.) as a
 stdio server. The agent then has a small, safe toolset for talking to your API.
 
 ## Tools exposed
 
 | Tool | Does |
 |---|---|
-| `send_request` | Make an mTLS request (method, URL, headers, body) to an allowed host |
+| `send_request` | Make an mTLS request (method, URL (Uniform Resource Locator), headers, body) to an allowed host |
 | `list_certificates` | List the client certificates available |
 | `list_saved` | List saved requests from the workspace |
 | `run_saved` | Run a saved request by name |
@@ -46,7 +50,7 @@ The point of `mcp` is to give an agent **capability without keys**:
 | `--cert-file` / `--cert-password` | Pin a certificate from a file instead |
 | `--store <location>` | `CurrentUser` (default) or `LocalMachine` |
 | `--allow <host>` | Allowed upstream host (repeatable) |
-| `--insecure` | Ignore upstream server-certificate errors (internal CAs) |
+| `--insecure` | Ignore upstream server-certificate errors (internal CAs — certificate authorities) |
 | `--timeout <seconds>` | Per-request upstream timeout (default 100) |
 | `--workspace <file>` | Load saved requests / environments from a workspace file |
 | `--no-auto-token` | Don't capture/reuse bearer tokens across the session |

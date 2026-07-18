@@ -1,7 +1,7 @@
 # 12. Capturing Values
 
 Pull a value out of a response and reuse it in later requests — the classic "log in, then call the
-API with the token" pattern, without copy-paste.
+API (application programming interface) with the token" pattern, without copy-paste.
 
 ## Automatic bearer tokens (zero setup)
 
@@ -19,12 +19,13 @@ On the **Capture** tab, add a rule: after the request succeeds, save a value fro
 `{{variable}}`.
 
 - **Variable** — the name to save into, e.g. `token` (reuse it as `{{token}}`).
-- **From** — **Body** (a JSON path like `access_token` or `data.session_id`) or **Header** (a response
+- **From** — **Body** (a JSON (JavaScript Object Notation) path like `access_token` or
+  `data.session_id`) or **Header** (a response
   header name).
 - **Path** — the JSON path or header name.
 
 The captured value becomes a variable in the current environment, so any later request can use
-`{{token}}` in a header, URL, or body.
+`{{token}}` in a header, URL (Uniform Resource Locator), or body.
 
 ## Capture on the CLI
 
@@ -60,6 +61,6 @@ across the run.
 
 Separately from tokens, the app keeps a **cookie jar** like a browser: a `Set-Cookie` in any response
 is stored and sent back on later requests to that host, so cookie-based logins work across a session.
-On the CLI, `certapi run --cookies` keeps a jar for the run.
+On the CLI (command-line interface), `certapi run --cookies` keeps a jar for the run.
 
 Next: [Data-Driven Runs](13-Data-Driven-Runs.md).

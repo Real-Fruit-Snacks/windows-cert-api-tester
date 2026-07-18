@@ -6,12 +6,12 @@ Every way the app shows you a response, plus copying, saving, and themes.
 
 | Tab | Shows |
 |---|---|
-| **Pretty** | JSON and XML formatted with syntax highlighting; HTML/text shown as-is; binary hex-dumped. The body type is sniffed even when the `Content-Type` is missing or lying. |
+| **Pretty** | JSON (JavaScript Object Notation) and XML (Extensible Markup Language) formatted with syntax highlighting; HTML (Hypertext Markup Language)/text shown as-is; binary hex-dumped. The body type is sniffed even when the `Content-Type` is missing or lying. |
 | **Raw** | The exact response bytes decoded as text, with a **find** box (Enter for next match, wraps around). |
 | **Headers** | Every response header. |
-| **Diagnostics** | Connection details — TLS version and cipher, whether your client certificate was presented, and the server's certificate and chain. See [Certificates & mTLS](06-Certificates-and-mTLS.md). |
-| **Rendered** | The request's URL opened as a **web page** (below). |
-| **Network** | A browser-style trace of every HTTP call (below). |
+| **Diagnostics** | Connection details — TLS (Transport Layer Security) version and cipher, whether your client certificate was presented, and the server's certificate and chain. See [Certificates & mTLS](06-Certificates-and-mTLS.md). |
+| **Rendered** | The request's URL (Uniform Resource Locator) opened as a **web page** (below). |
+| **Network** | A browser-style trace of every HTTP (Hypertext Transfer Protocol) call (below). |
 
 ## Find in a response
 
@@ -21,7 +21,8 @@ next**) jumps to the next occurrence and wraps around. Handy for a value buried 
 ## Rendered website
 
 The **Rendered** tab loads the URL as a real web page instead of raw text — useful when the target is
-a site, not an API. Every resource the page fetches (document, CSS, JS, images, XHR) is loaded with
+a site, not an API (application programming interface). Every resource the page fetches (document,
+CSS (Cascading Style Sheets), JS (JavaScript), images, XHR (XMLHttpRequest)) is loaded with
 **your client certificate**, so a certificate-protected site renders fully. It loads on demand (nothing
 runs until you open the tab); **Reload** fetches again. It uses the Windows WebView2 runtime; if that's
 unavailable the tab says so and the rest of the app is unaffected.
@@ -47,7 +48,8 @@ the full main window. Everything stays live; closing a popped-out window returns
 - **Copy body** — copy the response body to the clipboard.
 - **Copy as ▾** (on the request side) — the *request* as cURL / PowerShell / Python / C#.
 - **Save** (`Ctrl+S`) — save any response to a file, including binary, with a sensible extension for
-  the content type. On the CLI, `certapi send -o file` writes the body to a file.
+  the content type. On the CLI (command-line interface), `certapi send -o file` writes the body to a
+  file.
 
 ## Themes
 

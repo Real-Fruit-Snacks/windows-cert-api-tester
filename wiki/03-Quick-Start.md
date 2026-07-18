@@ -6,10 +6,12 @@ Two minutes to your first request, in the app and on the command line.
 
 1. **Open** `ApiTester.App.exe`.
 2. On the request line, leave the certificate on *— no certificate —* (or pick one if your endpoint
-   needs mTLS).
-3. Choose a method (**GET**) and type a URL, e.g. `https://api.github.com/zen`.
+   needs mTLS — mutual Transport Layer Security).
+3. Choose a method (**GET**) and type a URL (Uniform Resource Locator), e.g.
+   `https://api.github.com/zen`.
 4. Press **Send** (or `Ctrl+Enter`).
-5. The response appears below. The **Pretty** tab formats JSON/XML; **Raw** shows the exact bytes;
+5. The response appears below. The **Pretty** tab formats JSON/XML (JavaScript Object Notation /
+   Extensible Markup Language); **Raw** shows the exact bytes;
    **Headers**, **Diagnostics**, and **Network** show the rest.
 
 That's it. To send with a client certificate, pick it from the **CERTIFICATE** dropdown first — see
@@ -36,7 +38,7 @@ certapi send https://api.example.com/users | ConvertFrom-Json
 ```
 
 Exit codes are script-friendly: **0** success, **1** transport failure, **2** usage error,
-**3** data error. Add `--fail` to also exit 1 on HTTP 4xx/5xx.
+**3** data error. Add `--fail` to also exit 1 on HTTP (Hypertext Transfer Protocol) 4xx/5xx.
 
 ## Try it against the built-in mock
 
@@ -58,7 +60,8 @@ without leaving your machine.
 certapi selftest
 ```
 
-This stands up a throwaway mutual-TLS server in memory, generates a CA + server + client certificate,
+This stands up a throwaway mutual-TLS server in memory, generates a CA (certificate authority) +
+server + client certificate,
 makes one authenticated round-trip, and reports pass/fail — no real endpoint required.
 
 Next: [Core Concepts](04-Concepts.md) to understand what's happening under the hood, or jump straight

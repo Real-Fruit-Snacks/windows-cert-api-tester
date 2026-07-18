@@ -1,8 +1,9 @@
 # Certificate API Tester — Handbook
 
-A Windows-native API client built around **mutual-TLS (client-certificate) authentication**, with a
-polished WPF app and a matching `certapi` command-line tool. This handbook is the complete guide to
-both.
+A Windows-native API (application programming interface) client built around **mutual TLS
+(Transport Layer Security, or mTLS) client-certificate authentication**, with a polished WPF
+(Windows Presentation Foundation) app and a matching `certapi` command-line tool. This handbook is
+the complete guide to both.
 
 > New here? Read [Introduction](01-Introduction.md) → [Installation](02-Installation.md) →
 > [Quick Start](03-Quick-Start.md), then dip into whatever you need.
@@ -18,7 +19,7 @@ both.
 
 ### Sending requests
 6. [Certificates & mTLS](06-Certificates-and-mTLS.md)
-7. [Building Requests](07-Building-Requests.md) — method, URL, params, headers, body
+7. [Building Requests](07-Building-Requests.md) — method, URL (Uniform Resource Locator), params, headers, body
 8. [Authentication](08-Authentication.md) — Auto, Bearer, Basic, OAuth 2.0, Windows Integrated
 9. [Environments & Variables](09-Environments-and-Variables.md)
 10. [Collections & History](10-Collections-and-History.md)
@@ -28,20 +29,21 @@ both.
 12. [Capturing Values](12-Capturing-Values.md)
 13. [Data-Driven Runs](13-Data-Driven-Runs.md)
 14. [Endpoint Discovery (fuzzing)](14-Endpoint-Discovery.md)
-15. [Live Streaming (WebSocket & SSE)](15-Live-Streaming.md)
+15. [Live Streaming](15-Live-Streaming.md) — WebSocket & Server-Sent Events (SSE)
 16. [Response Views](16-Response-Views.md) — Pretty, Raw, Diagnostics, Rendered, Network
 
 ### Tooling
 17. [Import & Export](17-Import-and-Export.md) — cURL and OpenAPI
 18. [Mock Server](18-Mock-Server.md) — a local endpoint to fire requests at
 19. [Local Gateway (`serve`)](19-Local-Gateway.md)
-20. [MCP Server (for AI agents)](20-MCP-Server.md)
-21. [CLI Reference (`certapi`)](21-CLI-Reference.md)
+20. [MCP Server](20-MCP-Server.md) — the Model Context Protocol server for AI (artificial
+    intelligence) agents
+21. [CLI Reference](21-CLI-Reference.md) — every `certapi` command-line interface (CLI) command
 
 ### Reference
 22. [Keyboard Shortcuts](22-Keyboard-Shortcuts.md)
 23. [Troubleshooting](23-Troubleshooting.md)
-24. [FAQ](24-FAQ.md)
+24. [FAQ](24-FAQ.md) — frequently asked questions
 25. [Building from Source](25-Building-from-Source.md)
 
 ## At a glance
@@ -50,7 +52,7 @@ both.
 |---|---|
 | **Platform** | Windows 10 / 11 (x64) |
 | **Runtime** | .NET 9 (bundled in the self-contained builds — nothing to install) |
-| **Two front ends** | `ApiTester.App.exe` (GUI) and `certapi.exe` (CLI) — same engine |
+| **Two front ends** | `ApiTester.App.exe` (GUI — graphical user interface) and `certapi.exe` (CLI) — same engine |
 | **Signature feature** | Client-certificate (mTLS) auth from the Windows store or a file |
 | **License** | See `LICENSE` in the repository |
 

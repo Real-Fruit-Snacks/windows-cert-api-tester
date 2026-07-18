@@ -4,8 +4,9 @@ Prefer to compile it yourself, or want to contribute? Here's the layout and the 
 
 ## Prerequisites
 
-- **.NET 9 SDK** (Windows).
-- Windows 10 / 11 (the app is WPF; the tests use the Windows certificate APIs).
+- **.NET 9 SDK** (software development kit) (Windows).
+- Windows 10 / 11 (the app is WPF — Windows Presentation Foundation; the tests use the Windows
+  certificate APIs — application programming interfaces).
 
 ## Solution layout
 
@@ -22,8 +23,9 @@ ApiTester.sln
 └─ wordlists/           # the starter endpoint list
 ```
 
-The **Core** library holds all the logic; the **CLI** and **App** are thin front ends over it. Most
-behavior is testable without the GUI.
+The **Core** library holds all the logic; the **CLI** (command-line interface) and **App** are thin
+front ends over it. Most
+behavior is testable without the GUI (graphical user interface).
 
 ## Build and test
 
@@ -32,7 +34,8 @@ dotnet build   -c Release
 dotnet test    -c Release
 ```
 
-The test suite is fast and self-contained — it spins up loopback mTLS/HTTP servers in memory (no
+The test suite is fast and self-contained — it spins up loopback mTLS (mutual Transport Layer
+Security)/HTTP (Hypertext Transfer Protocol) servers in memory (no
 network, no real certificates needed).
 
 ## Run the two front ends
@@ -56,7 +59,8 @@ These bundle the .NET runtime, so they run on any Windows 10/11 x64 machine with
 
 ## Releases
 
-Releases are cut by pushing a `v*` tag; CI builds the self-contained executables, attaches the starter
+Releases are cut by pushing a `v*` tag; CI (continuous integration) builds the self-contained
+executables, attaches the starter
 wordlist, and bundles a **full source zip** of the repository at that tag. See `.github/workflows/`.
 
 ## Contributing

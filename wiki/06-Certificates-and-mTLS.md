@@ -11,7 +11,7 @@ a usable private key) are offered. Pick one and it's presented on every send unt
 
 Press **F5** to refresh the list if you've just imported a certificate.
 
-On the CLI, pick by **subject** or **thumbprint**:
+On the CLI (command-line interface), pick by **subject** or **thumbprint**:
 
 ```powershell
 certapi send https://internal.corp/api --cert "CN=My Client"
@@ -37,7 +37,8 @@ No store entry? Point at a file instead.
   certapi send https://internal.corp/api --cert-file client.pfx --cert-password "secret"
   ```
 
-- **PEM** (`.crt` / `.pem`) with the key inline, or with the key in a separate file:
+- **PEM (Privacy-Enhanced Mail)** (`.crt` / `.pem`) with the key inline, or with the key in a
+  separate file:
 
   ```powershell
   certapi send https://internal.corp/api --cert-file client.pem                 # key inline
@@ -46,15 +47,18 @@ No store entry? Point at a file instead.
 
 In the app, use the **From file…** button next to the certificate dropdown.
 
-> **Why files are re-imported internally:** on Windows, SChannel (the TLS stack) can't use *ephemeral*
-> private keys. The app loads file-based keys through a temporary, exportable PKCS#12 container so the
+> **Why files are re-imported internally:** on Windows, SChannel — the TLS (Transport Layer Security)
+> stack — can't use *ephemeral*
+> private keys. The app loads file-based keys through a temporary, exportable PKCS#12 (Public-Key
+> Cryptography Standards #12) container so the
 > handshake works, then discards it. You don't have to do anything — it just means a PEM whose key is
 > missing will fail with a clear "no private key" message rather than a cryptic handshake error.
 
 ## Trusting the server: `--insecure`
 
 Presenting your certificate and **trusting the server's** certificate are two separate things. Internal
-APIs sit behind private CAs your machine may not trust, which fails the handshake with
+APIs (application programming interfaces) sit behind private CAs (certificate authorities) your
+machine may not trust, which fails the handshake with
 *"the server's own certificate isn't trusted."* To proceed anyway:
 
 - **App:** tick **Ignore server certificate errors** (clearly labelled insecure).
@@ -67,8 +71,8 @@ Use it for internal/self-signed servers you already trust — not the public int
 After a send, the **Diagnostics** tab (app) shows what actually happened in the handshake:
 
 - **TLS protocol** and **cipher suite** negotiated.
-- **Client certificate** — whether yours was *presented to the server* (the real test that mTLS
-  worked), or whether the server didn't ask for one.
+- **Client certificate** — whether yours was *presented to the server* (the real test that mTLS —
+  mutual TLS — worked), or whether the server didn't ask for one.
 - **Server certificate** — subject, issuer, thumbprint, expiry, and the chain.
 
 On the CLI, add `--debug` to print the same TLS details (and much more) to stderr.

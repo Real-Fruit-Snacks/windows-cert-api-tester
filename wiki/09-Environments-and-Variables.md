@@ -1,7 +1,7 @@
 # 9. Environments & Variables
 
 Reuse one set of requests against many targets — dev, staging, prod — by swapping a named set of
-variables instead of editing every URL.
+variables instead of editing every URL (Uniform Resource Locator).
 
 ## The idea
 
@@ -41,7 +41,8 @@ certapi send "https://{{host}}/v1/things" --env Staging --var host=localhost:808
 If a `{{token}}` has no value:
 
 - By default you get a **warning** and the literal `{{token}}` is sent as-is.
-- Add `--strict-vars` (CLI) to make an unresolved variable a **hard error** instead — useful in CI so
+- Add `--strict-vars` (CLI — command-line interface) to make an unresolved variable a **hard error**
+  instead — useful in CI (continuous integration) so
   a typo fails the run rather than sending a malformed request. In a
   [data-driven run](13-Data-Driven-Runs.md), this is how a request that needs a per-row value fails
   cleanly when the dataset doesn't supply it.

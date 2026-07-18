@@ -1,6 +1,7 @@
 # 7. Building Requests
 
-Method, URL, query parameters, headers, and the body — plus multipart uploads and GraphQL.
+Method, URL (Uniform Resource Locator), query parameters, headers, and the body — plus multipart
+uploads and GraphQL.
 
 ## Method and URL
 
@@ -13,7 +14,7 @@ Pick a method (GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS) and type the URL. A few c
 - `{{variables}}` in the URL are resolved against the active
   [environment](09-Environments-and-Variables.md).
 
-On the CLI the URL is a positional argument:
+On the CLI (command-line interface) the URL is a positional argument:
 
 ```powershell
 certapi send "https://api.example.com/search?q=abc" -X GET
@@ -41,7 +42,8 @@ The **Body** tab offers two modes:
 
 ### Text body
 
-Free-form text (JSON, XML, plain text, …). Choose the **Content-Type** (default `application/json`;
+Free-form text (JSON (JavaScript Object Notation), XML (Extensible Markup Language), plain text, …).
+Choose the **Content-Type** (default `application/json`;
 `(none)` sends no body/content-type). On the CLI:
 
 ```powershell
@@ -80,7 +82,8 @@ certapi send https://api.example.com/graphql `
 
 ## Copy the request as code
 
-Above the request tabs, **Copy as ▾** turns the current request into a ready-to-run snippet — **cURL**,
+In the response toolbar (next to **Copy body**), **Copy as ▾** turns the current request into a
+ready-to-run snippet — **cURL**,
 **PowerShell** (`Invoke-RestMethod`), **Python** (`requests`), or **C#** (`HttpClient`) — with
 `{{variables}}` resolved and headers/body included. Handy for sharing a repro or moving a call into
 code.

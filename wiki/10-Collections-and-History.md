@@ -26,7 +26,8 @@ passed). A collection becomes a lightweight health dashboard of your endpoints.
 
 ## Saved websites (base URLs)
 
-Save a base URL like `https://internal.corp` and the URL box becomes just the path after it — fire
+Save a base URL (Uniform Resource Locator) like `https://internal.corp` and the URL box becomes just
+the path after it — fire
 `/api/orders` without retyping the host. Saved websites also feed the [gateway](19-Local-Gateway.md):
 `certapi serve <saved-website>` can resolve one from a workspace.
 
@@ -40,13 +41,14 @@ returned. History is part of the workspace, so it persists across sessions.
 
 Everything above lives in a **workspace**:
 
-- **Live workspace** — `%AppData%\CertApiTester\state.json`, shared by the app and the CLI. This is
+- **Live workspace** — `%AppData%\CertApiTester\state.json`, shared by the app and the CLI
+  (command-line interface). This is
   what you edit day to day.
 - **Workspace files** — a separate `.json` you manage explicitly. Point either tool at one with
   `--workspace suite.json`. Use these to:
   - check a request suite into source control,
   - hand a reproducible set of requests + environments to a teammate,
-  - run a suite in CI without touching your personal state.
+  - run a suite in CI (continuous integration) without touching your personal state.
 
 Export/import whole workspaces from [Import & Export](17-Import-and-Export.md):
 

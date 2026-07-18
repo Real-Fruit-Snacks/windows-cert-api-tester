@@ -1,9 +1,11 @@
 # 18. Mock Server
 
 A standing local server you can fire requests at — the persistent counterpart to the one-shot
-[self-test](23-Troubleshooting.md#self-test). It echoes each request back as JSON and serves a handful
-of fixed routes, over plain HTTP, HTTPS, or **mutual TLS**. Point the app at itself to exercise nearly
-every feature without a real API.
+[self-test](23-Troubleshooting.md#self-test). It echoes each request back as JSON (JavaScript Object
+Notation) and serves a handful
+of fixed routes, over plain HTTP (Hypertext Transfer Protocol), HTTPS (HTTP Secure), or **mutual TLS
+(mTLS — Transport Layer Security)**. Point the app at itself to exercise nearly
+every feature without a real API (application programming interface).
 
 ## Start it
 
@@ -11,7 +13,7 @@ every feature without a real API.
 port, press **Start**, and watch a live request log. **Copy URL** drops the address into a request;
 **Open certs** reveals the generated certificates (TLS modes).
 
-**CLI:**
+**CLI (command-line interface):**
 
 ```powershell
 certapi mock                       # plain HTTP on 8770

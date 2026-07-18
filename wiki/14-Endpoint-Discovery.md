@@ -1,8 +1,9 @@
 # 14. Endpoint Discovery (Fuzzing)
 
-When an API has no documentation, discovery probes a list of candidate paths against a base URL and
+When an API (application programming interface) has no documentation, discovery probes a list of
+candidate paths against a base URL (Uniform Resource Locator) and
 reports which ones exist — so you can map an undocumented service. It presents your client certificate
-like any other request, so it works against mTLS-protected APIs.
+like any other request, so it works against APIs protected by mTLS (mutual Transport Layer Security).
 
 > Use this only against systems you're authorized to test.
 
@@ -63,7 +64,8 @@ paths. `--no-auto-token` opts out of token capture/attach.
 
 - `--save-collection <name>` — save discovered endpoints as requests in a collection you can open in
   the app.
-- `-o <file>` — write discovered paths as a wordlist (or the full JSON report with `--json`).
+- `-o <file>` — write discovered paths as a wordlist (or the full JSON (JavaScript Object Notation)
+  report with `--json`).
 - `--json` — emit `{ results, summary }` instead of the table.
 
 ```powershell

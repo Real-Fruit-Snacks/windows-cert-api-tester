@@ -1,6 +1,6 @@
 # 21. CLI Reference (`certapi`)
 
-Complete reference for the command-line client. The built-in help is authoritative — run
+Complete reference for the CLI (command-line interface) client. The built-in help is authoritative — run
 `certapi help` for the overview or `certapi help <command>` for a command's full options.
 
 ```
@@ -15,22 +15,23 @@ Usage: certapi <command> [options]
 | [`token`](#token) | Fetch an OAuth 2.0 access token (and optionally save it) |
 | [`run <path>`](#run) | Run saved requests from your collections (or `--all`) |
 | [`fuzz <base-url>`](#fuzz) | Discover endpoints from a wordlist |
-| [`sse <url>`](#sse) | Stream Server-Sent Events |
+| [`sse <url>`](#sse) | Stream Server-Sent Events (SSE) |
 | [`ws <url>`](#ws) | Open a WebSocket, send messages, print what arrives |
 | [`certs`](#certs) | List client certificates |
-| [`selftest`](#selftest) | Prove the mTLS path end-to-end against a loopback server |
+| [`selftest`](#selftest) | Prove the mTLS (mutual Transport Layer Security) path end-to-end against a loopback server |
 | [`mock`](#mock) | Run a local test server to fire requests at |
 | [`import`](#import) | Import a cURL command or an OpenAPI file |
 | [`export`](#export) | Export collections as OpenAPI, or the whole workspace |
 | [`serve <upstream>`](#serve) | Run a local mTLS gateway that forwards to an upstream |
-| [`mcp`](#mcp) | Run an MCP server so AI agents can make mTLS calls |
+| [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
 
 ## Global options
 
 Work on every command, anywhere on the line:
 
-- **`--debug`** — rich diagnostics on stderr: resolved URLs, headers (Authorization masked),
+- **`--debug`** — rich diagnostics on stderr: resolved URLs (Uniform Resource Locators), headers
+  (Authorization masked),
   certificate lookup, TLS details, timings, full stack traces.
 - **`--log-file <path>`** — append everything (diagnostics + all stderr) to a log file.
 
@@ -54,7 +55,7 @@ body cleanly.
 
 **Request**
 
-- `-X, --method <m>` — HTTP method (default GET)
+- `-X, --method <m>` — HTTP (Hypertext Transfer Protocol) method (default GET)
 - `-H, --header "k: v"` — add a header (repeatable)
 - `-d, --data <body>` — request body (`--data-file <file>` reads it from disk)
 - `-F, --form name=value` — `multipart/form-data` field; `name=@path` uploads a file
@@ -91,7 +92,7 @@ body cleanly.
 - `-o, --output <file>` — write the body to a file
 - `--include` — print status line + headers before the body
 - `--pretty` — pretty-print the body
-- `--json` — a JSON result envelope instead of the raw body
+- `--json` — a JSON (JavaScript Object Notation) result envelope instead of the raw body
 - `--fail` — exit 1 on HTTP status ≥ 400
 - `-q, --quiet` — no metadata line on stderr
 
@@ -106,7 +107,8 @@ body cleanly.
 - `--client-auth body|basic` — send client creds in the body (default) or a Basic header
 - `--scope "<a b c>"`, `--username`/`--password` (password grant), `--refresh-token` (refresh grant)
 - `--param k=v` — extra form parameter (repeatable)
-- `--save` + `--for <api-url>` (repeatable) — store the token for that API origin so later `send`
+- `--save` + `--for <api-url>` (repeatable) — store the token for that API (application programming
+  interface) origin so later `send`
   attaches it; `--workspace <file>` to save into a workspace file
 - `--json` — full result; `-q` quiet
 - TLS/cert flags apply (the token endpoint itself may be mTLS)
@@ -120,9 +122,11 @@ The interactive **authorization-code** grant is app-only (see [Authentication](0
 `certapi run <Collection[/Folder][/Request]> [options]` or `certapi run --all [options]`.
 
 - `--all` — run every saved request in the workspace
-- `--workspace <file>` — collections from a workspace file (default: live GUI state)
+- `--workspace <file>` — collections from a workspace file (default: live GUI (graphical user
+  interface) state)
 - `--env <name>` / `--var k=v` — variables
-- `--data <file>` — data-driven: repeat once per CSV/JSON row (see [Data-Driven Runs](13-Data-Driven-Runs.md))
+- `--data <file>` — data-driven: repeat once per CSV (comma-separated values)/JSON row (see
+  [Data-Driven Runs](13-Data-Driven-Runs.md))
 - `--record` / `--no-record` — write known-good results back (default: on for live state, off for
   workspace files; skipped while the GUI is running)
 - `--strict-vars` — unresolved `{{tokens}}` fail the request
@@ -151,7 +155,7 @@ A request passes when its assertions pass, or on any 2xx if it has none. Exit 1 
 
 `certapi sse <url> [options]` — stream Server-Sent Events.
 
-- `-H "k: v"`, `--max-events <n>`, `--json` (ndjson), `-q`
+- `-H "k: v"`, `--max-events <n>`, `--json` (ndjson — newline-delimited JSON), `-q`
 - cert flags + `--insecure`
 
 ## ws

@@ -8,10 +8,10 @@ assertion **fails**, which drives exit codes and known-good markers.
 On the **Tests** tab, add one or more assertion rows. Each has:
 
 - **Target** — what to check:
-  - **Status** — the HTTP status code
+  - **Status** — the HTTP (Hypertext Transfer Protocol) status code
   - **Time** — the elapsed time in milliseconds
   - **Header** — a response header (name in **Path**)
-  - **Body** — a value in the JSON body at a **Path** (e.g. `data.id`)
+  - **Body** — a value in the JSON (JavaScript Object Notation) body at a **Path** (e.g. `data.id`)
   - **Body-text** — the raw body as text
 - **Operator** — `Equals`, `NotEquals`, `Contains`, `Matches` (regex), `Exists`, `NotExists`,
   `LessThan`, `GreaterThan`
@@ -56,7 +56,7 @@ certapi run --all --json                 # machine-readable results
 See [Data-Driven Runs](13-Data-Driven-Runs.md) for running assertions across many rows, and the
 [CLI Reference](21-CLI-Reference.md#run) for all `run` options.
 
-## In CI
+## In CI (continuous integration)
 
 Because a failing assertion exits non-zero, a saved suite is a ready-made smoke test:
 

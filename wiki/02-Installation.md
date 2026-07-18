@@ -19,9 +19,9 @@ Grab the latest release from the repository's **Releases** page. Each release at
 | `common-api-endpoints.txt` | A starter wordlist for [endpoint discovery](14-Endpoint-Discovery.md) |
 | `certapi-source-<tag>.zip` | The full repository source at that tag |
 
-Both `.exe` files are **portable** — no installer, no admin rights. Put them anywhere (a USB stick, a
-locked-down VM) and run them. To use `certapi` from any prompt, drop `certapi.exe` in a folder that's
-on your `PATH`.
+Both `.exe` files are **portable** — no installer, no admin rights. Put them anywhere (a USB
+(Universal Serial Bus) stick, a locked-down VM (virtual machine)) and run them. To use `certapi` from
+any prompt, drop `certapi.exe` in a folder that's on your `PATH`.
 
 ## First run
 
@@ -42,14 +42,15 @@ choice — in:
 %AppData%\CertApiTester\state.json
 ```
 
-That's a single JSON file. Back it up, or hand it to a teammate, and everything travels with it. The
-CLI reads the same file by default, so requests you build in the app are runnable headless
+That's a single JSON (JavaScript Object Notation) file. Back it up, or hand it to a teammate, and
+everything travels with it. The
+CLI (command-line interface) reads the same file by default, so requests you build in the app are runnable headless
 immediately. You can also point either tool at a separate **workspace file** with `--workspace` — see
 [Collections & History](10-Collections-and-History.md).
 
 ## Verifying a download
 
-The self-contained `.exe` files are large (~35–65 MB) because they bundle the runtime — that's
+The self-contained `.exe` files are large (~35–65 MB — megabytes) because they bundle the runtime — that's
 expected. If your organization requires it, verify the file against the release, and note that the
 executables are **not** code-signed unless your build pipeline signs them.
 
