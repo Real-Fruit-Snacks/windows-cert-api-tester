@@ -122,7 +122,13 @@
                                    Foreground="{StaticResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
                                    Text="No saved requests yet. Send a request, then “Save current request…” to keep it here."/>
                         <TreeView x:Name="CollectionsTree" ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                  MouseDoubleClick="CollectionsTree_MouseDoubleClick">
+                                  MouseDoubleClick="CollectionsTree_MouseDoubleClick"
+                                  PreviewMouseRightButtonDown="CollectionsTree_PreviewMouseRightButtonDown">
+                            <TreeView.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Set website &amp; certificate…" Click="SetCollectionDefaults_Click"/>
+                                </ContextMenu>
+                            </TreeView.ContextMenu>
                             <TreeView.ItemTemplate>
                                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                     <StackPanel Orientation="Horizontal" ToolTip="{Binding StatusSummary}">

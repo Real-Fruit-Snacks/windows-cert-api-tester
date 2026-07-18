@@ -165,6 +165,11 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
     public System.Collections.ObjectModel.ObservableCollection<CollectionNode> Children { get; set; } = new();
     public RequestModel? Request { get; set; }   // populated when this is a saved request (not a folder)
 
+    /// <summary>Folder-level defaults: the website and client certificate a request opened from
+    /// this folder inherits when it doesn't carry its own. The nearest ancestor with a value wins.</summary>
+    public string? DefaultBaseUrl { get; set; }
+    public string? DefaultCertThumbprint { get; set; }
+
     /// <summary>The status code the last send of this saved request returned (null if it failed
     /// without a response, or if it has never been sent — see <see cref="LastCheckedUtc"/>).</summary>
     public int? LastStatusCode

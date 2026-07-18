@@ -388,11 +388,43 @@ public partial class MainWindow : Window
         {
             var clone = CloneRequest(req);
             clone.SourceCollectionId = node.Id;   // sends from this tab record the endpoint's result
+
+            // Fill only the blanks: the saved request wins, then folder defaults, then the current tab.
+            var (defBase, defCert) = CollectionDefaults.For(_collections, node);
+            if (string.IsNullOrWhiteSpace(clone.BaseUrl))
+                clone.BaseUrl = defBase ?? ActiveRequest?.BaseUrl;
+            if (string.IsNullOrEmpty(clone.CertThumbprint))
+                clone.CertThumbprint = defCert ?? SelectedThumbprint();
+
             var tab = new RequestTab(clone);
             _tabs.Add(tab);
             TabStrip.SelectedItem = tab;
             StatusText.Text = $"Opened “{node.Name}” in a new tab.";
         }
+    }
+
+    private void CollectionsTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(CollectionsTree, e.OriginalSource as DependencyObject) is TreeViewItem item)
+            item.IsSelected = true;
+    }
+
+    private void SetCollectionDefaults_Click(object sender, RoutedEventArgs e)
+    {
+        if (CollectionsTree.SelectedItem is not CollectionNode { IsFolder: true } folder)
+        {
+            StatusText.Text = "Select a collection or folder to set defaults on.";
+            return;
+        }
+        var options = _allOptions.Select(o => (o.Label, o.Thumbprint)).ToList();
+        var (ok, baseUrl, thumb) = CollectionDefaultsDialog.Show(
+            this, folder.Name, folder.DefaultBaseUrl, folder.DefaultCertThumbprint, options, _state.SavedBaseUrls);
+        if (!ok) return;
+        folder.DefaultBaseUrl = baseUrl;
+        folder.DefaultCertThumbprint = thumb;
+        StatusText.Text = baseUrl is null && thumb is null
+            ? $"Cleared defaults for “{folder.Name}”."
+            : $"Defaults for “{folder.Name}” saved.";
     }
 
     // ---------- response pop-out windows ----------
@@ -1516,6 +1548,19 @@ public partial class MainWindow : Window
                 FindNodeById(srcId) is { IsFolder: false, Request: { } saved } srcNode &&
                 saved.Method == model.Method && saved.EffectiveUrl() == model.EffectiveUrl())
                 srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+            // First successful send from a collection whose root has no defaults yet: remember
+            // the website and certificate that worked, so sibling endpoints inherit them.
+            if (response.Error is null && model.SourceCollectionId is { } rememberId &&
+                FindNodeById(rememberId) is { IsFolder: false } rememberLeaf &&
+                CollectionDefaults.RootOf(_collections, rememberLeaf) is { } rootFolder &&
+                string.IsNullOrWhiteSpace(rootFolder.DefaultBaseUrl) &&
+                string.IsNullOrEmpty(rootFolder.DefaultCertThumbprint) &&
+                (!string.IsNullOrWhiteSpace(model.BaseUrl) || !string.IsNullOrEmpty(model.CertThumbprint)))
+            {
+                rootFolder.DefaultBaseUrl = string.IsNullOrWhiteSpace(model.BaseUrl) ? null : model.BaseUrl!.Trim();
+                rootFolder.DefaultCertThumbprint = string.IsNullOrEmpty(model.CertThumbprint) ? null : model.CertThumbprint;
+                StatusText.Text += $"   Remembered website & certificate for “{rootFolder.Name}”.";
+            }
             if (response.Error is null)
                 TokenService.Capture(_state, request.Url, response.Body ?? Array.Empty<byte>(),
                     response.ContentType, response.Headers ?? new List<KeyValuePair<string, string>>());
