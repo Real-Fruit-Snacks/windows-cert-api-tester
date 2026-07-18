@@ -95,6 +95,20 @@ Each line is a path (or `METHOD path`); `#` comments and blanks are ignored. Any
 a connection error counts as a discovery. Add `--save-collection Discovered` to keep the hits, or
 `--json` for machine output. In the app, use **Discover…** in the toolbar.
 
+<p align="center">
+  <img alt="The Discover endpoints window, colour-coding each probe by outcome" src="docs/assets/shot-discover.svg" width="860" />
+</p>
+
+Results are colour-coded by outcome — **Found** (2xx), **Unauthorized** (401/403, it exists but
+needs auth), **MethodNotAllowed** (405, it exists with a different method), **Redirect**,
+**ServerError**, and **NotFound**. 404s and connection errors are hidden by default. A token
+captured from an auth endpoint is reused automatically on later probes to the same host, so you can
+log in first and then discover the endpoints that need it. The same run headless:
+
+<p align="center">
+  <img alt="certapi fuzz discovering endpoints from the command line" src="docs/assets/shot-fuzz.svg" width="820" />
+</p>
+
 ### Environments & variables
 Open the **ENV** selector (title bar) → **Edit** to define `{{variable}}` values per environment (Dev / Staging / Prod). Use `{{name}}` anywhere — URL, query, headers, body, or the auth fields — and it's substituted when you send. Switch environments to point the same requests at a different backend.
 
