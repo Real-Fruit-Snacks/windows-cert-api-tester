@@ -103,6 +103,12 @@ certapi send https://api.example.com/orders
 interactive authorization-code grant is app-only (it needs a browser). See the
 [CLI Reference](21-CLI-Reference.md#token).
 
+## Capturing a browser login
+
+When a site authenticates through a web page rather than an API call — the session ends up in cookies
+or a token minted by JavaScript — use **Capture session…** to log in once in a browser and reuse the
+result automatically. See [Session Capture](26-Session-Capture.md).
+
 ## How they compose
 
 - **Client certificate (mTLS)** is orthogonal — it authenticates the TLS connection and works

@@ -71,7 +71,8 @@ Use the **pop-out** button to detach a view — or the whole panel — into its 
 ## The status bar
 
 At the bottom: the status/result line, the **token chip** (appears when a bearer token is active for
-the current website — click it to inspect or clear), **Mock server…** (open the
+the current website — click it to inspect or clear), **Capture session…** (log in to a site in a
+browser and [capture its session](26-Session-Capture.md)), **Mock server…** (open the
 [mock server console](18-Mock-Server.md)), and **Run Self-Test**.
 
 Next: [Certificates & mTLS](06-Certificates-and-mTLS.md).

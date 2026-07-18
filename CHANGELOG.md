@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.0] - 2026-07-18
+
+### Added
+- **Session capture** — a *Capture session…* button (next to *Mock server…*) opens a browser you can
+  log in through; it presents your client certificate on every request, captures the resulting session
+  **cookies** (including HttpOnly) and any **bearer token**, and scopes them per website. Captured
+  sessions attach automatically to later requests — in the app and headless via `certapi send` /
+  `certapi run`. Your password is typed into the site's own form and is never seen or stored. The
+  finish step can also save the API calls observed during login as a ready-to-run collection.
+- **Session chip controls** — the status-bar chip now shows captured cookies as well as tokens, with
+  menu items to clear cookies for a site and to toggle *Automatically use captured cookies*.
+- **Mock `/cookie-auth` route** — the local test server sets a session cookie and then reports the
+  request as authenticated once the cookie comes back, so session capture can be exercised end to end.
+
 ## [1.46.1] - 2026-07-18
 
 ### Fixed

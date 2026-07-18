@@ -32,6 +32,7 @@ It runs until `Ctrl+C` and logs each request.
 | `/sse` | A short `text/event-stream` — try it with `certapi sse` |
 | `/token` | An OAuth 2.0 token response — try it with `certapi token` |
 | `/windows-auth` | Challenges with `401 WWW-Authenticate: NTLM`, then accepts the handshake — try it with `--windows-auth` |
+| `/cookie-auth` | Sets a session cookie, then reports authenticated once you send it back — try it with [Session Capture](26-Session-Capture.md) |
 | *Upgrade: websocket* (any path) | A WebSocket echo — try it with `certapi ws` |
 
 ## Modes and certificates

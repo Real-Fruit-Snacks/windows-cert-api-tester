@@ -49,6 +49,11 @@ Yes — `certapi mcp` exposes a safe toolset over MCP (Model Context Protocol) w
 certificate and a host allowlist. See
 [MCP Server](20-MCP-Server.md).
 
+**The site logs in through a web page, not an API — can I still reuse the session?**
+Yes — **Capture session…** opens a browser, you log in on the site itself, and it captures the
+resulting cookies and any bearer token, then attaches them automatically to later requests (app and
+CLI). See [Session Capture](26-Session-Capture.md).
+
 **Can I test without a real API?**
 Yes — `certapi mock` (or **Mock server…** in the app) is a standing local server that echoes requests
 and serves `/status`, `/sse`, `/token`, `/windows-auth`, and a WebSocket echo, over HTTP (Hypertext

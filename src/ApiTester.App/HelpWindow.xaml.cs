@@ -304,6 +304,14 @@ public partial class HelpWindow : Window
           "sign-on); untick that to supply an explicit DOMAIN\\user and password. Kerberos or NTLM " +
           "is negotiated with the server automatically. Headless: certapi send --windows-auth " +
           "(or --windows-user DOMAIN\\user --windows-password …)."),
+        Sub("CAPTURE A BROWSER LOGIN"),
+        P("For sites that log in through a web page — where the session ends up in cookies or a token " +
+          "minted by JavaScript — click Capture session… in the status bar. A browser opens; you log " +
+          "in on the site itself (your password is never seen or stored). On Finish it captures the " +
+          "session cookies and any bearer token, scoped per website, and attaches them to later " +
+          "requests automatically — in the app and headless via certapi. It can also save the API " +
+          "calls it saw during login as a ready-to-run collection. The session chip lets you clear or " +
+          "turn off captured cookies/tokens."),
         Sub("EVERYWHERE"),
         P("The same capture-and-reuse works headless: certapi send and certapi run print a note " +
           "when they capture or use a token (--no-auto-token disables it), and the MCP server " +
