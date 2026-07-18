@@ -37,6 +37,7 @@ public static class CliApp
         Commands:
           send <url>        Send a one-off request (client cert from the Windows store)
           run <path>        Run saved requests from your collections (or --all)
+          fuzz <base-url>   Discover endpoints from a wordlist (which ones exist?)
           certs             List client certificates
           selftest          Prove the mTLS path end-to-end against a loopback server
           import            Import a cURL command or an OpenAPI file into collections
@@ -67,8 +68,10 @@ public static class CliApp
                           Stream? bodyOut = null, CliServices? services = null)
     {
         services ??= new CliServices();
-        if (args.Length > 0 && args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase))
+        if (args.Length > 0 &&
+            (args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase) || args[0].Equals("fuzz", StringComparison.OrdinalIgnoreCase)))
         {
+            bool isMcp = args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase);
             (string[] Remaining, bool Debug, string? LogFile) g;
             try { g = GlobalOptions.Extract(args.Skip(1).ToArray()); }
             catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
@@ -76,7 +79,12 @@ public static class CliApp
             using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
             services.Log = log;
             var err = log.WrapStderr(stderr);
-            try { return Commands.McpCommand.Run(new Args(g.Remaining), input, stdout, err, services); }
+            try
+            {
+                return isMcp
+                    ? Commands.McpCommand.Run(new Args(g.Remaining), input, stdout, err, services)
+                    : Commands.FuzzCommand.Run(new Args(g.Remaining), input, stdout, err, services);
+            }
             catch (CliUsageException ex) { err.WriteLine(ex.Message); return ExitCodes.Usage; }
             catch (CliDataException ex) { err.WriteLine(ex.Message); return ExitCodes.Data; }
             catch (Exception ex) { err.WriteLine("error: " + log.Describe(ex)); return ExitCodes.Failure; }
@@ -109,6 +117,7 @@ public static class CliApp
                 "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, err, services),
                 "send" => Commands.SendCommand.Run(new Args(rest), stdout, err, bodyOut ?? new MemoryStream(), services),
                 "run" => Commands.RunCommand.Run(new Args(rest), stdout, err, services),
+                "fuzz" => Commands.FuzzCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
                 "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, err),
                 "import" => Commands.ImportCommand.Run(new Args(rest), stdout, err, services),
                 "export" => Commands.ExportCommand.Run(new Args(rest), stdout, err, services),
@@ -137,6 +146,7 @@ public static class CliApp
             "send" => Commands.SendCommand.Help,
             "certs" => Commands.CertsCommand.Help,
             "run" => Commands.RunCommand.Help,
+            "fuzz" => Commands.FuzzCommand.Help,
             "selftest" => Commands.SelfTestCommand.Help,
             "import" => Commands.ImportCommand.Help,
             "export" => Commands.ExportCommand.Help,
