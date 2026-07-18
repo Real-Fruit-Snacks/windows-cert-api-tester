@@ -1427,15 +1427,24 @@ public partial class MainWindow : Window
         var url = CurrentEditorUrl();
         var origin = TokenService.OriginOf(url);
         var token = origin is null ? null : _state.SessionTokens.FirstOrDefault(t => t.Origin == origin);
-        if (token is null) { TokenChip.Visibility = Visibility.Collapsed; return; }
+        int cookieCount = origin is null ? 0 : _state.SessionCookies.Count(c => c.Origin == origin && !c.IsExpired);
+        if (token is null && cookieCount == 0) { TokenChip.Visibility = Visibility.Collapsed; return; }
 
         TokenChip.Visibility = Visibility.Visible;
+        if (token is null)
+        {
+            string cookieSuffix = _state.AutoCookies ? "" : " · auto off";
+            TokenChipText.Text = $"Session: {new Uri(url).Host} · {cookieCount} cookie(s){cookieSuffix}";
+            return;
+        }
+
         string suffix =
             !_state.AutoTokens ? " · auto off"
             : token.IsExpired ? " · expired"
             : token.ExpiresUtc is { } e ? $" · expires in {Math.Max(1, (int)(e - DateTime.UtcNow).TotalMinutes)}m"
             : "";
-        TokenChipText.Text = $"Token: {new Uri(url).Host}{suffix}";
+        string cookieBadge = cookieCount > 0 ? $" + {cookieCount} cookie(s)" : "";
+        TokenChipText.Text = $"Token: {new Uri(url).Host}{suffix}{cookieBadge}";
     }
 
     private void TokenChip_Click(object sender, MouseButtonEventArgs e)
@@ -1443,29 +1452,46 @@ public partial class MainWindow : Window
         var url = CurrentEditorUrl();
         var origin = TokenService.OriginOf(url);
         var token = origin is null ? null : _state.SessionTokens.FirstOrDefault(t => t.Origin == origin);
-        if (token is null) { UpdateTokenChip(); return; }
+        int cookieCount = origin is null ? 0 : _state.SessionCookies.Count(c => c.Origin == origin && !c.IsExpired);
+        if (token is null && cookieCount == 0) { UpdateTokenChip(); return; }
 
         var menu = new ContextMenu();
-        menu.Items.Add(new MenuItem
+
+        if (token is not null)
         {
-            Header = $"{token.Source} · captured {token.CapturedUtc.ToLocalTime():HH:mm}" +
-                     (token.ExpiresUtc is { } ex ? $" · expires {ex.ToLocalTime():HH:mm}" : ""),
-            IsEnabled = false
-        });
-        menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem
+            {
+                Header = $"{token.Source} · captured {token.CapturedUtc.ToLocalTime():HH:mm}" +
+                         (token.ExpiresUtc is { } ex ? $" · expires {ex.ToLocalTime():HH:mm}" : ""),
+                IsEnabled = false
+            });
+            menu.Items.Add(new Separator());
 
-        var clearOne = new MenuItem { Header = $"Clear token for {new Uri(url).Host}" };
-        clearOne.Click += (_, _) => { _state.SessionTokens.Remove(token); UpdateTokenChip(); };
-        menu.Items.Add(clearOne);
+            var clearOne = new MenuItem { Header = $"Clear token for {new Uri(url).Host}" };
+            clearOne.Click += (_, _) => { _state.SessionTokens.Remove(token); UpdateTokenChip(); };
+            menu.Items.Add(clearOne);
 
-        var clearAll = new MenuItem { Header = "Clear all captured tokens" };
-        clearAll.Click += (_, _) => { _state.SessionTokens.Clear(); UpdateTokenChip(); };
-        menu.Items.Add(clearAll);
+            var clearAll = new MenuItem { Header = "Clear all captured tokens" };
+            clearAll.Click += (_, _) => { _state.SessionTokens.Clear(); UpdateTokenChip(); };
+            menu.Items.Add(clearAll);
 
-        menu.Items.Add(new Separator());
-        var toggle = new MenuItem { Header = "Automatically use captured tokens", IsCheckable = true, IsChecked = _state.AutoTokens };
-        toggle.Click += (_, _) => { _state.AutoTokens = toggle.IsChecked; UpdateTokenChip(); };
-        menu.Items.Add(toggle);
+            menu.Items.Add(new Separator());
+            var toggle = new MenuItem { Header = "Automatically use captured tokens", IsCheckable = true, IsChecked = _state.AutoTokens };
+            toggle.Click += (_, _) => { _state.AutoTokens = toggle.IsChecked; UpdateTokenChip(); };
+            menu.Items.Add(toggle);
+        }
+
+        if (cookieCount > 0)
+        {
+            if (menu.Items.Count > 0) menu.Items.Add(new Separator());
+            var clearCookies = new MenuItem { Header = $"Clear {cookieCount} captured cookie(s) for {new Uri(url).Host}" };
+            clearCookies.Click += (_, _) => { _state.SessionCookies.RemoveAll(c => c.Origin == origin); UpdateTokenChip(); };
+            menu.Items.Add(clearCookies);
+
+            var cookieToggle = new MenuItem { Header = "Automatically use captured cookies", IsCheckable = true, IsChecked = _state.AutoCookies };
+            cookieToggle.Click += (_, _) => { _state.AutoCookies = cookieToggle.IsChecked; UpdateTokenChip(); };
+            menu.Items.Add(cookieToggle);
+        }
 
         menu.PlacementTarget = TokenChip;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
@@ -1769,6 +1795,8 @@ public partial class MainWindow : Window
         ShowWaitingHint();
         try
         {
+            // Attach any browser-captured session cookies for this origin before sending.
+            CookieService.SeedContainer(_state, request.Url, _cookieJar);
             var response = await _apiClient.SendAsync(
                 request, cert, model.IgnoreServerCert, cookies: _cookieJar, cancellationToken: _cts.Token);
             RenderResponse(response);
@@ -2280,4 +2308,45 @@ public partial class MainWindow : Window
             SelfTestButton.IsEnabled = true;
         }
     }
+
+    // ---------- session capture ----------
+
+    private void CaptureSessionButton_Click(object sender, RoutedEventArgs e)
+    {
+        var start = CurrentEditorUrl();
+        var win = new SessionCaptureWindow(_state, SelectedCert(),
+            IgnoreServerCertCheck.IsChecked == true,
+            string.IsNullOrWhiteSpace(start) ? null : start)
+        { Owner = this };
+
+        if (win.ShowDialog() == true)
+        {
+            if (win.SaveCollectionName is { } cn) ImportObservedCalls(win.CapturedCalls, cn);
+            UpdateTokenChip();
+            _state.Save();
+            StatusText.Text = "Session captured.";
+        }
+    }
+
+    /// <summary>Turn calls observed during a capture into a new collection of Auto-auth requests,
+    /// so replaying them uses the just-captured cookies/token.</summary>
+    public void ImportObservedCalls(IReadOnlyList<ObservedCall> calls, string collectionName)
+    {
+        if (calls.Count == 0) return;
+        var folder = new CollectionNode { Name = collectionName, IsFolder = true };
+        foreach (var call in calls)
+        {
+            var model = new RequestModel { Method = call.Method, Path = call.Url };
+            folder.Children.Add(new CollectionNode
+            {
+                Name = $"{call.Method} {ShortPath(call.Url)}", IsFolder = false, Request = model
+            });
+        }
+        _collections.Add(folder);
+        UpdateCollectionsHint();
+        SetSidebarMode(history: false);
+    }
+
+    private static string ShortPath(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.AbsolutePath : url;
 }

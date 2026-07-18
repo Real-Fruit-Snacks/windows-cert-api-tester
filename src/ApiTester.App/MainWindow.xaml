@@ -787,11 +787,14 @@
                     <Button x:Name="MockServerButton" Content="Mock server…" Width="112" Margin="0,0,8,0"
                             DockPanel.Dock="Right" Click="MockServerButton_Click"
                             ToolTip="Run a local test server to fire requests at (http / TLS / mTLS)"/>
+                    <Button x:Name="CaptureSessionButton" Content="Capture session…" Width="132" Margin="0,0,8,0"
+                            DockPanel.Dock="Right" Click="CaptureSessionButton_Click"
+                            ToolTip="Log in to a site in a browser and capture its session (cookies + token)"/>
                     <Border x:Name="TokenChip" DockPanel.Dock="Right" Visibility="Collapsed" Margin="0,0,10,0"
                             VerticalAlignment="Center" Background="{DynamicResource Bg.Input}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
                             Padding="10,3" Cursor="Hand" MouseLeftButtonUp="TokenChip_Click"
-                            ToolTip="A bearer token was captured for this website — click for details">
+                            ToolTip="A session (token and/or cookies) was captured for this website — click for details">
                         <TextBlock x:Name="TokenChipText" FontSize="12" Foreground="{DynamicResource Text.Soft}"/>
                     </Border>
                     <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{DynamicResource Text.Soft}"
