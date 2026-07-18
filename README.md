@@ -10,7 +10,7 @@
   [![.NET 9](https://img.shields.io/badge/.NET-9.0-b78cff.svg)](https://dotnet.microsoft.com/)
   [![CI](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/actions/workflows/ci.yml/badge.svg)](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/actions/workflows/ci.yml)
 
-  [Documentation](https://real-fruit-snacks.github.io/windows-cert-api-tester/) · [Download](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) · [Report an issue](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/issues)
+  [Documentation](https://real-fruit-snacks.github.io/windows-cert-api-tester/) · [Handbook](wiki/README.md) · [Download](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/releases/latest) · [Report an issue](https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/issues)
 
 </div>
 
