@@ -32,9 +32,12 @@ public static class FuzzCommand
         Discovery:
           --concurrency <n>        Parallel probes, 1–50 (default 8)
           --delay <ms>             Pause between probes (be polite; default 0)
-          --hide <codes>           Hide these status codes (default 404)
+          --hide <codes>           Hide only these status codes (overrides the default view)
           --match <codes>          Show only these status codes
           --all                    Show every probe, including 404s and errors
+
+        By default (no --all, --match, or --hide) the table hides 404s and connection errors,
+        the same noise the GUI hides.
 
         Output:
           --json                   JSON { results, summary } instead of the table
@@ -251,8 +254,13 @@ public static class FuzzCommand
             var codes = ParseCodes(match);
             return results.Where(r => r.StatusCode is { } s && codes.Contains(s)).ToList();
         }
-        var hidden = hide is not null ? ParseCodes(hide) : new HashSet<int> { 404 };
-        return results.Where(r => r.StatusCode is not { } s || !hidden.Contains(s)).ToList();
+        if (hide is not null)
+        {
+            var hidden = ParseCodes(hide);
+            return results.Where(r => r.StatusCode is not { } s || !hidden.Contains(s)).ToList();
+        }
+        // Default view: hide the noise — 404s and transport errors — matching the GUI's "Hide 404s / errors".
+        return results.Where(r => r.Outcome is not (FuzzOutcome.NotFound or FuzzOutcome.Error)).ToList();
     }
 
     private static HashSet<int> ParseCodes(string csv) =>

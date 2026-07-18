@@ -11,12 +11,12 @@ public class FuzzCommandTests
     // The loopback server returns 200 for every path; we distinguish "found" vs "not found"
     // by pointing the wordlist at the server and using bogus absolute-URL entries for misses.
     private static async Task<(int Code, string Out, string Err)> RunAsync(
-        string[] args, string wordlist, string statePath, string? stdin = null)
+        string[] args, string wordlist, string statePath, string? stdin = null, string responseBody = "{\"ok\":true}")
     {
         using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
         using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
         using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
-        await using var server = await LoopbackMtlsServer.StartAsync(serverCert, clientCert.Thumbprint!, "{\"ok\":true}");
+        await using var server = await LoopbackMtlsServer.StartAsync(serverCert, clientCert.Thumbprint!, responseBody);
 
         var wlPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".txt");
         File.WriteAllText(wlPath, wordlist);
@@ -179,6 +179,48 @@ public class FuzzCommandTests
             Assert.NotNull(saved.Collections.FirstOrDefault(c => c.Name == "Discovered"));
         }
         finally { if (File.Exists(ws)) File.Delete(ws); }
+    }
+
+    [Fact]
+    public async Task Fuzz_captures_a_token_from_a_probe_response()
+    {
+        var state = TempState();
+        try
+        {
+            // A single "/" entry keeps this to one deterministic probe — no concurrency races.
+            // Capture only persists to state when there's a reason to save, so --save-collection
+            // forces the write and lets us assert on the reloaded state.
+            var r = await RunAsync(new[] { "fuzz", "{URL}", "-w", "{WL}", "--cert", "CliClient", "--insecure",
+                "--save-collection", "Discovered" }, "/", state, responseBody: "{\"access_token\":\"fuzz-tok\"}");
+            Assert.Equal(0, r.Code);
+
+            var saved = AppState.LoadFrom(state);
+            var folder = saved.Collections.FirstOrDefault(c => c.Name == "Discovered");
+            Assert.NotNull(folder);
+            Assert.True(CountLeaves(folder!) >= 1);
+
+            var token = Assert.Single(saved.SessionTokens);
+            Assert.Equal("fuzz-tok", token.Token);
+        }
+        finally { if (File.Exists(state)) File.Delete(state); }
+
+        static int CountLeaves(CollectionNode n) => n.IsFolder ? n.Children.Sum(CountLeaves) : 1;
+    }
+
+    [Fact]
+    public async Task No_auto_token_skips_capture()
+    {
+        var state = TempState();
+        try
+        {
+            var r = await RunAsync(new[] { "fuzz", "{URL}", "-w", "{WL}", "--cert", "CliClient", "--insecure",
+                "--no-auto-token", "--save-collection", "Discovered" }, "/", state, responseBody: "{\"access_token\":\"fuzz-tok\"}");
+            Assert.Equal(0, r.Code);
+
+            var saved = AppState.LoadFrom(state);
+            Assert.Empty(saved.SessionTokens);
+        }
+        finally { if (File.Exists(state)) File.Delete(state); }
     }
 
     [Fact]
