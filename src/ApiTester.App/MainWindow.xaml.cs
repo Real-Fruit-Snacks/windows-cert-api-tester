@@ -775,6 +775,36 @@ public partial class MainWindow : Window
         RefreshEnvCombo();
     }
 
+    // ---------- endpoint discovery ----------
+
+    private void DiscoverButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ActiveRequest is { } m) CaptureControlsInto(m);
+        var certs = _allOptions.Select(o => new FuzzWindow.CertChoice(o.Label, o.Cert, o.Thumbprint)).ToList();
+        var win = new FuzzWindow(_state, _apiClient,
+            ActiveRequest?.BaseUrl ?? BaseUrlBox.Text.Trim(),
+            SelectedThumbprint(), certs,
+            IgnoreServerCertCheck.IsChecked == true, ParseTimeout()) { Owner = this };
+        win.ShowDialog();
+
+        if (win.OpenRequested is { } d)
+        {
+            var model = new RequestModel { Method = d.Method, BaseUrl = d.BaseUrl, Path = d.Path, CertThumbprint = d.CertThumbprint };
+            var tab = new RequestTab(model);
+            _tabs.Add(tab);
+            TabStrip.SelectedItem = tab;
+            StatusText.Text = $"Opened {d.Method} {d.Path} from discovery.";
+        }
+        if (win.DiscoveredSaved)
+        {
+            // Rebuild the collections view from the shared state so saved endpoints appear.
+            _collections.Clear();
+            foreach (var c in _state.Collections) _collections.Add(c);
+            UpdateCollectionsHint();
+            SetSidebarMode(history: false);
+        }
+    }
+
     // ---------- import ----------
 
     private void ImportButton_Click(object sender, RoutedEventArgs e)
