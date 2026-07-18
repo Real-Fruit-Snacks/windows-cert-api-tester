@@ -63,6 +63,14 @@ public class TokenServiceTests
     }
 
     [Fact]
+    public void Huge_expires_in_never_throws()
+    {
+        var t = Detect("{\"access_token\":\"a\",\"expires_in\":500000000000}");
+        Assert.NotNull(t);
+        Assert.NotNull(t!.ExpiresUtc);
+    }
+
+    [Fact]
     public void Non_bearer_token_type_disqualifies()
     {
         Assert.Null(Detect("{\"access_token\":\"a\",\"token_type\":\"mac\"}"));

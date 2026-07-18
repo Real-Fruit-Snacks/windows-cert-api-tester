@@ -52,12 +52,15 @@ public static class TokenService
 
         foreach (var name in HeaderNames)
             foreach (var h in headers)
-                if (h.Key.Equals(name, StringComparison.OrdinalIgnoreCase) && IsTokenShaped(h.Value.Trim()))
+            {
+                var value = h.Value.Trim();
+                if (h.Key.Equals(name, StringComparison.OrdinalIgnoreCase) && IsTokenShaped(value))
                     return new SessionToken
                     {
-                        Origin = origin, Token = h.Value.Trim(), Source = $"{name} header",
+                        Origin = origin, Token = value, Source = $"{name} header",
                         CapturedUtc = DateTime.UtcNow
                     };
+            }
         return null;
     }
 
@@ -120,7 +123,7 @@ public static class TokenService
             JsonValueKind.String when double.TryParse(el.GetString(), out var d) => d,
             _ => 0
         };
-        return seconds > 0 ? DateTime.UtcNow.AddSeconds(seconds) : null;
+        return seconds > 0 ? DateTime.UtcNow.AddSeconds(Math.Min(seconds, 315_360_000)) : null;   // 10-year cap
     }
 
     private static bool TryGetIgnoreCase(JsonElement obj, string name, out JsonElement value)
