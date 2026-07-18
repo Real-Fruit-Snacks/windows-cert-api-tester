@@ -80,6 +80,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Local test server** — a *Mock server…* button (and `certapi mock`) runs a standing server you can fire requests at: it echoes each request as JSON and serves `/status/<code>`, `/sse`, `/token`, and a WebSocket echo, over plain HTTP, HTTPS, or mutual TLS (it generates and writes out the certs). Point the app at itself to try every feature without a real API.
 - **Built-in help** — a **?** in the title bar (or **F1**) opens a Help & Reference window that walks through every feature, lists the keyboard shortcuts, and shows an About panel. It's all embedded, so it works even with no web access.
 - **OAuth 2.0 tokens** — a *Get OAuth 2.0 token…* button on the Auth tab runs the client-credentials, password, and refresh grants, plus the authorization-code grant with PKCE (opens your browser, catches the loopback redirect). The token is stored for the API's host and filled into the Bearer field. `certapi token` does the same headless. The token endpoint itself can be mTLS-protected.
+- **Windows Integrated Auth (Negotiate/NTLM)** — for internal sites that use your Windows identity. A *Windows (integrated)* auth type signs in with your logged-in account (SSO) by default, or explicit `DOMAIN\user` + password. Headless: `certapi send --windows-auth` (or `--windows-user`/`--windows-password`). Kerberos or NTLM is negotiated automatically.
 - **Live streaming (WebSocket & SSE)** — a *Stream* button opens a console that connects to a `ws://`/`wss://` endpoint (send messages, watch replies) or an `http(s)` `text/event-stream` endpoint (watch events arrive), reusing your selected client certificate. The `certapi ws` and `certapi sse` commands do the same headless.
 - **Light or dark theme** — the Terminal Workbench palette ships in both. Toggle it from the sun/moon button in the title bar; your choice is remembered and applies to every window.
 - **Keyboard-friendly and portable** — shortcuts for everything (below), a fully themed UI, and a single self-contained executable.
@@ -178,6 +179,9 @@ certapi run --all --json
 certapi token --token-url https://auth.internal.corp/token --client-id app --client-secret s3cret \
     --scope "api.read" --save --for https://api.internal.corp
 certapi send https://api.internal.corp/orders
+
+# Windows Integrated Auth (Negotiate/NTLM) with your signed-in account
+certapi send https://intranet.corp/api/me --windows-auth
 
 # stream a WebSocket (send messages, print replies) or Server-Sent Events
 certapi ws wss://internal.corp/socket --cert "CN=matt" -m '{"sub":"prices"}' --expect 3

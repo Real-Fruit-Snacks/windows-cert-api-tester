@@ -286,10 +286,14 @@ public partial class MainWindow : Window
             BodyModeForm.IsChecked = m.IsMultipart;
             BodyModeText.IsChecked = !m.IsMultipart;
             UpdateBodyPanels();
-            AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 2, "Basic" => 3, "None" => 1, _ => 0 };
+            AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 2, "Basic" => 3, "Windows" => 4, "None" => 1, _ => 0 };
             BearerTokenBox.Text = m.AuthType == "Bearer" ? m.AuthSecret ?? "" : "";
-            BasicUserBox.Text = m.AuthUser ?? "";
+            BasicUserBox.Text = m.AuthType == "Basic" ? m.AuthUser ?? "" : "";
             BasicPassBox.Text = m.AuthType == "Basic" ? m.AuthSecret ?? "" : "";
+            // Windows auth: an empty user means single sign-on; a value means explicit credentials.
+            WindowsDefaultCheck.IsChecked = m.AuthType != "Windows" || string.IsNullOrEmpty(m.AuthUser);
+            WindowsUserBox.Text = m.AuthType == "Windows" ? m.AuthUser ?? "" : "";
+            WindowsPassBox.Text = m.AuthType == "Windows" ? m.AuthSecret ?? "" : "";
             IgnoreServerCertCheck.IsChecked = m.IgnoreServerCert;
             TimeoutBox.Text = m.TimeoutSeconds.ToString();
             SelectCertByThumbprint(m.CertThumbprint);
@@ -315,9 +319,15 @@ public partial class MainWindow : Window
         m.Body = BodyBox.Text;
         m.ContentType = SelectedContentType();
         m.IsMultipart = BodyModeForm.IsChecked == true;
-        m.AuthType = AuthTypeCombo.SelectedIndex switch { 2 => "Bearer", 3 => "Basic", 1 => "None", _ => "Auto" };
-        m.AuthUser = BasicUserBox.Text;
-        m.AuthSecret = AuthTypeCombo.SelectedIndex == 2 ? BearerTokenBox.Text : BasicPassBox.Text;
+        m.AuthType = AuthTypeCombo.SelectedIndex switch { 2 => "Bearer", 3 => "Basic", 4 => "Windows", 1 => "None", _ => "Auto" };
+        bool winSso = WindowsDefaultCheck.IsChecked == true;
+        m.AuthUser = AuthTypeCombo.SelectedIndex == 4 ? (winSso ? "" : WindowsUserBox.Text) : BasicUserBox.Text;
+        m.AuthSecret = AuthTypeCombo.SelectedIndex switch
+        {
+            2 => BearerTokenBox.Text,
+            4 => winSso ? "" : WindowsPassBox.Text,
+            _ => BasicPassBox.Text
+        };
         m.CertThumbprint = SelectedThumbprint();
         m.IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true;
         m.TimeoutSeconds = ParseTimeout();
@@ -1588,6 +1598,13 @@ public partial class MainWindow : Window
         AutoAuthHint.Visibility = AuthTypeCombo.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         BearerPanel.Visibility = AuthTypeCombo.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         BasicPanel.Visibility = AuthTypeCombo.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
+        WindowsPanel.Visibility = AuthTypeCombo.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void WindowsDefaultCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (WindowsCredsPanel is null) return; // during init
+        WindowsCredsPanel.Visibility = WindowsDefaultCheck.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // ---------- send ----------
@@ -1642,6 +1659,9 @@ public partial class MainWindow : Window
             Body = m.IsMultipart ? null : body,
             Parts = parts,
             ContentType = contentType,
+            WindowsAuth = m.AuthType == "Windows"
+                ? WindowsAuthOptions.FromCredentials(R(m.AuthUser ?? ""), R(m.AuthSecret ?? ""))
+                : null,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
     }

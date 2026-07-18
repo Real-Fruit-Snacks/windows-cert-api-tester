@@ -415,6 +415,7 @@
                                 <ComboBoxItem>None (never send auth)</ComboBoxItem>
                                 <ComboBoxItem>Bearer token</ComboBoxItem>
                                 <ComboBoxItem>Basic</ComboBoxItem>
+                                <ComboBoxItem>Windows (integrated)</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
                         <TextBlock x:Name="AutoAuthHint" FontSize="12" Foreground="{DynamicResource Text.Muted}"
@@ -433,6 +434,23 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="PASS" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="60"/>
                                 <TextBox x:Name="BasicPassBox" Width="260" VerticalContentAlignment="Center" Tag="password"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel x:Name="WindowsPanel" Visibility="Collapsed">
+                            <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="60,0,0,8"
+                                       Text="Authenticates with Windows Integrated Auth (Negotiate/NTLM) — for internal sites that use your Windows identity."/>
+                            <CheckBox x:Name="WindowsDefaultCheck" Content="Use my signed-in Windows account (single sign-on)"
+                                      IsChecked="True" Margin="60,0,0,8"
+                                      Checked="WindowsDefaultCheck_Changed" Unchecked="WindowsDefaultCheck_Changed"/>
+                            <StackPanel x:Name="WindowsCredsPanel" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="USER" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="60"/>
+                                    <TextBox x:Name="WindowsUserBox" Width="260" VerticalContentAlignment="Center" Tag="DOMAIN\user"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="PASS" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="60"/>
+                                    <TextBox x:Name="WindowsPassBox" Width="260" VerticalContentAlignment="Center" Tag="password"/>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                         <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,12,0,0">

@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.46.0] - 2026-07-18
+
+### Added
+- **Windows Integrated Authentication (Negotiate/NTLM)** — for internal sites that authenticate with
+  your Windows identity. A new *Windows (integrated)* auth type uses your signed-in account for single
+  sign-on by default, or explicit `DOMAIN\user` + password. Headless: `certapi send --windows-auth`
+  (aliases `--ntlm` / `--negotiate`), or `--windows-user DOMAIN\user --windows-password …`. Saved
+  requests carry it through `certapi run`. The handler negotiates Kerberos or NTLM automatically.
+- **Mock `/windows-auth` route** — the local test server now emulates a Windows-auth-protected endpoint
+  (challenges with `401 WWW-Authenticate: NTLM`, then accepts the handshake), so you can try your
+  Windows-auth setup end to end against `certapi mock`.
+
 ## [1.45.0] - 2026-07-18
 
 ### Fixed

@@ -139,6 +139,29 @@ public class MockServerTests
     }
 
     [Fact]
+    public async Task Windows_auth_challenge_is_answered_with_default_credentials()
+    {
+        await using var srv = MockServer.Start(0, MockTlsMode.Http);
+
+        // No Windows auth ⇒ the challenge is never answered, so it stays 401.
+        var unauth = await new ApiClient().SendAsync(
+            new ApiRequest { Method = HttpMethod.Get, Url = srv.BaseUrl + "windows-auth" }, null);
+        Assert.Equal(401, unauth.StatusCode);
+
+        // With Windows auth, the handler runs the Negotiate/NTLM handshake and authenticates.
+        var authed = await new ApiClient().SendAsync(
+            new ApiRequest
+            {
+                Method = HttpMethod.Get,
+                Url = srv.BaseUrl + "windows-auth",
+                WindowsAuth = new WindowsAuthOptions(UseDefaultCredentials: true)
+            }, null);
+
+        Assert.Equal(200, authed.StatusCode);
+        Assert.Contains("\"authenticated\":\"NTLM\"", Encoding.UTF8.GetString(authed.Body));
+    }
+
+    [Fact]
     public async Task WebSocket_route_echoes_frames()
     {
         await using var srv = MockServer.Start(0, MockTlsMode.Http);

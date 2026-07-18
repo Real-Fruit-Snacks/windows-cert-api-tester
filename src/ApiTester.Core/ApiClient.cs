@@ -70,6 +70,17 @@ public sealed class ApiClient
         // one, the per-handler default container means cookies don't persist between calls.
         if (cookies is not null) { handler.CookieContainer = cookies; handler.UseCookies = true; }
 
+        // Windows Integrated Auth (Negotiate/NTLM): set server credentials so the handler runs the
+        // challenge/response handshake automatically. Connection-bound, so it needs the pooled
+        // connection to persist across the handshake legs — which SocketsHttpHandler does.
+        if (request.WindowsAuth is { } wa)
+        {
+            handler.Credentials = wa.UseDefaultCredentials
+                ? CredentialCache.DefaultCredentials
+                : new NetworkCredential(wa.Username, wa.Password, wa.Domain);
+            handler.PreAuthenticate = true;
+        }
+
         if (viaProxy)
         {
             // Let the handler drive the proxy CONNECT + TLS; capture the server cert in the callback.

@@ -236,6 +236,9 @@ public static class RunCommand
                     Convert.ToBase64String(Encoding.UTF8.GetBytes($"{R(m.AuthUser ?? "")}:{R(m.AuthSecret ?? "")}"))));
                 break;
         }
+        var winAuth = m.AuthType == "Windows"
+            ? WindowsAuthOptions.FromCredentials(R(m.AuthUser ?? ""), R(m.AuthSecret ?? ""))
+            : null;
         string url = R(m.EffectiveUrl());
         string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
 
@@ -272,6 +275,7 @@ public static class RunCommand
                 ? m.EnabledParts().Select(p => p with { Name = R(p.Name), Value = p.Value is null ? null : R(p.Value) }).ToList()
                 : null,
             ContentType = !m.IsMultipart && body is not null && m.ContentType != "(none)" ? m.ContentType : null,
+            WindowsAuth = winAuth,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
         var response = services.Client.SendAsync(request, cert, m.IgnoreServerCert,

@@ -22,6 +22,10 @@ public static class SendCommand
           --content-type <ct>     Body content type (default application/json)
           --bearer <token>        Authorization: Bearer …
           --basic <user:pass>     Authorization: Basic …
+          --windows-auth          Windows Integrated Auth (Negotiate/NTLM) with your signed-in
+                                  account (aliases: --ntlm, --negotiate)
+          --windows-user <u>      Explicit Windows creds instead of SSO (DOMAIN\user); pair with
+          --windows-password <p>  the password
           --timeout <seconds>     Default 100
 
         TLS / certificates:
@@ -128,6 +132,9 @@ public static class SendCommand
         bool quiet = args.Flag("-q", "--quiet");
         var captureSpecs = args.Values("--capture");
         bool noAutoToken = args.Flag("--no-auto-token");
+        bool windowsAuth = args.Flag("--windows-auth", "--ntlm", "--negotiate");
+        string? winUser = args.Value("--windows-user");
+        string? winPass = args.Value("--windows-password");
         // Resolve the certificate here (Windows store or a file) so its options are consumed
         // before Positionals() rejects anything option-shaped that's left over.
         var cert = CliCert.Resolve(args, store, services, stderr);
@@ -256,6 +263,9 @@ public static class SendCommand
                 ? parts.Select(p => p with { Name = R(p.Name), Value = p.Value is null ? null : R(p.Value) }).ToList()
                 : null,
             ContentType = body is not null ? (contentType ?? "application/json") : null,
+            WindowsAuth = winUser is not null ? WindowsAuthOptions.FromCredentials(winUser, winPass)
+                       : windowsAuth ? new WindowsAuthOptions(true)
+                       : null,
             Timeout = TimeSpan.FromSeconds(timeout)
         };
         services.Log.Debug($"{request.Method} {request.Url}");

@@ -298,6 +298,12 @@ public partial class HelpWindow : Window
           "The token is stored for the API's host (so Auto auth attaches it) and filled into the Bearer " +
           "field. The token endpoint itself may require a client certificate. Headless: certapi token " +
           "--token-url … --client-id … (--grant password|refresh, --save --for <api-url>)."),
+        Sub("WINDOWS INTEGRATED AUTH"),
+        P("For internal sites that authenticate with your Windows identity, pick the Windows " +
+          "(integrated) auth type. By default it signs in with your logged-in account (single " +
+          "sign-on); untick that to supply an explicit DOMAIN\\user and password. Kerberos or NTLM " +
+          "is negotiated with the server automatically. Headless: certapi send --windows-auth " +
+          "(or --windows-user DOMAIN\\user --windows-password …)."),
         Sub("EVERYWHERE"),
         P("The same capture-and-reuse works headless: certapi send and certapi run print a note " +
           "when they capture or use a token (--no-auto-token disables it), and the MCP server " +

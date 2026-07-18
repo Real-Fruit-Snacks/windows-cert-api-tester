@@ -169,6 +169,13 @@ public sealed class MockServer : IAsyncDisposable
                 return;
             }
 
+            // Windows Integrated Auth (Negotiate/NTLM) challenge on this route.
+            if (path.Equals("/windows-auth", StringComparison.Ordinal))
+            {
+                await HandleWindowsAuthAsync(stream, method, headers, clientCertSubject, ct);
+                return;
+            }
+
             int status;
             if (path.StartsWith("/status/", StringComparison.Ordinal) &&
                 int.TryParse(path["/status/".Length..], out var code) && code is >= 100 and <= 599)
@@ -233,6 +240,38 @@ public sealed class MockServer : IAsyncDisposable
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
         await stream.WriteAsync(bytes, ct);
         await stream.FlushAsync(ct);
+    }
+
+    // Emulates a Windows-auth-protected endpoint: challenges with 401 WWW-Authenticate: NTLM until
+    // the client presents an Authorization header, then accepts it (short-circuiting the handshake).
+    // The challenge is sent keep-alive so the client can continue on the same connection.
+    private async Task HandleWindowsAuthAsync(Stream stream, string method,
+        Dictionary<string, string> headers, string? clientCertSubject, CancellationToken ct)
+    {
+        var currentHeaders = headers;
+        string currentMethod = method;
+        for (int leg = 0; leg < 4; leg++)   // bound the handshake
+        {
+            if (currentHeaders.TryGetValue("Authorization", out var auth) && auth.Length > 0)
+            {
+                string scheme = auth.Split(' ')[0];
+                await WriteResponseAsync(stream, 200, "application/json",
+                    $"{{\"server\":\"certapi mock\",\"authenticated\":\"{scheme}\",\"method\":\"{currentMethod}\"}}", ct);
+                _onRequest?.Invoke(new(currentMethod, "/windows-auth", 200, clientCertSubject));
+                return;
+            }
+
+            // Keep-alive 401 (no Connection: close) so the handshake stays on this connection.
+            var head = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: NTLM\r\nContent-Length: 0\r\n\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+            await stream.FlushAsync(ct);
+            _onRequest?.Invoke(new(currentMethod, "/windows-auth", 401, clientCertSubject));
+
+            var next = await ReadRequestAsync(stream, ct);
+            if (next is null) return;
+            currentMethod = next.Value.Method;
+            currentHeaders = next.Value.Headers;
+        }
     }
 
     private static async Task WriteSseAsync(Stream stream, CancellationToken ct)
