@@ -14,6 +14,9 @@ public static class SendCommand
           -X, --method <m>        HTTP method (default GET)
           -H, --header "k: v"     Add a header (repeatable)
           -d, --data <body>       Request body ( --data-file <file> reads it from disk )
+          -F, --form name=value   multipart/form-data field; name=@path uploads a file
+                                  (name=@path;type=<ct> sets its content type). Repeatable;
+                                  implies POST. Mutually exclusive with -d.
           --content-type <ct>     Body content type (default application/json)
           --bearer <token>        Authorization: Bearer …
           --basic <user:pass>     Authorization: Basic …
@@ -71,6 +74,9 @@ public static class SendCommand
           certapi send "https://api.example.com/search?q=abc" -H "Accept: application/json"
           certapi send https://api.example.com/upload -X PUT --data-file .\payload.json
 
+          # Upload a file (and a text field) as multipart/form-data (implies POST)
+          certapi send https://api.example.com/upload -F "notes=cover page" -F "file=@.\report.pdf"
+
           # Environments and capture rules
           certapi send "https://{{host}}/login" --env Staging --capture session=data.session_id
 
@@ -87,10 +93,13 @@ public static class SendCommand
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, Stream bodyOut, CliServices services)
     {
         // ---- bind options ----
-        string method = args.Value("-X", "--method") ?? "GET";
+        string? methodOpt = args.Value("-X", "--method");
         var headers = args.Values("-H", "--header");
         string? data = args.Value("-d", "--data");
         string? dataFile = args.Value("--data-file");
+        var formSpecs = args.Values("-F", "--form");
+        // -F implies a POST unless a method is given explicitly (curl's behaviour).
+        string method = methodOpt ?? (formSpecs.Count > 0 ? "POST" : "GET");
         string? contentType = args.Value("--content-type");
         string? bearer = args.Value("--bearer");
         string? basic = args.Value("--basic");
@@ -138,8 +147,30 @@ public static class SendCommand
         }
         if (data is not null && dataFile is not null)
             throw new CliUsageException("-d/--data and --data-file are mutually exclusive.");
+        if (formSpecs.Count > 0 && (data is not null || dataFile is not null))
+            throw new CliUsageException("-F/--form (multipart) and -d/--data are mutually exclusive.");
         if (bearer is not null && basic is not null)
             throw new CliUsageException("--bearer and --basic are mutually exclusive.");
+
+        // Multipart form parts: "name=value" (text) or "name=@path" (file, optionally ";type=<ct>").
+        var parts = new List<MultipartPart>();
+        foreach (var raw in formSpecs)
+        {
+            int eq = raw.IndexOf('=');
+            if (eq <= 0) throw new CliUsageException($"-F expects name=value or name=@file, got '{raw}'.");
+            string name = raw[..eq];
+            string rest = raw[(eq + 1)..];
+            if (rest.StartsWith('@'))
+            {
+                string spec = rest[1..];
+                string? partType = null;
+                int semi = spec.IndexOf(";type=", StringComparison.OrdinalIgnoreCase);
+                if (semi >= 0) { partType = spec[(semi + ";type=".Length)..]; spec = spec[..semi]; }
+                if (!File.Exists(spec)) throw new CliDataException($"Form file not found: {spec}");
+                parts.Add(new MultipartPart(name, null, spec, partType));
+            }
+            else parts.Add(new MultipartPart(name, rest, null));
+        }
         string? body = data ?? (dataFile is not null
             ? File.Exists(dataFile) ? File.ReadAllText(dataFile) : throw new CliDataException($"Body file not found: {dataFile}")
             : null);
@@ -206,6 +237,9 @@ public static class SendCommand
             Url = url,
             Headers = headerPairs,
             Body = body,
+            Parts = parts.Count > 0
+                ? parts.Select(p => p with { Name = R(p.Name), Value = p.Value is null ? null : R(p.Value) }).ToList()
+                : null,
             ContentType = body is not null ? (contentType ?? "application/json") : null,
             Timeout = TimeSpan.FromSeconds(timeout)
         };

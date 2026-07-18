@@ -124,7 +124,26 @@ public sealed class ApiClient
             foreach (var header in request.Headers)
                 message.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
-            if (request.Body is not null)
+            if (request.Parts is { Count: > 0 } parts)
+            {
+                var form = new MultipartFormDataContent();
+                foreach (var part in parts)
+                {
+                    if (part.FilePath is { Length: > 0 })
+                    {
+                        var fileContent = new ByteArrayContent(File.ReadAllBytes(part.FilePath));
+                        if (part.ContentType is { Length: > 0 })
+                            fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(part.ContentType);
+                        form.Add(fileContent, part.Name, Path.GetFileName(part.FilePath));
+                    }
+                    else
+                    {
+                        form.Add(new StringContent(part.Value ?? "", Encoding.UTF8), part.Name);
+                    }
+                }
+                message.Content = form;   // boundary + Content-Type are set by MultipartFormDataContent
+            }
+            else if (request.Body is not null)
             {
                 message.Content = new StringContent(request.Body, Encoding.UTF8);
                 if (request.ContentType is not null)
@@ -183,6 +202,15 @@ public sealed class ApiClient
                 Elapsed = stopwatch.Elapsed,
                 Error = new ApiError(kind, ex.Message),
                 Connection = BuildConnection()
+            };
+        }
+        catch (IOException ex)   // a multipart file part that can't be read
+        {
+            stopwatch.Stop();
+            return new ApiResponse
+            {
+                Elapsed = stopwatch.Elapsed,
+                Error = new ApiError(ApiErrorKind.Unknown, "Could not read a request file: " + ex.Message)
             };
         }
         catch (Exception ex) when (ex is UriFormatException or FormatException or InvalidOperationException)

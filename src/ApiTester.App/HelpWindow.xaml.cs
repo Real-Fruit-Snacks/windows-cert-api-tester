@@ -300,7 +300,7 @@ public partial class HelpWindow : Window
     private UIElement CommandLine() => Section("Command line",
         P("certapi.exe — a separate download on the releases page — is the tester without the window, built for scripts and scheduled tasks."),
         Bullets(
-            "certapi send <url> sends a one-off request; pick a client certificate from the Windows store with --cert <thumbprint or subject>. The body goes to stdout, diagnostics to stderr.",
+            "certapi send <url> sends a one-off request; pick a client certificate with --cert <thumbprint or subject> (or --cert-file for a .pfx/.pem). The body goes to stdout, diagnostics to stderr. Upload files as multipart with -F \"field=value\" -F \"file=@path\".",
             "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",

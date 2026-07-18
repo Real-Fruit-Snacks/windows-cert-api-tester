@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-07-18
+
+### Added
+- **File uploads (multipart/form-data)** — `certapi send -F "field=value" -F "file=@path"` posts a
+  multipart form and uploads files (curl-style: `-F` is repeatable, implies POST, and
+  `name=@path;type=<ct>` sets a part's content type; mutually exclusive with `-d`). Note: the CLI
+  supports this today; a multipart editor in the app's Body tab is planned.
+
 ## [1.30.0] - 2026-07-18
 
 ### Added
