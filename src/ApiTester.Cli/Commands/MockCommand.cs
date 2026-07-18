@@ -16,6 +16,7 @@ public static class MockCommand
           /status/<code>    responds with that HTTP status (e.g. /status/404)
           /sse              a short text/event-stream (try it with certapi sse)
           /token            an OAuth 2.0 token response (try it with certapi token)
+          /windows-auth     a 401 NTLM challenge, then success (try it with certapi send --windows-auth)
           (Upgrade)         a WebSocket echo on any path (try it with certapi ws)
 
         Options:
@@ -70,7 +71,7 @@ public static class MockCommand
         }
 
         stderr.WriteLine($"certapi mock listening on {server.BaseUrl}  ({mode})");
-        stderr.WriteLine("routes: /  /status/<code>  /sse  /token  (WebSocket on any path)");
+        stderr.WriteLine("routes: /  /status/<code>  /sse  /token  /windows-auth  (WebSocket on any path)");
         if (mode != MockTlsMode.Http)
         {
             stderr.WriteLine($"certificates in {certDir}");

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.46.1] - 2026-07-18
+
+### Fixed
+- **Theme toggle repaints the response** — switching themes now re-highlights whatever the Pretty view
+  is showing. Previously the self-test detail (and anything else written outside a normal response)
+  kept the old palette's colors — nearly unreadable pale-on-white after a switch to light.
+- **Mock route list includes `/windows-auth`** — the route existed but was missing from the GUI mock
+  console's routes line, the in-app Help, `certapi mock --help`, and the startup routes message.
+- **"stopped" no longer shows in green** — the mock console's status line is muted while stopped and
+  accent-green only while the server is live.
+
+### Changed
+- **Consistent window chrome** — every secondary window now uses the same title treatment (the accent
+  `❯` glyph + bold title) and the same borderless caption close button. Previously the Mock server,
+  Live stream, and OAuth windows had a small boxed close button, and the Environments, Discover, and
+  pop-out windows were missing the brand glyph.
+
 ## [1.46.0] - 2026-07-18
 
 ### Added

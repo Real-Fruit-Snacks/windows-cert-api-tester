@@ -60,6 +60,7 @@ public sealed record MockRequestLog(string Method, string Path, int Status, stri
 ///   <item><c>/status/{code}</c> — responds with that HTTP status.</item>
 ///   <item><c>/sse</c> — a short <c>text/event-stream</c>.</item>
 ///   <item><c>/token</c> — an OAuth 2.0 token response.</item>
+///   <item><c>/windows-auth</c> — a 401 NTLM challenge, then an authenticated response.</item>
 ///   <item><c>Upgrade: websocket</c> (any path) — a WebSocket echo.</item>
 ///   <item>anything else — the JSON echo.</item>
 /// </list>

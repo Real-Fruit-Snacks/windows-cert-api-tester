@@ -24,8 +24,12 @@
                         <Button Style="{StaticResource CaptionClose}" Height="38" Content="&#xE8BB;"
                                 Click="Close_Click" ToolTip="Close and return this view to the main window"/>
                     </StackPanel>
-                    <TextBlock x:Name="TitleText" VerticalAlignment="Center" Margin="14,0,0,0"
-                               Style="{StaticResource Caption}"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="&#x276F;" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Accent}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock x:Name="TitleText" FontWeight="Bold" FontSize="12" Margin="9,0,0,0"
+                                   Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </DockPanel>
             </Border>
             <ContentControl x:Name="Host" Focusable="False"/>

@@ -20,17 +20,20 @@
             </Grid.RowDefinitions>
 
             <!-- Header -->
-            <Border Grid.Row="0" Background="{DynamicResource Bg.Panel}" Padding="14,10" MouseLeftButtonDown="Header_Drag">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="&#x2715;" Width="30" Height="26" Click="Close_Click"/>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="&#x276F;" Foreground="{DynamicResource Accent}" FontWeight="Bold" FontSize="14"/>
+            <Border Grid.Row="0" Height="40" Background="{DynamicResource Bg.Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="&#x276F;" Foreground="{DynamicResource Accent}" FontWeight="Bold" FontSize="14"
+                                   VerticalAlignment="Center"/>
                         <TextBlock Text="MOCK SERVER" Margin="9,0,0,0" FontWeight="Bold" FontSize="13"
-                                   Foreground="{DynamicResource Text.Normal}"/>
+                                   Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"/>
                         <TextBlock Margin="12,0,0,0" FontSize="11" Foreground="{DynamicResource Text.Muted}"
-                                   Text="a standing local endpoint to fire requests at"/>
+                                   VerticalAlignment="Center" Text="a standing local endpoint to fire requests at"/>
                     </StackPanel>
-                </DockPanel>
+                    <Button Content="&#xE8BB;" HorizontalAlignment="Right" Style="{StaticResource CaptionClose}"
+                            Height="40" Click="Close_Click" ToolTip="Close"/>
+                </Grid>
             </Border>
 
             <!-- Controls -->
@@ -61,12 +64,12 @@
                         <Button x:Name="OpenCertsButton" DockPanel.Dock="Right" Content="Open certs" Width="94"
                                 Visibility="Collapsed" Click="OpenCerts_Click"/>
                         <TextBox x:Name="UrlBox" IsReadOnly="True" BorderThickness="0" Background="Transparent"
-                                 Foreground="{DynamicResource Accent}" VerticalContentAlignment="Center"
+                                 Foreground="{DynamicResource Text.Muted}" VerticalContentAlignment="Center"
                                  Text="stopped — pick a mode and press Start"/>
                     </DockPanel>
                     <TextBlock x:Name="RoutesText" FontSize="11" Foreground="{DynamicResource Text.Muted}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="routes:  /  ·  /status/&lt;code&gt;  ·  /sse  ·  /token  ·  WebSocket on any path"/>
+                               Text="routes:  /  ·  /status/&lt;code&gt;  ·  /sse  ·  /token  ·  /windows-auth  ·  WebSocket on any path"/>
                     <TextBlock x:Name="CertText" FontSize="11" Foreground="{DynamicResource Text.Faint}" Margin="0,4,0,0"
                                TextWrapping="Wrap" Visibility="Collapsed"/>
                 </StackPanel>

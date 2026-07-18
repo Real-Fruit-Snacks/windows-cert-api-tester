@@ -82,6 +82,7 @@ public partial class MockServerWindow : Window
         }
 
         UrlBox.Text = _server.BaseUrl;
+        UrlBox.SetResourceReference(ForegroundProperty, "Accent"); // green = live, muted = stopped
         CopyUrlButton.IsEnabled = true;
         StartButton.IsEnabled = false;
         StopButton.IsEnabled = true;
@@ -109,6 +110,7 @@ public partial class MockServerWindow : Window
         _serverCert = null;
 
         UrlBox.Text = "stopped — pick a mode and press Start";
+        UrlBox.SetResourceReference(ForegroundProperty, "Text.Muted");
         CopyUrlButton.IsEnabled = false;
         OpenCertsButton.Visibility = Visibility.Collapsed;
         CertText.Visibility = Visibility.Collapsed;

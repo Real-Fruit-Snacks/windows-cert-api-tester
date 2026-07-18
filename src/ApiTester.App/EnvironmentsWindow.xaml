@@ -15,8 +15,12 @@
             <Border DockPanel.Dock="Top" Height="40" Background="{DynamicResource Bg.Panel}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
                 <Grid>
-                    <TextBlock Text="ENVIRONMENTS &amp; VARIABLES" Style="{StaticResource Caption}"
-                               VerticalAlignment="Center" Margin="14,0,0,0"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="&#x276F;" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Accent}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="ENVIRONMENTS &amp; VARIABLES" FontWeight="Bold" FontSize="12" Margin="9,0,0,0"
+                                   Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Button Content="&#xE8BB;" HorizontalAlignment="Right" Style="{StaticResource CaptionClose}"
                             Height="40" Click="Close_Click"/>
                 </Grid>

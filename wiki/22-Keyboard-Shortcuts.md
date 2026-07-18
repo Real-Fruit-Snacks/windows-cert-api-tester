@@ -18,7 +18,7 @@ Shortcuts in the desktop app.
 
 - **Middle-click** a request tab to close it.
 - The **theme toggle** (☀ / ☾) and **Help** (`?`) live in the title bar.
-- **Copy as ▾** (above the request tabs) copies the request as cURL / PowerShell / Python / C#.
+- **Copy as ▾** (in the response toolbar, next to Copy body) copies the request as cURL / PowerShell / Python / C#.
 - The response **find** box searches the body — Enter jumps to the next match and wraps around.
 
 Next: [Troubleshooting](23-Troubleshooting.md).

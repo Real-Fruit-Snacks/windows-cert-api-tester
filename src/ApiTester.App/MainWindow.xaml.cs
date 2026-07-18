@@ -46,6 +46,9 @@ public partial class MainWindow : Window
     private List<CertOption> _visibleOptions = new();
 
     private ApiResponse? _lastResponse;
+    // Whatever the Pretty view currently shows (response, error, or self-test detail), so a theme
+    // toggle can re-highlight it with the new palette.
+    private (string Text, BodyKind Kind)? _lastPretty;
     private string _lastRawText = "";
     private CancellationTokenSource? _cts;
 
@@ -92,13 +95,10 @@ public partial class MainWindow : Window
         NativeTheme.ApplyTitleBar(this, next == "Light");
         UpdateThemeToggleGlyph();
 
-        // Re-highlight the shown response so the Pretty view swaps to the new theme's syntax colours
-        // (the highlighter builds a static document, so it doesn't repaint on its own).
-        if (_lastResponse is { } r)
-        {
-            if (r.Error is not null) SetPretty(r.Error.Message, BodyKind.Text);
-            else { var f = _formatter.Format(r); SetPretty(f.Text, f.Kind); }
-        }
+        // Re-highlight whatever the Pretty view is showing — a response, an error, or the
+        // self-test detail — so it swaps to the new theme's colours (the highlighter builds a
+        // static document, so it doesn't repaint on its own).
+        if (_lastPretty is { } p) SetPretty(p.Text, p.Kind);
 
         StatusText.Text = $"{next} theme applied.";
     }
@@ -1872,8 +1872,11 @@ public partial class MainWindow : Window
             $"{response.Elapsed.TotalMilliseconds:F0} ms  •  {formatted.Kind}{tls}";
     }
 
-    private void SetPretty(string text, BodyKind kind) =>
+    private void SetPretty(string text, BodyKind kind)
+    {
+        _lastPretty = (text, kind);
         PrettyRich.Document = SyntaxHighlighter.Build(text, kind);
+    }
 
     private static string FormatDiagnostics(ConnectionInfo? c)
     {
