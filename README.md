@@ -224,6 +224,12 @@ The agent gets `send_request`, `list_certificates`, `list_saved`, `run_saved`, a
 
 ## Screenshots
 
+**Capture a browser login — log in on the site itself, and the session cookies and any token are captured and reused automatically (your password is never seen)**
+
+<div align="center">
+  <img alt="Session capture window — logging in and capturing the session" src="docs/assets/shot-capture.png" width="860" />
+</div>
+
 **Render a certificate-protected website — every resource (HTML, CSS, JS, images, XHR) is fetched with your client certificate**
 
 <div align="center">
@@ -242,6 +248,12 @@ The agent gets `send_request`, `list_certificates`, `list_saved`, `run_saved`, a
 
 <div align="center">
   <img alt="Network trace tab" src="docs/assets/shot-network.png" width="860" />
+</div>
+
+**A built-in mock server — echoes requests and serves `/status`, `/sse`, `/token`, `/windows-auth`, `/cookie-auth`, and a WebSocket echo, over HTTP / TLS / mTLS**
+
+<div align="center">
+  <img alt="Mock server window with its routes" src="docs/assets/shot-mock.png" width="720" />
 </div>
 
 **Built-in Help & Reference — every feature explained, embedded so it works with no web access**

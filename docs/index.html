@@ -191,6 +191,10 @@
     <h2>Screenshots</h2>
     <div class="gallery">
       <figure>
+        <img src="assets/shot-capture.png" alt="Session capture window — logging in on the site and capturing the session">
+        <figcaption><strong>Session capture</strong> &mdash; log in on the site itself; the session cookies and any bearer token are captured and reused automatically, in the app and headless. Your password is never seen.</figcaption>
+      </figure>
+      <figure>
         <img src="assets/shot-rendered.png" alt="Rendered website view — a page rendered through the client certificate">
         <figcaption>Rendered view &mdash; every resource on the page (HTML, CSS, JS, images, XHR) is fetched with your client certificate.</figcaption>
       </figure>
@@ -207,6 +211,10 @@
       <figure>
         <img src="assets/shot-network.png" alt="Network trace tab listing every HTTP request">
         <figcaption>Network trace &mdash; every request the page made, like a browser's network panel, each fetched through your certificate.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-mock.png" alt="Mock server window listing its routes">
+        <figcaption>Built-in mock server &mdash; echoes requests and serves <code>/status</code>, <code>/sse</code>, <code>/token</code>, <code>/windows-auth</code>, <code>/cookie-auth</code>, and a WebSocket echo, over HTTP / TLS / mTLS.</figcaption>
       </figure>
       <figure>
         <img src="assets/shot-help.png" alt="In-app Help &amp; Reference window">
