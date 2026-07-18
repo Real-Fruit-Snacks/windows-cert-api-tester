@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.0] - 2026-07-18
+
+### Added
+- **Mock server in the app** — a *Mock server…* button (next to Run Self-Test) opens a console that
+  starts and stops the local test server over plain HTTP, HTTPS, or mutual TLS, shows its base URL and
+  routes, and logs each request as it arrives. For the TLS modes it generates the certificates and
+  offers an *Open certs* shortcut; *Copy URL* drops the address straight into a request. Same server
+  as `certapi mock` — now discoverable in the GUI.
+
 ## [1.43.0] - 2026-07-18
 
 ### Added

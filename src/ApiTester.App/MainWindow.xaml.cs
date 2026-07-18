@@ -1713,6 +1713,21 @@ public partial class MainWindow : Window
             : "OAuth token set as the bearer token.";
     }
 
+    private MockServerWindow? _mockWindow;
+
+    private void MockServerButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Reuse the existing window if it's already open rather than stacking servers.
+        if (_mockWindow is { IsLoaded: true })
+        {
+            _mockWindow.Activate();
+            return;
+        }
+        _mockWindow = new MockServerWindow { Owner = this };
+        _mockWindow.Closed += (_, _) => _mockWindow = null;
+        _mockWindow.Show();
+    }
+
     private void SendButton_Click(object sender, RoutedEventArgs e) => _ = SendRequestAsync();
 
     private async System.Threading.Tasks.Task SendRequestAsync()

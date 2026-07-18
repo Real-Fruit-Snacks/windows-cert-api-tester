@@ -14,6 +14,40 @@ namespace ApiTester.Core;
 /// certificate (mTLS).</summary>
 public enum MockTlsMode { Http, Https, Mtls }
 
+/// <summary>Generates the self-signed certificates a TLS/mTLS mock server uses and writes the public
+/// certs (and, for mTLS, a ready-to-use client .pfx) to a folder. Shared by the CLI and the GUI so
+/// both produce identical files.</summary>
+public static class MockCertificates
+{
+    public sealed record Generated(X509Certificate2 ServerCertificate, IReadOnlyList<string> WrittenFiles);
+
+    public static Generated Generate(MockTlsMode mode, string certDir)
+    {
+        Directory.CreateDirectory(certDir);
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("certapi mock CA");
+        var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate(
+            "localhost", ca, serverAuth: true, clientAuth: false, dnsNames: new[] { "localhost" });
+
+        var files = new List<string>();
+        void Write(string name, byte[] bytes)
+        {
+            string path = Path.Combine(certDir, name);
+            File.WriteAllBytes(path, bytes);
+            files.Add(path);
+        }
+
+        Write("mock-ca.cer", ca.Export(X509ContentType.Cert));
+        Write("mock-server.cer", serverCert.Export(X509ContentType.Cert));
+        if (mode == MockTlsMode.Mtls)
+        {
+            using var client = SelfSignedCertificateFactory.CreateSignedCertificate(
+                "certapi mock client", ca, serverAuth: false, clientAuth: true);
+            Write("mock-client.pfx", client.Export(X509ContentType.Pfx));
+        }
+        return new Generated(serverCert, files);
+    }
+}
+
 /// <summary>A one-line record of a handled request, for the console log.</summary>
 public sealed record MockRequestLog(string Method, string Path, int Status, string? ClientCertSubject);
 

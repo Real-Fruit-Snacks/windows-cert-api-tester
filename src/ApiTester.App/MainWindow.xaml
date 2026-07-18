@@ -768,6 +768,9 @@
                 <DockPanel>
                     <Button x:Name="SelfTestButton" Content="Run Self-Test" Width="118"
                             DockPanel.Dock="Right" Click="SelfTestButton_Click"/>
+                    <Button x:Name="MockServerButton" Content="Mock server…" Width="112" Margin="0,0,8,0"
+                            DockPanel.Dock="Right" Click="MockServerButton_Click"
+                            ToolTip="Run a local test server to fire requests at (http / TLS / mTLS)"/>
                     <Border x:Name="TokenChip" DockPanel.Dock="Right" Visibility="Collapsed" Margin="0,0,10,0"
                             VerticalAlignment="Center" Background="{DynamicResource Bg.Input}"
                             BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"

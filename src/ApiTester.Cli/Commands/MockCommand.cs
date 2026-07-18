@@ -54,7 +54,7 @@ public static class MockCommand
 
         X509Certificate2? serverCert = null;
         if (mode != MockTlsMode.Http)
-            serverCert = GenerateCertificates(mode, certDir, stderr);
+            serverCert = MockCertificates.Generate(mode, certDir).ServerCertificate;
 
         Action<MockRequestLog>? onRequest = quiet ? null : Log;
         MockServer server;
@@ -92,28 +92,5 @@ public static class MockCommand
             string who = r.ClientCertSubject is { } s ? $"  ({s})" : "";
             lock (stderr) stderr.WriteLine($"  {DateTime.Now:HH:mm:ss}  {r.Method,-6} {r.Path} → {r.Status}{who}");
         }
-    }
-
-    /// <summary>Generate a CA + server certificate (and, for mTLS, a client certificate), write the
-    /// public certs and a client .pfx to <paramref name="certDir"/>, and return the server cert.</summary>
-    private static X509Certificate2 GenerateCertificates(MockTlsMode mode, string certDir, TextWriter stderr)
-    {
-        Directory.CreateDirectory(certDir);
-        var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("certapi mock CA");
-        var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate(
-            "localhost", ca, serverAuth: true, clientAuth: false, dnsNames: new[] { "localhost" });
-
-        File.WriteAllBytes(Path.Combine(certDir, "mock-ca.cer"), ca.Export(X509ContentType.Cert));
-        File.WriteAllBytes(Path.Combine(certDir, "mock-server.cer"), serverCert.Export(X509ContentType.Cert));
-
-        if (mode == MockTlsMode.Mtls)
-        {
-            using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate(
-                "certapi mock client", ca, serverAuth: false, clientAuth: true);
-            File.WriteAllBytes(Path.Combine(certDir, "mock-client.pfx"), clientCert.Export(X509ContentType.Pfx));
-        }
-
-        ca.Dispose();
-        return serverCert;
     }
 }
