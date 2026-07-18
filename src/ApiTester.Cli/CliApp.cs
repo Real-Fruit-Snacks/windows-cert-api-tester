@@ -36,6 +36,7 @@ public static class CliApp
 
         Commands:
           send <url>        Send a one-off request (client cert from the Windows store)
+          token             Fetch an OAuth 2.0 access token (and optionally save it)
           run <path>        Run saved requests from your collections (or --all)
           fuzz <base-url>   Discover endpoints from a wordlist (which ones exist?)
           sse <url>         Stream Server-Sent Events (text/event-stream)
@@ -131,6 +132,7 @@ public static class CliApp
                 "certs" => Commands.CertsCommand.Run(new Args(rest), stdout, err, services),
                 "send" => Commands.SendCommand.Run(new Args(rest), stdout, err, bodyOut ?? new MemoryStream(), services),
                 "run" => Commands.RunCommand.Run(new Args(rest), stdout, err, services),
+                "token" => Commands.TokenCommand.Run(new Args(rest), stdout, err, services),
                 "fuzz" => Commands.FuzzCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
                 "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, err),
                 "import" => Commands.ImportCommand.Run(new Args(rest), stdout, err, services),
@@ -160,6 +162,7 @@ public static class CliApp
             "send" => Commands.SendCommand.Help,
             "certs" => Commands.CertsCommand.Help,
             "run" => Commands.RunCommand.Help,
+            "token" => Commands.TokenCommand.Help,
             "fuzz" => Commands.FuzzCommand.Help,
             "sse" => Commands.SseCommand.Help,
             "ws" => Commands.WsCommand.Help,

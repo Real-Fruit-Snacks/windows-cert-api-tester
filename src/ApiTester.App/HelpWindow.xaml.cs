@@ -291,6 +291,13 @@ public partial class HelpWindow : Window
           "automatically. A chip in the status bar shows the active website's token and its expiry; " +
           "click it to inspect, clear, or turn automatic tokens off. Pick “None (never send auth)” " +
           "on a request to opt out."),
+        Sub("OAUTH 2.0"),
+        P("For proper OAuth, the Get OAuth 2.0 token… button on the Auth tab fetches a token: the " +
+          "client-credentials, password, and refresh grants run directly, and the authorization-code " +
+          "grant opens your browser and catches the redirect on a temporary 127.0.0.1 port with PKCE. " +
+          "The token is stored for the API's host (so Auto auth attaches it) and filled into the Bearer " +
+          "field. The token endpoint itself may require a client certificate. Headless: certapi token " +
+          "--token-url … --client-id … (--grant password|refresh, --save --for <api-url>)."),
         Sub("EVERYWHERE"),
         P("The same capture-and-reuse works headless: certapi send and certapi run print a note " +
           "when they capture or use a token (--no-auto-token disables it), and the MCP server " +
@@ -323,6 +330,7 @@ public partial class HelpWindow : Window
             "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
             "certapi send also supports GraphQL (--graphql \"<query>\" --gql-variables \"{...}\") — a JSON { query, variables } POST.",
+            "certapi token fetches an OAuth 2.0 access token — --grant client_credentials (default), password, or refresh — and with --save --for <api-url> stores it so later sends attach it automatically.",
             "certapi ws <url> opens a WebSocket (ws/wss) — send messages with --message or piped stdin lines, print replies, and use --expect <n> for scripts. certapi sse <url> streams Server-Sent Events (--max-events, --json).",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
             "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app.",

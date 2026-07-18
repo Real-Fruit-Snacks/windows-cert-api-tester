@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2026-07-18
+
+### Added
+- **OAuth 2.0 token acquisition** — fetch access tokens without leaving the app. A *Get OAuth 2.0
+  token…* button on the Auth tab runs the client-credentials, password, and refresh-token grants
+  directly, and the authorization-code grant interactively (opens your browser, catches the redirect
+  on a loopback port, with PKCE). The token is stored for the API's host (so Auto auth attaches it)
+  and dropped into the Bearer field. The token endpoint itself can require mTLS.
+- **`certapi token`** — the same headless: `certapi token --token-url <url> --client-id … --client-secret …`
+  for client-credentials (or `--grant password|refresh`), with `--save --for <api-url>` to store the
+  token for later `certapi send` calls, `--client-auth basic`, `--scope`, `--param k=v`, and `--json`.
+
 ## [1.40.0] - 2026-07-18
 
 ### Fixed

@@ -176,6 +176,104 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         return Task.FromResult(server);
     }
 
+    /// <summary>An OAuth 2.0 token endpoint: validates client credentials (from the body or a Basic
+    /// header) and issues a JSON token whose access_token/refresh_token encode the grant type, so a
+    /// test can assert the right grant flowed through. Bad credentials get a 401 error response.</summary>
+    public static Task<LoopbackMtlsServer> StartOAuthTokenAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint,
+        string expectedClientId, string expectedClientSecret)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleOAuthTokenAsync(
+                client, serverCertificate, expectedClientThumbprint, expectedClientId, expectedClientSecret, ct));
+        return Task.FromResult(server);
+    }
+
+    private static async Task HandleOAuthTokenAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
+        string expectedClientId, string expectedClientSecret, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
+
+        var buffer = new byte[8192];
+        var sb = new StringBuilder();
+        int headerEnd = -1;
+        while (headerEnd < 0)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            sb.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            headerEnd = sb.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        }
+        string text = sb.ToString();
+        int contentLength = ParseContentLength(text);
+        int bodyHave = headerEnd >= 0 ? text.Length - (headerEnd + 4) : 0;
+        while (bodyHave < contentLength)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            sb.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            bodyHave += n;
+        }
+        text = sb.ToString();
+        string headerPart = headerEnd >= 0 ? text[..headerEnd] : text;
+        string bodyPart = headerEnd >= 0 ? text[(headerEnd + 4)..] : "";
+
+        var form = ParseForm(bodyPart);
+        form.TryGetValue("client_id", out var cid);
+        form.TryGetValue("client_secret", out var csecret);
+
+        // client_secret_basic: credentials arrive in the Authorization header instead of the body.
+        foreach (var line in headerPart.Split("\r\n"))
+        {
+            if (line.StartsWith("Authorization: Basic ", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(line["Authorization: Basic ".Length..].Trim()));
+                    int colon = decoded.IndexOf(':');
+                    if (colon >= 0) { cid = decoded[..colon]; csecret = decoded[(colon + 1)..]; }
+                }
+                catch (FormatException) { /* leave creds as they were */ }
+            }
+        }
+
+        bool ok = cid == expectedClientId && csecret == expectedClientSecret;
+        form.TryGetValue("grant_type", out var grant);
+        form.TryGetValue("scope", out var scope);
+        grant ??= "";
+
+        string json = ok
+            ? $"{{\"access_token\":\"at-{grant}\",\"token_type\":\"Bearer\",\"expires_in\":3600," +
+              $"\"refresh_token\":\"rt-{grant}\",\"scope\":\"{scope ?? ""}\"}}"
+            : "{\"error\":\"invalid_client\",\"error_description\":\"bad client credentials\"}";
+        var bodyBytes = Encoding.UTF8.GetBytes(json);
+        string head =
+            $"HTTP/1.1 {(ok ? "200 OK" : "401 Unauthorized")}\r\n" +
+            "Content-Type: application/json\r\n" +
+            $"Content-Length: {bodyBytes.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
+    }
+
+    private static Dictionary<string, string> ParseForm(string body)
+    {
+        var form = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in body.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = pair.IndexOf('=');
+            string key = eq >= 0 ? pair[..eq] : pair;
+            string val = eq >= 0 ? pair[(eq + 1)..] : "";
+            form[Uri.UnescapeDataString(key.Replace('+', ' '))] = Uri.UnescapeDataString(val.Replace('+', ' '));
+        }
+        return form;
+    }
+
     private static async Task HandleSseAsync(
         TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
         IReadOnlyList<(string? Event, string Data)> events, CancellationToken ct)

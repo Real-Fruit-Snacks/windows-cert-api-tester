@@ -78,6 +78,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Honors your proxy** — follows the machine's configured proxy, including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options, authenticating with your Windows credentials when required.
 - **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine and proves the whole certificate-authentication path end to end, **no real endpoint required.**
 - **Built-in help** — a **?** in the title bar (or **F1**) opens a Help & Reference window that walks through every feature, lists the keyboard shortcuts, and shows an About panel. It's all embedded, so it works even with no web access.
+- **OAuth 2.0 tokens** — a *Get OAuth 2.0 token…* button on the Auth tab runs the client-credentials, password, and refresh grants, plus the authorization-code grant with PKCE (opens your browser, catches the loopback redirect). The token is stored for the API's host and filled into the Bearer field. `certapi token` does the same headless. The token endpoint itself can be mTLS-protected.
 - **Live streaming (WebSocket & SSE)** — a *Stream* button opens a console that connects to a `ws://`/`wss://` endpoint (send messages, watch replies) or an `http(s)` `text/event-stream` endpoint (watch events arrive), reusing your selected client certificate. The `certapi ws` and `certapi sse` commands do the same headless.
 - **Light or dark theme** — the Terminal Workbench palette ships in both. Toggle it from the sun/moon button in the title bar; your choice is remembered and applies to every window.
 - **Keyboard-friendly and portable** — shortcuts for everything (below), a fully themed UI, and a single self-contained executable.
@@ -171,6 +172,11 @@ certapi send https://internal.corp/api/orders --workspace team.json --env Captur
 # run saved requests as a pass/fail suite (exit code 1 if any fail)
 certapi run "internal api" --env Prod
 certapi run --all --json
+
+# fetch an OAuth 2.0 token and store it for later sends to the API
+certapi token --token-url https://auth.internal.corp/token --client-id app --client-secret s3cret \
+    --scope "api.read" --save --for https://api.internal.corp
+certapi send https://api.internal.corp/orders
 
 # stream a WebSocket (send messages, print replies) or Server-Sent Events
 certapi ws wss://internal.corp/socket --cert "CN=matt" -m '{"sub":"prices"}' --expect 3

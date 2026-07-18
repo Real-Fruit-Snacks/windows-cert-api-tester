@@ -1686,6 +1686,33 @@ public partial class MainWindow : Window
         win.Show();
     }
 
+    private void GetOAuthToken_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OAuthWindow(SelectedCert(), IgnoreServerCertCheck.IsChecked == true, CurrentEditorUrl()) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Result?.AccessToken is not { } access) return;
+
+        // Store it for the target origin so Auto auth attaches it to later sends there.
+        string? host = null;
+        if (TokenService.OriginOf(dlg.ApplyToUrl) is { } origin)
+        {
+            _state.SessionTokens.RemoveAll(t => t.Origin == origin);
+            _state.SessionTokens.Add(new SessionToken
+            {
+                Origin = origin, Token = access, Source = "oauth",
+                CapturedUtc = DateTime.UtcNow, ExpiresUtc = dlg.Result.ExpiresUtc
+            });
+            host = TokenService.HostOf(dlg.ApplyToUrl);
+            UpdateTokenChip();
+        }
+
+        // Also surface it in the Bearer field for immediate use.
+        BearerTokenBox.Text = access;
+        AuthTypeCombo.SelectedIndex = 2; // Bearer token
+        StatusText.Text = host is not null
+            ? $"OAuth token stored for {host} and set as the bearer token."
+            : "OAuth token set as the bearer token.";
+    }
+
     private void SendButton_Click(object sender, RoutedEventArgs e) => _ = SendRequestAsync();
 
     private async System.Threading.Tasks.Task SendRequestAsync()

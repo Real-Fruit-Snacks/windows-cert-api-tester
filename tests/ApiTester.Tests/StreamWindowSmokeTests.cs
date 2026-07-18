@@ -34,4 +34,30 @@ public class StreamWindowSmokeTests
 
         Assert.True(error is null, error?.ToString());
     }
+
+    [Fact]
+    public void OAuthWindow_loads_with_the_theme()
+    {
+        Exception? error = null;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                var app = Application.Current ?? new Application();
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/ApiTester.App;component/Themes/TerminalWorkbench.xaml")
+                });
+
+                var win = new ApiTester.App.OAuthWindow(null, insecure: false, "https://api.example.com/orders");
+                win.Close();
+            }
+            catch (Exception ex) { error = ex; }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+
+        Assert.True(error is null, error?.ToString());
+    }
 }
