@@ -1,0 +1,111 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography.X509Certificates;
+using System.Windows;
+using System.Windows.Input;
+using ApiTester.Core;
+
+namespace ApiTester.App;
+
+/// <summary>An interactive browser window for capturing a login session. The user drives a real
+/// login; each response is observed for bearer tokens, and on Finish the session cookies are read
+/// from WebView2's store. Captured cookies/tokens are persisted per origin (feeding the app's and
+/// the CLI's automatic auth), and the observed API calls can be saved as a request collection.</summary>
+public partial class SessionCaptureWindow : Window
+{
+    private readonly AppState _state;
+    private readonly SessionCaptureController _controller;
+    private readonly List<ObservedCall> _calls = new();
+    private readonly HashSet<string> _origins = new();
+    private int _tokenCount;
+
+    /// <summary>Deduped observed calls, set on Finish (empty until then).</summary>
+    public IReadOnlyList<ObservedCall> CapturedCalls { get; private set; } = new List<ObservedCall>();
+
+    /// <summary>The collection name the user chose to save observed calls into, or null to skip.</summary>
+    public string? SaveCollectionName { get; private set; }
+
+    public SessionCaptureWindow(AppState state, X509Certificate2? cert, bool ignoreServerCertErrors, string? startUrl)
+    {
+        InitializeComponent();
+        _state = state;
+        _controller = new SessionCaptureController(Browser, cert, ignoreServerCertErrors);
+        _controller.CallObserved += OnCall;
+        _controller.ResponseBody += OnBodyForToken;
+        Loaded += async (_, _) =>
+        {
+            if (!await _controller.InitializeAsync())
+            {
+                CaptureSummary.Text = "The capture browser needs the Microsoft Edge WebView2 runtime, " +
+                                      "which couldn't be started on this machine.";
+                FinishButton.IsEnabled = false;
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(startUrl)) { AddressBox.Text = startUrl; _controller.Navigate(startUrl); }
+        };
+    }
+
+    protected override void OnSourceInitialized(System.EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        NativeTheme.ApplyTitleBar(this);
+    }
+
+    protected override void OnClosed(System.EventArgs e) { _controller.Dispose(); base.OnClosed(e); }
+
+    private void OnCall(ObservedCall call)
+    {
+        _calls.Add(call);
+        if (TokenService.OriginOf(call.Url) is { } o) _origins.Add(o);
+        RefreshSummary();
+    }
+
+    // Store any bearer token seen during the session, scoped to its origin — the same capture the
+    // app does on normal sends — and count it for the live panel.
+    private void OnBodyForToken(byte[] body, string? contentType, IReadOnlyList<KeyValuePair<string, string>> headers, string url)
+    {
+        if (TokenService.Capture(_state, url, body, contentType, headers) is not null) { _tokenCount++; RefreshSummary(); }
+    }
+
+    private void RefreshSummary() =>
+        CaptureSummary.Text =
+            $"Seen {ObservedCall.Dedup(_calls).Count} API call(s) across {_origins.Count} origin(s); " +
+            $"{_tokenCount} bearer token(s) detected. Cookies are read when you press Finish.";
+
+    private async void Finish_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var origin in _origins.ToList())
+        {
+            var cookies = await _controller.ReadCookiesAsync(origin);
+            if (cookies.Count > 0) CookieService.Capture(_state, origin, cookies);
+        }
+
+        CapturedCalls = ObservedCall.Dedup(_calls);
+        if (CapturedCalls.Count > 0)
+        {
+            var name = InputDialog.Show(this, "Save requests",
+                $"Save {CapturedCalls.Count} observed call(s) as requests into a new collection named:", "captured");
+            SaveCollectionName = string.IsNullOrWhiteSpace(name) ? null : name;
+        }
+
+        _state.Save();
+        DialogResult = true;
+        Close();
+    }
+
+    private void AddressBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(AddressBox.Text))
+        {
+            var url = AddressBox.Text.Trim();
+            if (!url.Contains("://")) url = "https://" + url;
+            _controller.Navigate(url);
+        }
+    }
+
+    private void Back_Click(object sender, RoutedEventArgs e) { if (Browser.CanGoBack) Browser.GoBack(); }
+    private void Forward_Click(object sender, RoutedEventArgs e) { if (Browser.CanGoForward) Browser.GoForward(); }
+    private void Reload_Click(object sender, RoutedEventArgs e) => Browser.Reload();
+    private void Cancel_Click(object sender, RoutedEventArgs e) { DialogResult = false; Close(); }
+    private void Header_Drag(object sender, MouseButtonEventArgs e) { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); }
+}
