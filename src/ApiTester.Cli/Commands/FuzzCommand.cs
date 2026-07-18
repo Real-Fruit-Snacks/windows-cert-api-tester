@@ -7,14 +7,17 @@ namespace ApiTester.Cli.Commands;
 public static class FuzzCommand
 {
     public const string Help = """
-        Usage: certapi fuzz <base-url> -w <wordlist> [options]
+        Usage: certapi fuzz <base-url> [-w <wordlist>] [options]
 
-        Probes every endpoint in a wordlist against <base-url> and reports which ones exist —
-        the fastest way to map an undocumented API. A line is "PATH" or "METHOD PATH"; blank
-        lines and #comments are ignored; a full https:// line overrides the base URL.
+        Probes candidate endpoints against <base-url> and reports which ones exist — the fastest
+        way to map an undocumented API. With no -w it uses a built-in starter list; a line is
+        "PATH" or "METHOD PATH"; blank lines and #comments are ignored; a full https:// line
+        overrides the base URL.
 
         Wordlist:
-          -w, --wordlist <file|->  Endpoints to probe ('-' reads them from stdin)
+          -w, --wordlist <file|->  Endpoints to probe (omit for the built-in starter list;
+                                   '-' reads them from stdin). For a thorough sweep, supply your
+                                   own larger list — the built-in one is only a quick look.
           -X, --methods <list>     Comma-separated methods to try per path (default GET)
 
         TLS / certificates:
@@ -49,7 +52,10 @@ public static class FuzzCommand
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
         Examples:
-          # Probe a wordlist with a client certificate
+          # Quick look with the built-in starter list — no wordlist needed
+          certapi fuzz https://api.example.com --cert "CN=My Client"
+
+          # Probe your own wordlist with a client certificate
           certapi fuzz https://api.example.com -w .\endpoints.txt --cert "CN=My Client"
 
           # Try several methods, show everything, go faster
@@ -95,7 +101,6 @@ public static class FuzzCommand
         var positionals = args.Positionals();
         if (positionals.Count != 1) throw new CliUsageException(Help);
         string baseUrl = positionals[0];
-        if (wordlist is null) throw new CliUsageException("fuzz needs -w <wordlist> (a file, or '-' for stdin).\n" + Help);
 
         // An explicit --workspace file that doesn't exist is an error — unless --save-collection is
         // creating it (a discovery write starts from an empty workspace).
@@ -118,10 +123,13 @@ public static class FuzzCommand
         // ---- wordlist ----
         string listText;
         if (wordlist == "-") listText = input.ReadToEnd();
+        else if (wordlist is null) listText = BuiltInWordlist.Text;   // no -w: use the built-in starter list
         else if (!File.Exists(wordlist)) throw new CliDataException($"Wordlist not found: {wordlist}");
         else listText = File.ReadAllText(wordlist);
         var entries = EndpointList.Parse(listText);
         if (entries.Count == 0) throw new CliDataException("The wordlist has no endpoints (only blanks/comments).");
+        if (wordlist is null && !quiet)
+            stderr.WriteLine($"note: no wordlist given — using the built-in starter list ({entries.Count} endpoints; pass -w <file> for a thorough sweep)");
 
         // ---- headers / auth ----
         var headerPairs = new List<KeyValuePair<string, string>>();

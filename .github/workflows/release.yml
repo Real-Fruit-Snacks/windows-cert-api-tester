@@ -43,5 +43,6 @@ jobs:
           gh release create "$TAG" \
             "publish/ApiTester.App.exe#Certificate API Tester (Windows x64, self-contained)" \
             "publish-cli/certapi.exe#certapi command-line client (Windows x64, self-contained)" \
+            "wordlists/common-api-endpoints.txt#Starter endpoint wordlist for 'certapi fuzz'" \
             --title "Certificate API Tester $TAG" \
             --generate-notes

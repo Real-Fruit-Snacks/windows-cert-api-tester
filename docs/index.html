@@ -240,8 +240,8 @@ dotnet publish src/ApiTester.Cli -c Release \
 certapi send https://api.example.com/x --debug
 certapi run --all --log-file certapi.log
 
-# no docs? probe a wordlist to map an undocumented API:
-certapi fuzz https://api.example.com -w wordlists/common-api-endpoints.txt</code></pre>
+# no docs? probe endpoints to map an undocumented API (built-in list; -w for your own):
+certapi fuzz https://api.example.com</code></pre>
       </div>
     </div>
   </div>

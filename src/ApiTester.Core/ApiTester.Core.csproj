@@ -6,4 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The starter endpoint wordlist is embedded so `certapi fuzz` and the Discover window work
+         with no external file. The same file also ships in the repo and as a release asset. -->
+    <EmbeddedResource Include="..\..\wordlists\common-api-endpoints.txt">
+      <LogicalName>ApiTester.Core.common-api-endpoints.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

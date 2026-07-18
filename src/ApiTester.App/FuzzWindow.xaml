@@ -44,7 +44,12 @@
                         <Button x:Name="BrowseButton" Content="Choose file…" Width="110" DockPanel.Dock="Right" Click="Browse_Click"/>
                         <TextBox x:Name="WordlistPathBox" VerticalContentAlignment="Center" Margin="0,0,6,0"/>
                     </DockPanel>
-                    <TextBlock Text="…or paste endpoints (one per line, # comments ok):" Foreground="{StaticResource Text.Muted}" Margin="80,2,0,2"/>
+                    <DockPanel Margin="80,2,0,2">
+                        <Button x:Name="BuiltInButton" Content="Use built-in list" Width="120" DockPanel.Dock="Right"
+                                Click="BuiltIn_Click" ToolTip="Load the built-in starter list of common endpoints"/>
+                        <TextBlock Text="…or paste endpoints (one per line, # comments ok):"
+                                   Foreground="{StaticResource Text.Muted}" VerticalAlignment="Center"/>
+                    </DockPanel>
                     <TextBox x:Name="PasteBox" Height="70" Margin="80,0,0,6" AcceptsReturn="True"
                              VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
                 </StackPanel>

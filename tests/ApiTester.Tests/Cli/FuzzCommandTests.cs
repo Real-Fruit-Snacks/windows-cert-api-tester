@@ -138,13 +138,19 @@ public class FuzzCommandTests
     }
 
     [Fact]
-    public void Missing_wordlist_option_is_a_usage_error()
+    public async Task No_wordlist_uses_the_built_in_starter_list()
     {
-        var so = new StringWriter();
-        var se = new StringWriter();
-        int code = CliApp.Run(new[] { "fuzz", "https://x.example" }, new StringReader(""), so, se, new MemoryStream(),
-            new CliServices { LiveStatePath = TempState() });
-        Assert.Equal(2, code);
+        var state = TempState();
+        try
+        {
+            // No -w: fuzz falls back to the embedded starter list and probes the loopback server.
+            var r = await RunAsync(new[] { "fuzz", "{URL}", "--cert", "CliClient", "--insecure", "--all" },
+                wordlist: "unused", statePath: state);
+            Assert.Equal(0, r.Code);
+            Assert.Contains("built-in starter list", r.Err);
+            Assert.Contains("200", r.Out);
+        }
+        finally { if (File.Exists(state)) File.Delete(state); }
     }
 
     [Fact]

@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - 2026-07-18
+
+### Added
+- **Built-in endpoint wordlist** — `certapi fuzz <base-url>` now works with no `-w`: it falls back
+  to a built-in starter list of common endpoints (health, version, auth, admin, users, …), and the
+  Discover window gains a **Use built-in list** button. Supply your own list with `-w` for a
+  thorough sweep — the built-in list is only a quick look. The starter list also ships as
+  `wordlists/common-api-endpoints.txt` and as a release asset.
+
+### Fixed
+- Endpoint discovery no longer drops a query string on a wordlist entry (e.g. `/search?q=1` used to
+  be probed as `/search`).
+- Saving discovered endpoints to a collection no longer reverts unsaved top-level collection changes
+  made earlier in the same session.
+
 ## [1.27.0] - 2026-07-18
 
 ### Added

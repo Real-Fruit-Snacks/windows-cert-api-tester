@@ -218,8 +218,9 @@ public partial class HelpWindow : Window
 
     private UIElement Discovery() => Section("Discovering endpoints",
         P("When an API ships without documentation, use Discover to find out which endpoints exist. " +
-          "Click “Discover…” in the toolbar, point it at a website, choose (or paste) a list of candidate " +
-          "paths, and it sends a request to each one with your client certificate and any captured token."),
+          "Click “Discover…” in the toolbar, point it at a website, and hit Discover — it starts with a " +
+          "built-in list of common endpoints (the “Use built-in list” button loads it), or choose/paste " +
+          "your own. Each candidate is sent with your client certificate and any captured token."),
         Sub("READING THE RESULTS"),
         P("Each row shows the outcome: Found (2xx), Unauthorized (401/403 — it exists but needs auth), " +
           "MethodNotAllowed (405 — it exists, wrong method), Redirect (3xx), ServerError (5xx), NotFound (404), " +
@@ -228,8 +229,9 @@ public partial class HelpWindow : Window
         Sub("TURNING FINDINGS INTO REQUESTS"),
         P("Double-click a row to open that endpoint in a new request tab, or “Save discovered to collection…” " +
           "to store them all as saved requests you can run later."),
-        NoteBox("The same discovery runs headless: certapi fuzz <website> -w <wordlist>. A starter wordlist " +
-                "ships in the repo under wordlists/common-api-endpoints.txt."));
+        NoteBox("The same discovery runs headless: certapi fuzz <website> (with no wordlist it uses the " +
+                "built-in starter list; pass -w <file> for a thorough sweep). The starter list also ships " +
+                "as wordlists/common-api-endpoints.txt."));
 
     private UIElement Environments() => Section("Environments & variables",
         P("Define values once and reuse them anywhere with {{name}} placeholders — ideal for switching between Dev, Staging, and Prod without editing every request."),

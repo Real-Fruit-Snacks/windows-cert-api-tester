@@ -114,11 +114,19 @@ public partial class FuzzWindow : Window
         if (dlg.ShowDialog(this) == true) WordlistPathBox.Text = dlg.FileName;
     }
 
+    private void BuiltIn_Click(object sender, RoutedEventArgs e)
+    {
+        PasteBox.Text = BuiltInWordlist.Text;
+        WordlistPathBox.Text = "";
+        StatusText.Text = $"Loaded the built-in starter list ({BuiltInWordlist.Entries.Count} endpoints).";
+    }
+
     private async void Run_Click(object sender, RoutedEventArgs e)
     {
         string listText = !string.IsNullOrWhiteSpace(PasteBox.Text) ? PasteBox.Text
             : !string.IsNullOrWhiteSpace(WordlistPathBox.Text) && System.IO.File.Exists(WordlistPathBox.Text)
-                ? System.IO.File.ReadAllText(WordlistPathBox.Text) : "";
+                ? System.IO.File.ReadAllText(WordlistPathBox.Text)
+                : BuiltInWordlist.Text;   // nothing supplied: fall back to the built-in starter list
         var entries = EndpointList.Parse(listText);
         if (entries.Count == 0) { StatusText.Text = "Add a wordlist file or paste some endpoints first."; return; }
 

@@ -87,13 +87,20 @@ Switch the sidebar to **COLLECTIONS**, then **Save current request…** to store
 
 ### Discovering endpoints
 
-No API docs? Probe a wordlist to see what exists:
+No API docs? Probe candidate endpoints to see what exists. With no wordlist it uses a built-in
+starter list, so this just works out of the box:
 
-    certapi fuzz https://api.example.com -w wordlists/common-api-endpoints.txt --cert "CN=My Client"
+    certapi fuzz https://api.example.com --cert "CN=My Client"
+
+For a thorough sweep, supply your own (larger) list with `-w` — the built-in one is only a quick
+look. A copy of it ships as [`wordlists/common-api-endpoints.txt`](wordlists/common-api-endpoints.txt):
+
+    certapi fuzz https://api.example.com -w my-endpoints.txt --cert "CN=My Client"
 
 Each line is a path (or `METHOD path`); `#` comments and blanks are ignored. Anything but a 404 or
 a connection error counts as a discovery. Add `--save-collection Discovered` to keep the hits, or
-`--json` for machine output. In the app, use **Discover…** in the toolbar.
+`--json` for machine output. In the app, use **Discover…** in the toolbar (with a **Use built-in
+list** button).
 
 <p align="center">
   <img alt="The Discover endpoints window, colour-coding each probe by outcome" src="docs/assets/shot-discover.svg" width="860" />
