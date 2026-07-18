@@ -598,6 +598,7 @@ public partial class MainWindow : Window
         AppState? ws;
         try { ws = System.Text.Json.JsonSerializer.Deserialize<AppState>(File.ReadAllText(dialog.FileName)); }
         catch (Exception ex) { StatusText.Text = "Could not read the workspace file: " + ex.Message; return; }
+        ws?.Migrate();
         if (ws is null ||
             (ws.Tabs.Count == 0 && ws.Collections.Count == 0 && ws.Environments.Count == 0 && ws.History.Count == 0))
         {
