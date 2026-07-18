@@ -40,6 +40,26 @@ jobs:
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
         run: git archive --format=zip --prefix="certapi-${TAG}/" -o "certapi-source-${TAG}.zip" HEAD
 
+      - name: Compose release notes from CHANGELOG
+        shell: bash
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          # Pull just this version's section (everything under "## [x.y.z]" up to the next "## [").
+          awk -v hdr="## [$VERSION]" 'index($0,hdr)==1{g=1;next} g&&/^## \[/{exit} g{print}' \
+            CHANGELOG.md > notes-body.md
+          sed -i '/./,$!d' notes-body.md            # drop leading blank lines
+          if [ ! -s notes-body.md ]; then           # fallback if the section is missing
+            printf 'See the [changelog](https://github.com/%s/blob/main/CHANGELOG.md).\n' "$GITHUB_REPOSITORY" > notes-body.md
+          fi
+          # Reuse the compare link already maintained in the CHANGELOG footer.
+          COMPARE=$(sed -n "s/^\[$VERSION\]: //p" CHANGELOG.md | head -1)
+          if [ -n "$COMPARE" ]; then
+            printf '\n**Full Changelog**: %s\n' "$COMPARE" >> notes-body.md
+          fi
+          echo '----- release notes preview -----'; cat notes-body.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,4 +72,4 @@ jobs:
             "wordlists/common-api-endpoints.txt#Starter endpoint wordlist for 'certapi fuzz'" \
             "certapi-source-${TAG}.zip#Full source — the entire repository at this tag" \
             --title "Certificate API Tester $TAG" \
-            --generate-notes
+            --notes-file notes-body.md
