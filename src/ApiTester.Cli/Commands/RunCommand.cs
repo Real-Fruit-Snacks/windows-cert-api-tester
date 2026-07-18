@@ -26,7 +26,7 @@ public static class RunCommand
           --record / --no-record  Write known-good results back (default: on for live state,
                                   off for workspace files; skipped while the GUI is running)
           --strict-vars           Unresolved {{tokens}} fail the request
-          --no-auto-token         Don't capture or attach session tokens during this run
+          --no-auto-token         Don't attach captured session tokens or cookies during this run
           --cookies               Keep a cookie jar for the run, so a login's Set-Cookie is sent
                                   on later requests (cookie-based sessions)
           --json                  JSON results instead of the table

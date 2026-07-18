@@ -41,7 +41,7 @@ public static class SendCommand
           or an X-Auth-Token / X-Access-Token header) is captured and scoped to that host.
           Later sends to the same host attach it automatically — unless you pass explicit auth
           (--bearer / --basic / an Authorization header).
-          --no-auto-token         Disable capture and reuse for this invocation
+          --no-auto-token         Disable token capture/reuse and captured-cookie attach for this send
 
         Variables:
           --env <name>            Environment ({{var}} values) from your workspace
