@@ -577,6 +577,7 @@ public partial class MainWindow : Window
                 System.Text.Json.JsonSerializer.Serialize(_state))!;
             clone.WindowWidth = clone.WindowHeight = clone.WindowLeft = clone.WindowTop = null;
             clone.WindowMaximized = false;
+            clone.SchemaVersion = AppState.CurrentSchemaVersion;   // a hand-written export is current, like SaveTo stamps
             File.WriteAllText(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(
                 clone, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
             StatusText.Text = $"Workspace exported to {System.IO.Path.GetFileName(dialog.FileName)} — it includes auth values and history, so treat it as private.";
