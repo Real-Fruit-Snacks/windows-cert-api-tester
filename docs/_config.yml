@@ -1,0 +1,8 @@
+# GitHub Pages (Jekyll) configuration for the published documentation site.
+#
+# The internal design specs and implementation plans under docs/superpowers/ are
+# development artifacts, not user documentation. They also contain {{ }} code
+# samples that Jekyll's Liquid renderer would try (and fail) to parse. Exclude
+# them so the Pages build only ever publishes the real site (index.html + assets).
+exclude:
+  - superpowers
