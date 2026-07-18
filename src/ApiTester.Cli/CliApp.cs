@@ -38,6 +38,8 @@ public static class CliApp
           send <url>        Send a one-off request (client cert from the Windows store)
           run <path>        Run saved requests from your collections (or --all)
           fuzz <base-url>   Discover endpoints from a wordlist (which ones exist?)
+          sse <url>         Stream Server-Sent Events (text/event-stream)
+          ws <url>          Open a WebSocket, send messages, print what arrives
           certs             List client certificates
           selftest          Prove the mTLS path end-to-end against a loopback server
           import            Import a cURL command or an OpenAPI file into collections
@@ -68,10 +70,11 @@ public static class CliApp
                           Stream? bodyOut = null, CliServices? services = null)
     {
         services ??= new CliServices();
-        if (args.Length > 0 &&
-            (args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase) || args[0].Equals("fuzz", StringComparison.OrdinalIgnoreCase)))
+        // Commands that read stdin (mcp/fuzz/ws) or stream to stdout (sse) run through here so they
+        // get the reader; everything else falls through to the reader-less overload below.
+        if (args.Length > 0 && IsStreamingCommand(args[0]))
         {
-            bool isMcp = args[0].Equals("mcp", StringComparison.OrdinalIgnoreCase);
+            string cmd = args[0].ToLowerInvariant();
             (string[] Remaining, bool Debug, string? LogFile) g;
             try { g = GlobalOptions.Extract(args.Skip(1).ToArray()); }
             catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
@@ -81,9 +84,14 @@ public static class CliApp
             var err = log.WrapStderr(stderr);
             try
             {
-                return isMcp
-                    ? Commands.McpCommand.Run(new Args(g.Remaining), input, stdout, err, services)
-                    : Commands.FuzzCommand.Run(new Args(g.Remaining), input, stdout, err, services);
+                return cmd switch
+                {
+                    "mcp"  => Commands.McpCommand.Run(new Args(g.Remaining), input, stdout, err, services),
+                    "fuzz" => Commands.FuzzCommand.Run(new Args(g.Remaining), input, stdout, err, services),
+                    "ws"   => Commands.WsCommand.Run(new Args(g.Remaining), input, stdout, err, services),
+                    "sse"  => Commands.SseCommand.Run(new Args(g.Remaining), stdout, err, services),
+                    _      => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
+                };
             }
             catch (CliUsageException ex) { err.WriteLine(ex.Message); return ExitCodes.Usage; }
             catch (CliDataException ex) { err.WriteLine(ex.Message); return ExitCodes.Data; }
@@ -91,6 +99,12 @@ public static class CliApp
         }
         return Run(args, stdout, stderr, bodyOut, services);
     }
+
+    private static bool IsStreamingCommand(string arg) =>
+        arg.Equals("mcp", StringComparison.OrdinalIgnoreCase) ||
+        arg.Equals("fuzz", StringComparison.OrdinalIgnoreCase) ||
+        arg.Equals("ws", StringComparison.OrdinalIgnoreCase) ||
+        arg.Equals("sse", StringComparison.OrdinalIgnoreCase);
 
     public static int Run(string[] args, TextWriter stdout, TextWriter stderr,
                           Stream? bodyOut = null, CliServices? services = null)
@@ -147,6 +161,8 @@ public static class CliApp
             "certs" => Commands.CertsCommand.Help,
             "run" => Commands.RunCommand.Help,
             "fuzz" => Commands.FuzzCommand.Help,
+            "sse" => Commands.SseCommand.Help,
+            "ws" => Commands.WsCommand.Help,
             "selftest" => Commands.SelfTestCommand.Help,
             "import" => Commands.ImportCommand.Help,
             "export" => Commands.ExportCommand.Help,

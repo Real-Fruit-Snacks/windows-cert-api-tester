@@ -264,6 +264,9 @@
                         Style="{StaticResource PrimaryButton}" Click="SendButton_Click"/>
                 <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Cancel" Width="78" Margin="8,0,0,0"
                         IsEnabled="False" Click="CancelButton_Click"/>
+                <Button x:Name="StreamButton" DockPanel.Dock="Right" Content="Stream" Width="78" Margin="8,0,0,0"
+                        Click="StreamButton_Click"
+                        ToolTip="Open a live WebSocket / Server-Sent Events console for this URL"/>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
                     <TextBlock Text="TIMEOUT" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <TextBox x:Name="TimeoutBox" Width="56" Margin="6,0,0,0" Text="100"

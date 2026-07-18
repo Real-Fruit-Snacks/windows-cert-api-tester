@@ -28,6 +28,7 @@ public partial class HelpWindow : Window
             ("Collections & history", Collections),
             ("Discovering endpoints", Discovery),
             ("Testing responses", Testing),
+            ("Live streaming", Streaming),
             ("Environments & variables", Environments),
             ("Automatic tokens", AutoTokens),
             ("Importing & exporting", Importing),
@@ -256,6 +257,15 @@ public partial class HelpWindow : Window
                 "Add --data <file.csv|.json> to repeat the request(s) once per row, each row's columns " +
                 "filling {{variables}} — table-testing an endpoint across many inputs."));
 
+    private UIElement Streaming() => Section("Live streaming",
+        P("The Stream button on the request line opens a live console for connection-oriented endpoints — WebSockets and Server-Sent Events — reusing the client certificate you've selected and the Ignore-server-certificate-errors toggle."),
+        Bullets(
+            "It picks the protocol from the URL scheme: ws:// or wss:// opens a WebSocket; http:// or https:// streams Server-Sent Events (text/event-stream).",
+            "WebSocket: type a message and press Enter (or Send) to send it; every message the server sends back appears in the transcript, tagged with the time and direction.",
+            "Server-Sent Events: each event is appended as it arrives, with its event name (if any) and data — handy for streaming APIs and push notifications.",
+            "Connect and Disconnect control the session; Clear empties the transcript. Closing the window disconnects."),
+        NoteBox("The same thing headless: certapi ws <url> (send --message / stdin lines, --expect <n>) and certapi sse <url> (--max-events, --json)."));
+
     private UIElement Environments() => Section("Environments & variables",
         P("Define values once and reuse them anywhere with {{name}} placeholders — ideal for switching between Dev, Staging, and Prod without editing every request."),
         Bullets(
@@ -313,6 +323,7 @@ public partial class HelpWindow : Window
             "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
             "certapi send also supports GraphQL (--graphql \"<query>\" --gql-variables \"{...}\") — a JSON { query, variables } POST.",
+            "certapi ws <url> opens a WebSocket (ws/wss) — send messages with --message or piped stdin lines, print replies, and use --expect <n> for scripts. certapi sse <url> streams Server-Sent Events (--max-events, --json).",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
             "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app.",
             "certapi mcp runs a Model Context Protocol server so an AI agent can make mTLS calls with a certificate you pin at launch, bounded by a host allowlist — send_request, list_certificates, list_saved, run_saved, and self_test tools over stdio.",

@@ -1665,6 +1665,15 @@ public partial class MainWindow : Window
         return (url, headers, body, unresolved);
     }
 
+    private void StreamButton_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new StreamWindow(CurrentEditorUrl(), SelectedCert(), IgnoreServerCertCheck.IsChecked == true)
+        {
+            Owner = this
+        };
+        win.Show();
+    }
+
     private void SendButton_Click(object sender, RoutedEventArgs e) => _ = SendRequestAsync();
 
     private async System.Threading.Tasks.Task SendRequestAsync()

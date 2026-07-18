@@ -1,0 +1,174 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+
+namespace ApiTester.Core;
+
+/// <summary>One Server-Sent Event parsed from a <c>text/event-stream</c>: the optional event name,
+/// the (possibly multi-line) data payload, and the optional id and retry hint as the server sent them.</summary>
+public sealed record SseEvent(string? Event, string Data, string? Id, string? Retry);
+
+/// <summary>Streams Server-Sent Events from an endpoint, authenticating with an optional client
+/// certificate (mTLS). Parses the event-stream format per the WHATWG spec: <c>event:</c>, <c>data:</c>
+/// (joined with newlines), <c>id:</c>, and <c>retry:</c> fields, blank line dispatches, and <c>:</c> comments.</summary>
+public static class SseClient
+{
+    private const string EventStream = "text/event-stream";
+
+    public static async IAsyncEnumerable<SseEvent> StreamAsync(
+        string url,
+        X509Certificate2? clientCertificate = null,
+        IEnumerable<KeyValuePair<string, string>>? headers = null,
+        bool ignoreServerCertificateErrors = false,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            DefaultProxyCredentials = CredentialCache.DefaultCredentials,
+            PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan
+        };
+        var sslOptions = new SslClientAuthenticationOptions();
+        if (ignoreServerCertificateErrors)
+            sslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+        if (clientCertificate is not null)
+            sslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
+        handler.SslOptions = sslOptions;
+
+        using var http = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
+        using var message = new HttpRequestMessage(HttpMethod.Get, url);
+        message.Headers.TryAddWithoutValidation("Accept", EventStream);
+        message.Headers.TryAddWithoutValidation("Cache-Control", "no-cache");
+        if (headers is not null)
+            foreach (var h in headers) message.Headers.TryAddWithoutValidation(h.Key, h.Value);
+
+        using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+
+        var data = new StringBuilder();
+        string? eventName = null, id = null, retry = null;
+        bool haveFields = false;
+
+        while (!ct.IsCancellationRequested)
+        {
+            string? line = await reader.ReadLineAsync(ct);
+            if (line is null) break;                    // stream closed
+
+            if (line.Length == 0)                       // blank line dispatches the pending event
+            {
+                if (haveFields)
+                {
+                    string payload = data.ToString();
+                    if (payload.EndsWith('\n')) payload = payload[..^1];   // trim the trailing separator
+                    yield return new SseEvent(eventName, payload, id, retry);
+                }
+                data.Clear();
+                eventName = null; retry = null; haveFields = false;
+                continue;
+            }
+            if (line[0] == ':') continue;               // comment / keep-alive heartbeat
+
+            int colon = line.IndexOf(':');
+            string field = colon < 0 ? line : line[..colon];
+            string value = colon < 0 ? "" : line[(colon + 1)..];
+            if (value.StartsWith(' ')) value = value[1..];   // one optional leading space is stripped
+
+            switch (field)
+            {
+                case "event": eventName = value; haveFields = true; break;
+                case "data": data.Append(value).Append('\n'); haveFields = true; break;
+                case "id": id = value; haveFields = true; break;
+                case "retry": retry = value; haveFields = true; break;
+                // unknown fields are ignored per the spec
+            }
+        }
+    }
+}
+
+/// <summary>A message received over a WebSocket: text or binary payload, or a close notification.</summary>
+public sealed record WebSocketMessage(bool IsText, string Text, byte[] Bytes, bool IsClose, string? CloseDescription);
+
+/// <summary>A client WebSocket connection with optional mTLS. Wraps <see cref="ClientWebSocket"/> so the
+/// GUI and CLI share one send/receive surface: connect (with a client certificate and custom headers),
+/// send text, receive whole messages, and close cleanly.</summary>
+public sealed class WebSocketSession : IAsyncDisposable
+{
+    private readonly ClientWebSocket _ws = new();
+
+    public WebSocketState State => _ws.State;
+
+    public async Task ConnectAsync(
+        string url,
+        X509Certificate2? clientCertificate = null,
+        IEnumerable<KeyValuePair<string, string>>? headers = null,
+        bool ignoreServerCertificateErrors = false,
+        CancellationToken ct = default)
+    {
+        if (clientCertificate is not null)
+            _ws.Options.ClientCertificates = new X509Certificate2Collection { clientCertificate };
+        if (ignoreServerCertificateErrors)
+            _ws.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+        if (headers is not null)
+            foreach (var h in headers) _ws.Options.SetRequestHeader(h.Key, h.Value);
+
+        await _ws.ConnectAsync(new Uri(url), ct);
+    }
+
+    public Task SendTextAsync(string text, CancellationToken ct = default) =>
+        _ws.SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text, endOfMessage: true, ct);
+
+    /// <summary>Yield each whole message as it arrives until the peer closes, the token cancels, or the
+    /// socket faults. A fragmented message is reassembled before it is yielded.</summary>
+    public async IAsyncEnumerable<WebSocketMessage> ReceiveAllAsync([EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var buffer = new byte[8192];
+        while (_ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
+        {
+            using var ms = new MemoryStream();
+            WebSocketReceiveResult? result = null;
+            bool faulted = false;
+            do
+            {
+                // yield can't appear inside try/catch, so a fault sets a flag and we break out to yield after.
+                try { result = await _ws.ReceiveAsync(buffer, ct); }
+                catch (WebSocketException) { faulted = true; }
+                catch (OperationCanceledException) { faulted = true; }
+                if (faulted) break;
+                if (result!.MessageType == WebSocketMessageType.Close) break;
+                ms.Write(buffer, 0, result.Count);
+            } while (!result!.EndOfMessage);
+
+            if (faulted) yield break;
+            if (result!.MessageType == WebSocketMessageType.Close)
+            {
+                yield return new WebSocketMessage(false, "", Array.Empty<byte>(), true, _ws.CloseStatusDescription);
+                yield break;
+            }
+
+            var bytes = ms.ToArray();
+            bool isText = result.MessageType == WebSocketMessageType.Text;
+            yield return new WebSocketMessage(isText, isText ? Encoding.UTF8.GetString(bytes) : "", bytes, false, null);
+        }
+    }
+
+    public async Task CloseAsync(CancellationToken ct = default)
+    {
+        if (_ws.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            try { await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", ct); }
+            catch { /* best effort — the peer may already be gone */ }
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _ws.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

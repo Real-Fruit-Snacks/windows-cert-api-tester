@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-07-18
+
+### Added
+- **Live streaming (WebSocket & Server-Sent Events)** — a new *Stream* button on the request line
+  opens a console that connects to a `ws://`/`wss://` endpoint (send messages, watch replies) or an
+  `http(s)` `text/event-stream` endpoint (watch events arrive), using the selected client certificate
+  and the insecure toggle. Two matching CLI commands: `certapi ws <url>` (send `--message`/stdin
+  lines, print replies, `--expect <n>` for scripts) and `certapi sse <url>` (`--max-events`, `--json`
+  ndjson output). Both honour `--cert`/`--cert-file`, `--insecure`, and custom `-H` headers.
+
 ## [1.38.0] - 2026-07-18
 
 ### Added
