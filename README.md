@@ -256,6 +256,12 @@ The agent gets `send_request`, `list_certificates`, `list_saved`, `run_saved`, a
   <img alt="Mock server window with its routes" src="docs/assets/shot-mock.png" width="720" />
 </div>
 
+**`certapi` — the same engine without the window, for scripts, CI, and scheduled checks**
+
+<div align="center">
+  <img alt="certapi command-line help listing every command" src="docs/assets/shot-cli.png" width="720" />
+</div>
+
 **Built-in Help & Reference — every feature explained, embedded so it works with no web access**
 
 <div align="center">
