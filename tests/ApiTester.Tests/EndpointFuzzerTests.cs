@@ -134,6 +134,18 @@ public class EndpointFuzzerTests
     }
 
     [Fact]
+    public async Task A_send_that_throws_is_recorded_as_an_error_not_a_batch_failure()
+    {
+        var plan = Plan("/a\n/b\n/c");
+        var report = await EndpointFuzzer.RunAsync(plan, (req, ct) =>
+            req.Url.EndsWith("/b") ? throw new InvalidOperationException("boom") : Task.FromResult(Resp(200)),
+            null, CancellationToken.None);
+        Assert.Equal(3, report.Total);
+        Assert.Contains(report.Results, r => r.Path == "/b" && r.Outcome == FuzzOutcome.Error && r.Error == "boom");
+        Assert.Equal(2, report.Results.Count(r => r.Outcome == FuzzOutcome.Found));
+    }
+
+    [Fact]
     public async Task Cancellation_stops_probing()
     {
         var plan = Plan(string.Join("\n", Enumerable.Range(0, 200).Select(i => $"/p{i}")), conc: 2);

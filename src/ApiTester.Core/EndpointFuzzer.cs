@@ -78,38 +78,58 @@ public static class EndpointFuzzer
         var results = new FuzzResult?[probes.Count];
         int completed = 0;
         using var gate = new SemaphoreSlim(concurrency);
-
         var tasks = new List<Task>(probes.Count);
-        for (int i = 0; i < probes.Count; i++)
+        OperationCanceledException? canceled = null;
+        try
         {
-            int index = i;
-            var (method, path, url) = probes[i];
-            await gate.WaitAsync(ct);
-            tasks.Add(Task.Run(async () =>
+            for (int i = 0; i < probes.Count; i++)
             {
-                try
+                try { await gate.WaitAsync(ct); }
+                catch (OperationCanceledException oce) { canceled = oce; break; }
+
+                int index = i;
+                var (method, path, url) = probes[i];
+                tasks.Add(Task.Run(async () =>   // no ct here: the body always runs to its finally and releases the gate
                 {
-                    if (plan.DelayMs > 0) await Task.Delay(plan.DelayMs, ct);
-                    var request = new ApiRequest
+                    try
                     {
-                        Method = new HttpMethod(method),
-                        Url = url,
-                        Headers = plan.Headers,
-                        Timeout = TimeSpan.FromSeconds(100)
-                    };
-                    var response = await send(request, ct);
-                    var outcome = FuzzClassifier.Classify(response);
-                    var result = new FuzzResult(method, path, url, response.StatusCode, response.ReasonPhrase,
-                        response.Body?.LongLength ?? 0, response.Elapsed, outcome, response.Error?.Message);
-                    results[index] = result;
-                    int done = Interlocked.Increment(ref completed);
-                    progress?.Report(new FuzzProgress(done, probes.Count, result));
-                }
-                finally { gate.Release(); }
-            }, ct));
+                        if (plan.DelayMs > 0) await Task.Delay(plan.DelayMs, ct);
+                        var request = new ApiRequest
+                        {
+                            Method = new HttpMethod(method),
+                            Url = url,
+                            Headers = plan.Headers,
+                            Timeout = TimeSpan.FromSeconds(100)
+                        };
+                        var response = await send(request, ct);
+                        var result = new FuzzResult(method, path, url, response.StatusCode, response.ReasonPhrase,
+                            response.Body?.LongLength ?? 0, response.Elapsed, FuzzClassifier.Classify(response), response.Error?.Message);
+                        results[index] = result;
+                        int done = Interlocked.Increment(ref completed);
+                        progress?.Report(new FuzzProgress(done, probes.Count, result));
+                    }
+                    catch (OperationCanceledException) { /* cancelled mid-probe; leave the slot null */ }
+                    catch (Exception ex)
+                    {
+                        // A send that throws (rather than returning ApiResponse.Error) must not fault the batch —
+                        // record this probe as an Error outcome and keep going.
+                        var result = new FuzzResult(method, path, url, null, null, 0, TimeSpan.Zero, FuzzOutcome.Error, ex.Message);
+                        results[index] = result;
+                        int done = Interlocked.Increment(ref completed);
+                        progress?.Report(new FuzzProgress(done, probes.Count, result));
+                    }
+                    finally { gate.Release(); }
+                }));
+            }
+        }
+        finally
+        {
+            // Always wait for every dispatched probe before the semaphore is disposed, even on early
+            // cancellation — otherwise a still-running probe calls Release() on a disposed semaphore.
+            try { await Task.WhenAll(tasks); } catch { /* per-probe faults are already captured as results */ }
         }
 
-        await Task.WhenAll(tasks);
+        if (canceled is not null) throw canceled;
         ct.ThrowIfCancellationRequested();
         return new FuzzReport(results.Where(r => r is not null).Select(r => r!).ToList());
     }
