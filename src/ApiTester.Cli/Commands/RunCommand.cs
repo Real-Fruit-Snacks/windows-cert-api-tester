@@ -278,8 +278,12 @@ public static class RunCommand
             WindowsAuth = winAuth,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
+        // Attach any browser-captured session cookies for this origin, on top of the optional
+        // shared --cookies jar (honors --no-auto-token and the workspace's AutoCookies switch).
+        var effectiveJar = cookies ?? new System.Net.CookieContainer();
+        if (!noAutoToken) CookieService.SeedContainer(state, url, effectiveJar);
         var response = services.Client.SendAsync(request, cert, m.IgnoreServerCert,
-            cookies: cookies, cancellationToken: services.Cancel).GetAwaiter().GetResult();
+            cookies: effectiveJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug($"{path}: " + (response.Error is null
             ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
             : $"[{response.Error.Kind}] {response.Error.Message}"));

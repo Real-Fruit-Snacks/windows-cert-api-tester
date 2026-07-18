@@ -274,8 +274,12 @@ public static class SendCommand
                 ? $"{h.Key}: {TokenService.MaskAuthorization(h.Value)}" : $"{h.Key}: {h.Value}"));
         services.Log.Debug(cert is null ? "certificate: none" : $"certificate: {cert.Subject} ({cert.Thumbprint})");
         services.Log.Debug($"timeout: {timeout} s · insecure: {insecure} · store: {store}");
+        // Attach any browser-captured session cookies for this origin (honors --no-auto-token
+        // and the workspace's AutoCookies switch).
+        var cookieJar = new System.Net.CookieContainer();
+        if (!noAutoToken) CookieService.SeedContainer(state, url, cookieJar);
         var response = services.Client.SendAsync(request, cert, insecure,
-            cancellationToken: services.Cancel).GetAwaiter().GetResult();
+            cookies: cookieJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug("result: " + (response.Error is null
             ? $"{response.StatusCode} {response.ReasonPhrase}".Trim()
             : $"[{response.Error.Kind}] {response.Error.Message}")
