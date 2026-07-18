@@ -73,6 +73,7 @@ public static class SendCommand
         bool fail = args.Flag("--fail");
         bool quiet = args.Flag("-q", "--quiet");
         var captureSpecs = args.Values("--capture");
+        bool noAutoToken = args.Flag("--no-auto-token");
 
         var positionals = args.Positionals();
         if (positionals.Count != 1) throw new CliUsageException(Help);
@@ -108,11 +109,10 @@ public static class SendCommand
             throw new CliDataException($"Workspace file not found: {workspace}");
 
         // ---- variables ----
-        // A --workspace that doesn't exist yet is fine here when --capture is present: it isn't
-        // read for anything but a named --env lookup, and --capture (below) is allowed to create
-        // it fresh on save.
-        var state = (envName is not null || workspace is not null)
-            ? LoadWorkspaceOrEmpty(workspace, services) : new AppState();
+        // The state is always loaded now: even without --env, the live state may hold a
+        // captured session token for this URL's origin. A --workspace that doesn't exist yet
+        // is fine when --capture is present — it is created fresh on save.
+        var state = LoadWorkspaceOrEmpty(workspace, services);
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
         var unresolved = new List<string>();
         string R(string s)
@@ -142,6 +142,21 @@ public static class SendCommand
             stderr.WriteLine($"warning: unresolved variables: {tokens}");
         }
 
+        // ---- automatic session token ----
+        if (!noAutoToken)
+        {
+            var used = TokenService.AutoAttach(state, url, headerPairs, out var expired);
+            if (used is not null)
+            {
+                if (!quiet) stderr.WriteLine($"note: using captured token for {TokenService.HostOf(url)}");
+                services.Log.Debug($"auto token attached for {used.Origin} ({used.Source})");
+            }
+            else if (expired is not null && !quiet)
+            {
+                stderr.WriteLine($"note: the captured token for {TokenService.HostOf(url)} has expired — sending without it");
+            }
+        }
+
         // ---- certificate ----
         bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);
         if (!localMachine && !store.Equals("CurrentUser", StringComparison.OrdinalIgnoreCase))
@@ -159,13 +174,45 @@ public static class SendCommand
             ContentType = body is not null ? (contentType ?? "application/json") : null,
             Timeout = TimeSpan.FromSeconds(timeout)
         };
+        services.Log.Debug($"{request.Method} {request.Url}");
+        foreach (var h in headerPairs)
+            services.Log.Debug("header: " + (h.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                ? $"{h.Key}: {TokenService.MaskAuthorization(h.Value)}" : $"{h.Key}: {h.Value}"));
+        services.Log.Debug(cert is null ? "certificate: none" : $"certificate: {cert.Subject} ({cert.Thumbprint})");
+        services.Log.Debug($"timeout: {timeout} s · insecure: {insecure} · store: {store}");
         var response = services.Client.SendAsync(request, cert, insecure,
             cancellationToken: services.Cancel).GetAwaiter().GetResult();
+        services.Log.Debug("result: " + (response.Error is null
+            ? $"{response.StatusCode} {response.ReasonPhrase}".Trim()
+            : $"[{response.Error.Kind}] {response.Error.Message}")
+            + $" · {response.Elapsed.TotalMilliseconds:F0} ms · {response.Body.LongLength} bytes");
+        if (response.Connection is { } conn)
+            services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {(conn.ViaProxy ? "yes" : "no")} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")}");
 
         if (!quiet) stderr.WriteLine(OutputText.MetaLine(response));
 
+        bool stateDirty = false;
         if (captureRules.Count > 0 && response.Error is null)
-            ApplyCaptures(captureRules, response, workspace, services, stderr);
+        {
+            var outcome = CaptureApplier.Apply(state, captureRules, response.Body, response.ContentType, response.Headers);
+            var ok = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
+            if (ok.Count > 0) stderr.WriteLine("captured " + string.Join(", ", ok));
+            foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"capture '{b.Variable}' failed: {b.Error}");
+            stateDirty |= outcome.Count > 0;
+        }
+        if (!noAutoToken && response.Error is null &&
+            TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
+        {
+            if (!quiet)
+            {
+                string expiry = captured.ExpiresUtc is { } e
+                    ? $", expires in {(int)Math.Max(1, (e - DateTime.UtcNow).TotalMinutes)} min" : "";
+                stderr.WriteLine($"note: captured bearer token for {TokenService.HostOf(url)} ({captured.Source}{expiry})");
+            }
+            services.Log.Debug($"token captured for {captured.Origin} ({captured.Source}): {TokenService.Mask(captured.Token)}");
+            stateDirty = true;
+        }
+        if (stateDirty) SaveState(state, workspace, services, stderr);
 
         // ---- output ----
         if (json)
@@ -198,24 +245,15 @@ public static class SendCommand
             ? new AppState()
             : CliWorkspace.Load(workspace, services.LiveStatePath);
 
-    private static void ApplyCaptures(
-        List<CaptureRule> rules, ApiResponse response, string? workspace, CliServices services, TextWriter stderr)
+    private static void SaveState(AppState state, string? workspace, CliServices services, TextWriter stderr)
     {
-        var state = LoadWorkspaceOrEmpty(workspace, services);
-        var outcome = CaptureApplier.Apply(state, rules, response.Body, response.ContentType, response.Headers);
-        if (outcome.Count == 0) return;
-
         if (workspace is null && services.IsGuiRunning())
         {
             stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
             return;
         }
         try { state.SaveTo(workspace ?? services.LiveStatePath); }
-        catch (Exception ex) { stderr.WriteLine($"warning: could not save captured values: {ex.Message}"); return; }
-
-        var ok = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
-        if (ok.Count > 0) stderr.WriteLine("captured " + string.Join(", ", ok));
-        foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"capture '{b.Variable}' failed: {b.Error}");
+        catch (Exception ex) { stderr.WriteLine($"warning: could not save captured values: {ex.Message}"); }
     }
 
     internal static string BuildEnvelope(ApiResponse r, bool includeBody)
