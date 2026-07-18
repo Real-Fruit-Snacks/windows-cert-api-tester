@@ -69,7 +69,10 @@ public static class EndpointFuzzer
             var methods = entry.Method is not null ? new[] { entry.Method } : plan.Methods;
             foreach (var method in methods)
             {
-                string url = RequestUrl.Effective(plan.BaseUrl, entry.Path, Array.Empty<KeyValuePair<string, string>>());
+                // Combine base + path verbatim so a query string on the entry (e.g. /search?q=1,
+                // or a full-URL entry) is probed exactly as written — RequestUrl.Effective would
+                // strip the query, which is wrong for discovery where the caller wrote the URL.
+                string url = UrlHelper.Combine(plan.BaseUrl, entry.Path);
                 probes.Add((method.ToUpperInvariant(), entry.Path, url));
             }
         }

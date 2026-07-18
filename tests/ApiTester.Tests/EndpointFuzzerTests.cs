@@ -93,6 +93,26 @@ public class EndpointFuzzerTests
     }
 
     [Fact]
+    public async Task Preserves_a_query_string_on_a_path_entry()
+    {
+        var plan = Plan("/search?debug=true&limit=5");
+        string? sent = null;
+        await EndpointFuzzer.RunAsync(plan, (req, ct) => { sent = req.Url; return Task.FromResult(Resp(200)); },
+            null, CancellationToken.None);
+        Assert.Equal("https://api.example.com/search?debug=true&limit=5", sent);
+    }
+
+    [Fact]
+    public async Task Preserves_a_query_string_on_a_full_url_entry()
+    {
+        var plan = Plan("https://other.example.com/x?y=1");
+        string? sent = null;
+        await EndpointFuzzer.RunAsync(plan, (req, ct) => { sent = req.Url; return Task.FromResult(Resp(200)); },
+            null, CancellationToken.None);
+        Assert.Equal("https://other.example.com/x?y=1", sent);
+    }
+
+    [Fact]
     public async Task Reports_progress_for_each_probe()
     {
         var plan = Plan("/a\n/b\n/c");
