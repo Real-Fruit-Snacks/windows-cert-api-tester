@@ -3,17 +3,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Environments" Height="440" Width="640"
         WindowStyle="None" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
                       GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1">
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1">
         <DockPanel>
-            <Border DockPanel.Dock="Top" Height="40" Background="{StaticResource Bg.Panel}"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
+            <Border DockPanel.Dock="Top" Height="40" Background="{DynamicResource Bg.Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
                 <Grid>
                     <TextBlock Text="ENVIRONMENTS &amp; VARIABLES" Style="{StaticResource Caption}"
                                VerticalAlignment="Center" Margin="14,0,0,0"/>
@@ -36,7 +36,7 @@
                         <Button Content="Rename" Height="26" FontSize="11" Padding="9,0" Margin="6,0,0,0" Click="RenameEnv_Click"/>
                         <Button Content="Delete" Height="26" FontSize="11" Padding="9,0" Margin="6,0,0,0" Click="DeleteEnv_Click"/>
                     </StackPanel>
-                    <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6">
+                    <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6">
                         <ListBox x:Name="EnvList" DisplayMemberPath="Name" Margin="2"
                                  SelectionChanged="EnvList_SelectionChanged"/>
                     </Border>
@@ -47,10 +47,10 @@
                     <TextBlock DockPanel.Dock="Top" Text="VARIABLES" Style="{StaticResource Caption}" Margin="0,0,0,6"/>
                     <Button DockPanel.Dock="Bottom" x:Name="AddVarButton" Content="+ Add variable" Width="130"
                             HorizontalAlignment="Left" Margin="0,8,0,0" Click="AddVar_Click"/>
-                    <TextBlock x:Name="NoEnvHint" DockPanel.Dock="Top" Foreground="{StaticResource Text.Faint}"
+                    <TextBlock x:Name="NoEnvHint" DockPanel.Dock="Top" Foreground="{DynamicResource Text.Faint}"
                                FontSize="11" TextWrapping="Wrap" Margin="0,20,0,0"
                                Text="Select or create an environment, then add key/value variables. Use them anywhere as {{key}} — they are substituted when you send."/>
-                    <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6">
+                    <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ItemsControl x:Name="VarsItems" Margin="8">
                                 <ItemsControl.ItemTemplate>

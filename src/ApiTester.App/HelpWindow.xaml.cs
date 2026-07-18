@@ -45,7 +45,7 @@ public partial class HelpWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     private void SectionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -174,6 +174,7 @@ public partial class HelpWindow : Window
         P("Use the “find in response…” box above the response to locate text in the body — Enter (or Find next) jumps to the next match and wraps around."),
         P("The pop-out button above the response (next to Copy body) opens either the selected view or the whole response panel — tabs and all — in its own window. Detach the entire panel to give the request editor the full main window, or pop a single view to watch, say, the Network trace beside the Pretty body. Everything stays live, and closing a popped-out window puts its content back in place."),
         P("“Copy as ▾” turns the current request into a ready-to-run snippet — cURL, PowerShell (Invoke-RestMethod), Python (requests), or C# (HttpClient) — with {{variables}} resolved and headers and body included."),
+        P("The title bar carries the environment picker, a sun/moon button that toggles between the light and dark themes (your choice is remembered and applies to every window), the ? Help button (F1), and the window controls."),
         NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window."));
 
     private UIElement RequestsAndTabs() => Section("Requests & tabs",

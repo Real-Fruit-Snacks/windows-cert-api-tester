@@ -23,7 +23,7 @@ public partial class EnvironmentsWindow : Window
     protected override void OnSourceInitialized(System.EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     private ApiEnvironment? Selected => EnvList.SelectedItem as ApiEnvironment;

@@ -32,7 +32,7 @@ public partial class CollectionDefaultsDialog : Window
     protected override void OnSourceInitialized(System.EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     public static (bool Ok, string? BaseUrl, string? CertThumbprint) Show(

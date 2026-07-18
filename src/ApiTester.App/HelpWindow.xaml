@@ -3,22 +3,22 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Help" Height="640" Width="924" MinWidth="744" MinHeight="480"
         WindowStyle="None" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
                       GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1">
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1">
         <DockPanel>
-            <Border DockPanel.Dock="Top" Height="44" Background="{StaticResource Bg.Panel}"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
+            <Border DockPanel.Dock="Top" Height="44" Background="{DynamicResource Bg.Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-                        <TextBlock Text="&#x276F;" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#x276F;" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
                         <TextBlock Text="HELP &amp; REFERENCE" FontWeight="Bold" FontSize="12" Margin="9,0,0,0"
-                                   Foreground="{StaticResource Text.Normal}" VerticalAlignment="Center"/>
+                                   Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"/>
                     </StackPanel>
                     <Button Content="&#xE8BB;" HorizontalAlignment="Right" Style="{StaticResource CaptionClose}"
                             Height="44" Click="Close_Click"/>
@@ -30,8 +30,8 @@
                     <ColumnDefinition Width="230"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="{StaticResource Bg.Panel}"
-                        BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+                <Border Grid.Column="0" Background="{DynamicResource Bg.Panel}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
                     <ListBox x:Name="SectionList" Margin="6,10,6,10" SelectionChanged="SectionList_SelectionChanged"/>
                 </Border>
                 <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="28,24,28,24">

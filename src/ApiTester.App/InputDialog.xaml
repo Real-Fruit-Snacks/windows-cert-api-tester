@@ -3,16 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Input" SizeToContent="Height" Width="400"
         WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="0" CornerRadius="0"
                       GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1" Padding="18">
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1" Padding="18">
         <StackPanel>
-            <TextBlock x:Name="PromptText" Foreground="{StaticResource Text.Normal}" FontWeight="SemiBold"
+            <TextBlock x:Name="PromptText" Foreground="{DynamicResource Text.Normal}" FontWeight="SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,10" Text="Enter a value"/>
             <TextBox x:Name="Input" VerticalContentAlignment="Center" Padding="10,8"
                      KeyDown="Input_KeyDown"/>

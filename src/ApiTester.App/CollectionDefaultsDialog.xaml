@@ -3,19 +3,19 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Set website &amp; certificate" SizeToContent="Height" Width="560"
         WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="0" CornerRadius="0"
                       GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1" Padding="18">
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1" Padding="18">
         <StackPanel>
             <TextBlock x:Name="HeaderText" FontSize="15" FontWeight="SemiBold"
-                       Foreground="{StaticResource Text.Normal}" Margin="0,0,0,4"/>
+                       Foreground="{DynamicResource Text.Normal}" Margin="0,0,0,4"/>
             <TextBlock Text="Requests opened from this collection use these when they don't have their own."
-                       FontSize="12" Foreground="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                       FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,14"/>
 
             <TextBlock Text="WEBSITE" Style="{StaticResource Caption}" Margin="0,0,0,4"/>
             <DockPanel Margin="0,0,0,12">

@@ -24,7 +24,7 @@ public partial class ChoiceDialog : Window
     protected override void OnSourceInitialized(System.EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     /// <summary>Show the dialog modally and return which option was chosen.</summary>

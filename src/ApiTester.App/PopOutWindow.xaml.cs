@@ -19,7 +19,7 @@ public partial class PopOutWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     /// <summary>Release the hosted content so it can be re-attached to its tab.</summary>

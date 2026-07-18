@@ -6,8 +6,8 @@
         Title="Certificate API Tester" Height="780" Width="1180" MinWidth="960" MinHeight="600"
         Icon="pack://application:,,,/icon.ico"
         WindowStyle="None"
-        Background="{StaticResource Bg.Window}"
-        Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}"
+        Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}"
         FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal"
@@ -28,8 +28,8 @@
     <DockPanel x:Name="RootContainer">
 
         <!-- ============ title bar ============ -->
-        <Border DockPanel.Dock="Top" Height="44" Background="{StaticResource Bg.Panel}"
-                BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+        <Border DockPanel.Dock="Top" Height="44" Background="{DynamicResource Bg.Panel}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -42,9 +42,9 @@
                         WindowChrome.IsHitTestVisibleInChrome="True"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
                     <TextBlock Text="&#x276F;" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"
-                               Foreground="{StaticResource Accent}"/>
+                               Foreground="{DynamicResource Accent}"/>
                     <TextBlock Text="CERTIFICATE API TESTER" VerticalAlignment="Center" Margin="9,0,0,0"
-                               FontWeight="Bold" FontSize="13" Foreground="{StaticResource Text.Normal}"/>
+                               FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Text.Normal}"/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0"
                             WindowChrome.IsHitTestVisibleInChrome="True">
@@ -53,11 +53,13 @@
                               ToolTip="Active environment — its {{variables}} are substituted when you send."/>
                     <Button x:Name="ManageEnvButton" Content="Edit" Height="26" FontSize="11" Padding="9,0"
                             Margin="6,0,14,0" Click="ManageEnvButton_Click" ToolTip="Manage environments and variables"/>
-                    <TextBlock VerticalAlignment="Center" Foreground="{StaticResource Text.Faint}" FontSize="11"
+                    <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource Text.Faint}" FontSize="11"
                                Text="WINDOWS &#183; .NET 9 &#183; mTLS"/>
                 </StackPanel>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top"
                             WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="ThemeToggle" Style="{StaticResource CaptionButton}" Height="44"
+                            Content="&#xE706;" Click="ThemeToggle_Click" ToolTip="Toggle light / dark theme"/>
                     <Button x:Name="HelpButton" Style="{StaticResource CaptionButton}" Height="44"
                             Content="&#xE897;" Click="HelpButton_Click" ToolTip="Help (F1)"/>
                     <Button x:Name="MinButton" Style="{StaticResource CaptionButton}" Height="44"
@@ -71,8 +73,8 @@
         </Border>
 
         <!-- ============ history sidebar ============ -->
-        <Border x:Name="HistoryPanel" DockPanel.Dock="Left" Width="250" Background="{StaticResource Bg.Panel}"
-                BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+        <Border x:Name="HistoryPanel" DockPanel.Dock="Left" Width="250" Background="{DynamicResource Bg.Panel}"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <Grid DockPanel.Dock="Top" Height="38">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
@@ -84,7 +86,7 @@
                     <Button x:Name="ClearHistoryButton" Content="Clear" Height="24" FontSize="11" Padding="10,0"
                             HorizontalAlignment="Right" Margin="0,0,10,0" Click="ClearHistoryButton_Click"/>
                 </Grid>
-                <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource Border}"/>
+                <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Border}"/>
                 <Grid>
                     <ListBox x:Name="HistoryList" SelectionChanged="HistoryList_SelectionChanged"
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -93,12 +95,12 @@
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Method}" FontSize="10" FontWeight="Bold"
-                                                   Foreground="{StaticResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                   Foreground="{DynamicResource Accent}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource Text.Normal}" FontSize="12"/>
+                                                   Foreground="{DynamicResource Text.Normal}" FontSize="12"/>
                                     </StackPanel>
                                     <TextBlock Text="{Binding DisplayHost}" TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource Text.Faint}" FontSize="10" Margin="0,1,0,0"/>
+                                               Foreground="{DynamicResource Text.Faint}" FontSize="10" Margin="0,1,0,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -121,7 +123,7 @@
                                     ToolTip="Write the selected folder — or everything — as an OpenAPI 3.0 JSON file. Tokens and passwords are never written."/>
                         </StackPanel>
                         <TextBlock x:Name="CollectionsEmptyHint" DockPanel.Dock="Top" Margin="14,14,14,0"
-                                   Foreground="{StaticResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
                                    Text="No saved requests yet. Send a request, then “Save current request…” to keep it here."/>
                         <TreeView x:Name="CollectionsTree" ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   MouseDoubleClick="CollectionsTree_MouseDoubleClick"
@@ -135,17 +137,17 @@
                                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                     <StackPanel Orientation="Horizontal" ToolTip="{Binding StatusSummary}">
                                         <TextBlock Text="{Binding MethodBadge}" FontSize="10" FontWeight="Bold" MinWidth="30"
-                                                   Margin="0,0,7,0" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text.Normal}"
+                                                   Margin="0,0,7,0" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Text.Normal}"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Text="&#x25CF;" FontSize="8" Margin="7,0,0,0" VerticalAlignment="Center"
                                                    Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="{StaticResource Red}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource Red}"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsKnownGood}" Value="True">
-                                                            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -178,7 +180,7 @@
                 <Button x:Name="NewTabButton" DockPanel.Dock="Right" Width="34"
                         VerticalAlignment="Bottom" Margin="4,0,0,0" Click="NewTabButton_Click"
                         ToolTip="New request tab (Ctrl+T)">
-                    <Path Data="M7,0.5 V13.5 M0.5,7 H13.5" Stroke="{StaticResource Text.Normal}" StrokeThickness="1.6"
+                    <Path Data="M7,0.5 V13.5 M0.5,7 H13.5" Stroke="{DynamicResource Text.Normal}" StrokeThickness="1.6"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Button>
@@ -205,7 +207,7 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Margin="12,6,7,6">
                                     <TextBlock Text="{Binding Title}" VerticalAlignment="Center" MaxWidth="190"
-                                               TextTrimming="CharacterEllipsis" Foreground="{StaticResource Text.Soft}"/>
+                                               TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Text.Soft}"/>
                                     <Button Content="&#x2715;" Tag="{Binding}" Click="CloseTab_Click"
                                             Style="{StaticResource MiniButton}" Width="20" Height="20" Margin="9,0,0,0"
                                             FontSize="11" ToolTip="Close tab (Ctrl+W)"/>
@@ -266,7 +268,7 @@
                     <TextBlock Text="TIMEOUT" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                     <TextBox x:Name="TimeoutBox" Width="56" Margin="6,0,0,0" Text="100"
                              VerticalContentAlignment="Center" ToolTip="Request timeout (seconds)"/>
-                    <TextBlock Text="s" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{StaticResource Text.Muted}"/>
+                    <TextBlock Text="s" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{DynamicResource Text.Muted}"/>
                 </StackPanel>
                 <TextBox x:Name="UrlBox" VerticalContentAlignment="Center" KeyDown="UrlBox_KeyDown"
                          TextChanged="UrlBox_TextChanged" LostFocus="UrlBox_LostFocus"
@@ -361,7 +363,7 @@
                             </DockPanel>
                             <!-- multipart form body -->
                             <DockPanel x:Name="FormBodyPanel" Visibility="Collapsed">
-                                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" Foreground="{StaticResource Text.Faint}"
+                                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" Foreground="{DynamicResource Text.Faint}"
                                            FontSize="11" TextWrapping="Wrap"
                                            Text="multipart/form-data — tick “File” and use “…” to upload a file; leave it unticked for a text field. The Content-Type and boundary are set for you."/>
                                 <Button DockPanel.Dock="Bottom" x:Name="AddFormPartButton" Content="+ Add field" Width="120"
@@ -412,7 +414,7 @@
                                 <ComboBoxItem>Basic</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
-                        <TextBlock x:Name="AutoAuthHint" FontSize="12" Foreground="{StaticResource Text.Muted}"
+                        <TextBlock x:Name="AutoAuthHint" FontSize="12" Foreground="{DynamicResource Text.Muted}"
                                    TextWrapping="Wrap" Margin="60,0,0,8"
                                    Text="Sends the bearer token captured from this website's last auth response, when one exists. Other websites never receive it."/>
                         <StackPanel x:Name="BearerPanel" Orientation="Horizontal" Margin="0,0,0,8" Visibility="Collapsed">
@@ -435,7 +437,7 @@
                 </TabItem>
                 <TabItem Header="Capture">
                     <DockPanel Margin="2">
-                        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{StaticResource Text.Faint}"
+                        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{DynamicResource Text.Faint}"
                                    FontSize="11" TextWrapping="Wrap"
                                    Text="After sending, save a value from the response into a {{variable}} for later requests — e.g. Variable “token”, From Body, Path “access_token”. Reuse it as {{token}} in a Bearer token or any field."/>
                         <Button DockPanel.Dock="Bottom" x:Name="AddCaptureButton" Content="+ Add capture" Width="130"
@@ -475,7 +477,7 @@
                 </TabItem>
                 <TabItem Header="Tests">
                     <DockPanel Margin="2">
-                        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{StaticResource Text.Faint}"
+                        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{DynamicResource Text.Faint}"
                                    FontSize="11" TextWrapping="Wrap"
                                    Text="Assert on the response so 'certapi run' and the suite can pass/fail — e.g. Status == 200, Body data.id exists, Time &lt; 500, Header Content-Type contains json. A request with no tests passes on any 2xx."/>
                         <Button DockPanel.Dock="Bottom" x:Name="AddAssertionButton" Content="+ Add test" Width="120"
@@ -539,7 +541,7 @@
             <ProgressBar x:Name="SendProgress" Grid.Row="6" Panel.ZIndex="5" Height="3"
                          VerticalAlignment="Top" HorizontalAlignment="Stretch" IsIndeterminate="True"
                          Visibility="Collapsed" Background="Transparent" BorderThickness="0"
-                         Foreground="{StaticResource Accent}"/>
+                         Foreground="{DynamicResource Accent}"/>
 
             <!-- response -->
             <ContentControl x:Name="ResponseHost" Grid.Row="6" Focusable="False">
@@ -603,13 +605,13 @@
                     </TabItem>
                     <TabItem Header="Rendered">
                         <DockPanel>
-                            <Border DockPanel.Dock="Top" Background="{StaticResource Bg.Window}" Padding="8,6"
-                                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource Bg.Window}" Padding="8,6"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                                 <DockPanel>
                                     <Button x:Name="RenderReloadButton" DockPanel.Dock="Right" Content="Reload" Height="26"
                                             FontSize="11" Padding="10,0" Margin="8,0,0,0" Click="RenderReloadButton_Click"/>
                                     <TextBlock x:Name="RenderUrlText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource Text.Muted}" FontSize="11"
+                                               Foreground="{DynamicResource Text.Muted}" FontSize="11"
                                                Text="Opens the current request's URL as a web page — every resource is fetched with your client certificate."/>
                                 </DockPanel>
                             </Border>
@@ -617,7 +619,7 @@
                                 <wv2:WebView2 x:Name="Browser"/>
                                 <TextBlock x:Name="RenderHint" IsHitTestVisible="False" TextWrapping="Wrap" MaxWidth="520"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                                           Foreground="{StaticResource Text.Faint}" FontSize="12"
+                                           Foreground="{DynamicResource Text.Faint}" FontSize="12"
                                            Text="Enter a URL in the request above, then this tab renders that page — authenticated with your selected certificate."/>
                             </Grid>
                         </DockPanel>
@@ -631,7 +633,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition x:Name="NetworkDetailRow" Height="Auto"/>
                             </Grid.RowDefinitions>
-                            <Border Grid.Row="0" Height="38" Background="{StaticResource Bg.Window}" Padding="10,0">
+                            <Border Grid.Row="0" Height="38" Background="{DynamicResource Bg.Window}" Padding="10,0">
                                 <DockPanel LastChildFill="False">
                                     <TextBox x:Name="NetworkSearchBox" DockPanel.Dock="Left" Width="170" Height="26" Padding="7,0"
                                              VerticalContentAlignment="Center" VerticalAlignment="Center" FontSize="11"
@@ -646,16 +648,16 @@
                                         <Button x:Name="NetClassErr" Content="ERR" Style="{StaticResource SideTab}" Click="NetworkClass_Click"/>
                                     </StackPanel>
                                     <CheckBox x:Name="NetworkCertOnly" DockPanel.Dock="Left" Content="cert only" VerticalAlignment="Center"
-                                              Margin="12,0,0,0" FontSize="11" Foreground="{StaticResource Text.Muted}"
+                                              Margin="12,0,0,0" FontSize="11" Foreground="{DynamicResource Text.Muted}"
                                               Click="NetworkFilter_Changed"
                                               ToolTip="Show only calls made with your client certificate"/>
                                     <Button x:Name="ClearNetworkButton" DockPanel.Dock="Right" Content="Clear" VerticalAlignment="Center"
                                             Height="24" FontSize="11" Padding="10,0" Click="ClearNetworkButton_Click"/>
                                     <TextBlock x:Name="NetworkCountText" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,0,12,0"
-                                               Foreground="{StaticResource Text.Muted}" FontSize="11" Text="No requests yet."/>
+                                               Foreground="{DynamicResource Text.Muted}" FontSize="11" Text="No requests yet."/>
                                 </DockPanel>
                             </Border>
-                            <Border Grid.Row="1" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
+                            <Border Grid.Row="1" Background="{DynamicResource Bg.Panel}" BorderBrush="{DynamicResource Border}"
                                     BorderThickness="0,1,0,1" Padding="10,5,10,5">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -676,12 +678,12 @@
                                 </Grid>
                             </Border>
                             <GridSplitter x:Name="NetworkSplitter" Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
-                                          Background="{StaticResource Border}" Visibility="Collapsed" Focusable="False"
+                                          Background="{DynamicResource Border}" Visibility="Collapsed" Focusable="False"
                                           ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"/>
                             <Border Grid.Row="4" x:Name="NetworkDetailPane" Visibility="Collapsed"
-                                    Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+                                    Background="{DynamicResource Bg.Panel}" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
                                 <DockPanel>
-                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="10,4">
+                                    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,4">
                                         <DockPanel>
                                             <Button x:Name="NetworkDetailClose" DockPanel.Dock="Right" Style="{StaticResource MiniButton}"
                                                     Width="22" Height="22" FontFamily="Segoe MDL2 Assets" FontSize="10" Content="&#xE8BB;"
@@ -725,20 +727,20 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="&#x25CF;" FontSize="8" VerticalAlignment="Center" HorizontalAlignment="Center"
-                                                       Foreground="{StaticResource Accent}" ToolTip="Fetched with your client certificate"
+                                                       Foreground="{DynamicResource Accent}" ToolTip="Fetched with your client certificate"
                                                        Visibility="{Binding UsedClientCert, Converter={StaticResource BoolToVis}}"/>
                                             <TextBlock Grid.Column="1" Text="{Binding Method}" FontWeight="Bold" FontSize="10.5"
-                                                       Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                                                       Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="2" Text="{Binding StatusLabel}" FontSize="11" VerticalAlignment="Center"
                                                        Foreground="{Binding Converter={StaticResource StatusBrush}}"/>
                                             <TextBlock Grid.Column="3" Text="{Binding ShortType}" FontSize="11" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis" Margin="0,0,6,0"/>
+                                                       Foreground="{DynamicResource Text.Muted}" TextTrimming="CharacterEllipsis" Margin="0,0,6,0"/>
                                             <TextBlock Grid.Column="4" Text="{Binding SizeLabel}" FontSize="11" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource Text.Muted}"/>
+                                                       Foreground="{DynamicResource Text.Muted}"/>
                                             <TextBlock Grid.Column="5" Text="{Binding TimeLabel}" FontSize="11" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource Text.Muted}"/>
+                                                       Foreground="{DynamicResource Text.Muted}"/>
                                             <TextBlock Grid.Column="6" Text="{Binding Url}" FontSize="11.5" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource Text.Soft}" TextTrimming="CharacterEllipsis"/>
+                                                       Foreground="{DynamicResource Text.Soft}" TextTrimming="CharacterEllipsis"/>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -750,19 +752,19 @@
             </ContentControl>
 
             <!-- status bar -->
-            <Border Grid.Row="7" Margin="0,8,0,0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border}"
+            <Border Grid.Row="7" Margin="0,8,0,0" Background="{DynamicResource Bg.Panel}" BorderBrush="{DynamicResource Border}"
                     BorderThickness="1" CornerRadius="6" Padding="12,8">
                 <DockPanel>
                     <Button x:Name="SelfTestButton" Content="Run Self-Test" Width="118"
                             DockPanel.Dock="Right" Click="SelfTestButton_Click"/>
                     <Border x:Name="TokenChip" DockPanel.Dock="Right" Visibility="Collapsed" Margin="0,0,10,0"
-                            VerticalAlignment="Center" Background="{StaticResource Bg.Input}"
-                            BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10"
+                            VerticalAlignment="Center" Background="{DynamicResource Bg.Input}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10"
                             Padding="10,3" Cursor="Hand" MouseLeftButtonUp="TokenChip_Click"
                             ToolTip="A bearer token was captured for this website — click for details">
-                        <TextBlock x:Name="TokenChipText" FontSize="12" Foreground="{StaticResource Text.Soft}"/>
+                        <TextBlock x:Name="TokenChipText" FontSize="12" Foreground="{DynamicResource Text.Soft}"/>
                     </Border>
-                    <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{StaticResource Text.Soft}"
+                    <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{DynamicResource Text.Soft}"
                                TextTrimming="CharacterEllipsis" Text="Ready."/>
                 </DockPanel>
             </Border>

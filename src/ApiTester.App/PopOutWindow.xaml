@@ -3,17 +3,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="960" Height="640" MinWidth="420" MinHeight="300"
         WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5" ShowInTaskbar="True"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
                       GlassFrameThickness="1" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1">
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1">
         <DockPanel>
-            <Border DockPanel.Dock="Top" Height="38" Background="{StaticResource Bg.Panel}"
-                    BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1"
+            <Border DockPanel.Dock="Top" Height="38" Background="{DynamicResource Bg.Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">

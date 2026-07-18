@@ -30,7 +30,7 @@ public partial class InputDialog : Window
     protected override void OnSourceInitialized(System.EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     /// <summary>Show a modal single-line prompt. Returns the entered text, or null if cancelled.</summary>

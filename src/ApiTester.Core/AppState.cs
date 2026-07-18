@@ -37,6 +37,10 @@ public sealed class AppState
     /// stored while off, so turning it back on works immediately.</summary>
     public bool AutoTokens { get; set; } = true;
 
+    /// <summary>UI theme: "Dark" (default) or "Light". Read at startup to pick the palette
+    /// overlay and updated live when the user toggles it from the title bar.</summary>
+    public string Theme { get; set; } = "Dark";
+
     /// <summary>File-format version. 0 = files from before the Auto/None auth split.</summary>
     public int SchemaVersion { get; set; }
 

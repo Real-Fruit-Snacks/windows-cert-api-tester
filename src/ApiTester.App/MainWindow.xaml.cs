@@ -77,12 +77,35 @@ public partial class MainWindow : Window
 
         PreviewKeyDown += Window_PreviewKeyDown;
         UpdateTokenChip();
+        UpdateThemeToggleGlyph();
+    }
+
+    /// <summary>Flip between the dark and light palettes, persist the choice, and repaint the
+    /// native title bar to match. Palette references are DynamicResource, so the swap is live.</summary>
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        var app = (App)Application.Current;
+        string next = app.CurrentTheme == "Light" ? "Dark" : "Light";
+        app.ApplyTheme(next);
+        _state.Theme = next;
+        _state.Save();
+        NativeTheme.ApplyTitleBar(this, next == "Light");
+        UpdateThemeToggleGlyph();
+        StatusText.Text = $"{next} theme applied.";
+    }
+
+    /// <summary>Show the glyph/tooltip for the theme the button would switch to.</summary>
+    private void UpdateThemeToggleGlyph()
+    {
+        bool light = ((App)Application.Current).CurrentTheme == "Light";
+        ThemeToggle.Content = ((char)(light ? 0xE708 : 0xE706)).ToString(); // moon (switch to dark) / sun (switch to light)
+        ThemeToggle.ToolTip = light ? "Switch to dark theme" : "Switch to light theme";
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
         if (_state.WindowMaximized) WindowState = WindowState.Maximized;
     }
 
@@ -481,10 +504,10 @@ public partial class MainWindow : Window
         var text = new TextBlock
         {
             Text = "The response panel is open in its own window.",
-            Foreground = (System.Windows.Media.Brush)FindResource("Text.Faint"),
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center
         };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "Text.Faint");
         var restore = new Button
         {
             Content = "Bring it back",
@@ -504,15 +527,16 @@ public partial class MainWindow : Window
         row.Children.Add(text);
         row.Children.Add(restore);
 
-        return new Border
+        var border = new Border
         {
-            Background = (System.Windows.Media.Brush)FindResource("Bg.Panel"),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("Border"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(12, 9, 12, 9),
             Child = row
         };
+        border.SetResourceReference(Border.BackgroundProperty, "Bg.Panel");
+        border.SetResourceReference(Border.BorderBrushProperty, "Border");
+        return border;
     }
 
     private void PopOutView_Click(object sender, RoutedEventArgs e)
@@ -541,10 +565,10 @@ public partial class MainWindow : Window
         var text = new TextBlock
         {
             Text = $"The {title} view is open in its own window.",
-            Foreground = (System.Windows.Media.Brush)FindResource("Text.Faint"),
             FontSize = 12,
             HorizontalAlignment = HorizontalAlignment.Center
         };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "Text.Faint");
         var restore = new Button
         {
             Content = "Bring it back",
@@ -1222,17 +1246,18 @@ public partial class MainWindow : Window
         {
             Text = label,
             FontSize = 11.5,
-            Foreground = (System.Windows.Media.Brush)FindResource("Text.Muted"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(0, 0, 10, 0)
         };
+        key.SetResourceReference(TextBlock.ForegroundProperty, "Text.Muted");
         var val = new TextBlock
         {
             Text = value,
             FontSize = 11.5,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = valueBrush ?? (System.Windows.Media.Brush)FindResource("Text.Soft")
+            TextWrapping = TextWrapping.Wrap
         };
+        if (valueBrush is not null) val.Foreground = valueBrush;
+        else val.SetResourceReference(TextBlock.ForegroundProperty, "Text.Soft");
         Grid.SetColumn(val, 1);
         grid.Children.Add(key);
         grid.Children.Add(val);
@@ -2053,10 +2078,8 @@ public partial class MainWindow : Window
 
     private void ShowPrettyHint()
     {
-        var run = new System.Windows.Documents.Run("The formatted response appears here after you send a request.")
-        {
-            Foreground = (System.Windows.Media.Brush)FindResource("Text.Faint")
-        };
+        var run = new System.Windows.Documents.Run("The formatted response appears here after you send a request.");
+        run.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "Text.Faint");
         PrettyRich.Document = new System.Windows.Documents.FlowDocument(new System.Windows.Documents.Paragraph(run))
         {
             FontFamily = new System.Windows.Media.FontFamily("Consolas"),
@@ -2068,10 +2091,8 @@ public partial class MainWindow : Window
     /// previous response can't be mistaken for the new one whichever tab is showing.</summary>
     private void ShowWaitingHint()
     {
-        var run = new System.Windows.Documents.Run("Waiting for response…")
-        {
-            Foreground = (System.Windows.Media.Brush)FindResource("Accent")
-        };
+        var run = new System.Windows.Documents.Run("Waiting for response…");
+        run.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "Accent");
         PrettyRich.Document = new System.Windows.Documents.FlowDocument(new System.Windows.Documents.Paragraph(run))
         {
             FontFamily = new System.Windows.Media.FontFamily("Consolas"),

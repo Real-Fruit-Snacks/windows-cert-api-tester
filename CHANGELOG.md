@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-07-18
+
+### Added
+- **Light theme** — the Terminal Workbench palette now ships in light as well as dark. A sun/moon
+  button in the title bar toggles between them; the choice is saved and restored on the next launch,
+  and it applies live to the whole app (including the native window caption) without a restart.
+
 ## [1.37.0] - 2026-07-18
 
 ### Added

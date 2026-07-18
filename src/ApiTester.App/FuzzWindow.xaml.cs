@@ -90,7 +90,7 @@ public partial class FuzzWindow : Window
     protected override void OnSourceInitialized(System.EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeTheme.ApplyDarkTitleBar(this);
+        NativeTheme.ApplyTitleBar(this);
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

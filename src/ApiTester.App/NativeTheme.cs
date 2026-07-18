@@ -6,9 +6,10 @@ using System.Windows.Interop;
 namespace ApiTester.App;
 
 /// <summary>
-/// Applies a dark window caption (title bar) via the Desktop Window Manager so the
-/// OS-drawn chrome matches the Terminal Workbench theme. No-ops on Windows versions
-/// that don't support these attributes (pre-Windows 11), leaving the default caption.
+/// Colours the OS-drawn window caption (title bar) and border via the Desktop Window Manager
+/// so the native chrome matches the active Terminal Workbench palette. Reads the current theme
+/// from <see cref="App.CurrentTheme"/>, so every window follows a light/dark toggle. No-ops on
+/// Windows versions that don't support these attributes (pre-Windows 11), leaving the default.
 /// </summary>
 internal static class NativeTheme
 {
@@ -23,23 +24,33 @@ internal static class NativeTheme
     // COLORREF is 0x00BBGGRR.
     private static int Rgb(byte r, byte g, byte b) => r | (g << 8) | (b << 16);
 
-    public static void ApplyDarkTitleBar(Window window)
+    private static bool CurrentThemeIsLight =>
+        string.Equals((Application.Current as App)?.CurrentTheme, "Light", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Apply the caption/border colours for the app's current theme to <paramref name="window"/>.</summary>
+    public static void ApplyTitleBar(Window window) => ApplyTitleBar(window, CurrentThemeIsLight);
+
+    /// <summary>Apply the caption/border colours for a specific theme. Call again after a live toggle.</summary>
+    public static void ApplyTitleBar(Window window, bool light)
     {
         try
         {
             var hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) return;
 
-            int useDark = 1;
+            int useDark = light ? 0 : 1;
             DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, sizeof(int));
 
-            int caption = Rgb(0x0e, 0x12, 0x14); // Bg.Panel
+            int caption = light ? Rgb(0xff, 0xff, 0xff)  // Bg.Panel
+                                : Rgb(0x0e, 0x12, 0x14);
             DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
 
-            int text = Rgb(0xdc, 0xe4, 0xdf);    // Text.Normal
+            int text = light ? Rgb(0x16, 0x20, 0x1c)      // Text.Normal
+                             : Rgb(0xdc, 0xe4, 0xdf);
             DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref text, sizeof(int));
 
-            int border = Rgb(0x2a, 0x36, 0x3d);  // Border
+            int border = light ? Rgb(0xd3, 0xdb, 0xd7)    // Border
+                               : Rgb(0x2a, 0x36, 0x3d);
             DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref border, sizeof(int));
         }
         catch

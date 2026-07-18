@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Choose" SizeToContent="Height" Width="470"
         WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Bg.Window}" Foreground="{StaticResource Text.Soft}"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
         FontFamily="{StaticResource Mono}" FontSize="12.5"
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -11,11 +11,11 @@
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="0" CornerRadius="0"
                       GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
-    <Border BorderBrush="{StaticResource Border.Strong}" BorderThickness="1" Padding="18">
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1" Padding="18">
         <StackPanel>
-            <TextBlock x:Name="HeadingText" Foreground="{StaticResource Text.Normal}" FontWeight="SemiBold"
+            <TextBlock x:Name="HeadingText" Foreground="{DynamicResource Text.Normal}" FontWeight="SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,10"/>
-            <TextBlock x:Name="MessageText" Foreground="{StaticResource Text.Soft}" TextWrapping="Wrap"/>
+            <TextBlock x:Name="MessageText" Foreground="{DynamicResource Text.Soft}" TextWrapping="Wrap"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
                 <Button Content="Cancel" MinWidth="86" Padding="12,0" Margin="0,0,8,0" Click="Cancel_Click"/>
                 <Button x:Name="SecondaryButton" MinWidth="86" Padding="12,0" Margin="0,0,8,0" Click="Secondary_Click"/>
