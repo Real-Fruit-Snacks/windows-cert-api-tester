@@ -97,17 +97,19 @@ public static class WsCommand
             int got = 0;
             try
             {
-                await foreach (var msg in session.ReceiveAllAsync(services.Cancel))
-                {
-                    if (msg.IsClose)
+                // --expect 0 means "send only" — don't wait for any reply.
+                if (want > 0)
+                    await foreach (var msg in session.ReceiveAllAsync(services.Cancel))
                     {
-                        if (!quiet) stderr.WriteLine("server closed the connection.");
-                        break;
+                        if (msg.IsClose)
+                        {
+                            if (!quiet) stderr.WriteLine("server closed the connection.");
+                            break;
+                        }
+                        stdout.WriteLine(msg.IsText ? msg.Text : $"[binary {msg.Bytes.Length} bytes]");
+                        stdout.Flush();
+                        if (++got >= want) break;
                     }
-                    stdout.WriteLine(msg.IsText ? msg.Text : $"[binary {msg.Bytes.Length} bytes]");
-                    stdout.Flush();
-                    if (++got >= want) break;
-                }
             }
             catch (OperationCanceledException) when (services.Cancel.IsCancellationRequested)
             {

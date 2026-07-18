@@ -89,6 +89,29 @@ public class OAuthCliTests
     }
 
     [Fact]
+    public async Task Token_save_creates_a_new_workspace_file()
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
+        await using var srv = await LoopbackMtlsServer.StartOAuthTokenAsync(serverCert, clientCert.Thumbprint!, "app", "s3cret");
+
+        string wsPath = TempState();   // does not exist yet
+        var so = new StringWriter();
+        var se = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "token", "--token-url", srv.BaseUrl, "--cert", "CliClient", "--insecure",
+                    "--client-id", "app", "--client-secret", "s3cret",
+                    "--save", "--for", "https://api.example.com", "--workspace", wsPath },
+            new StringReader(""), so, se, new MemoryStream(), ServicesWith(clientCert, TempState()));
+
+        Assert.Equal(0, code);
+        Assert.True(File.Exists(wsPath), "the workspace file should have been created");
+        var token = Assert.Single(AppState.LoadFrom(wsPath).SessionTokens);
+        Assert.Equal("at-client_credentials", token.Token);
+    }
+
+    [Fact]
     public void Token_save_without_for_is_a_usage_error()
     {
         var so = new StringWriter();

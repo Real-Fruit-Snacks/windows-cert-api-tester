@@ -86,6 +86,26 @@ public class StreamingCliTests
     }
 
     [Fact]
+    public async Task Ws_expect_zero_sends_without_waiting_for_a_reply()
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
+        await using var server = await LoopbackMtlsServer.StartWebSocketEchoAsync(serverCert, clientCert.Thumbprint!);
+
+        var so = new StringWriter();
+        var se = new StringWriter();
+        // The echo server never closes; with --expect 0 the command must return promptly anyway.
+        var run = Task.Run(() => CliApp.Run(
+            new[] { "ws", server.WebSocketUrl, "--cert", "CliClient", "--insecure", "-m", "fire", "--expect", "0" },
+            new StringReader(""), so, se, new MemoryStream(), ServicesWith(clientCert)));
+
+        var finished = await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(15)));
+        Assert.True(finished == run, "ws --expect 0 should not block waiting for a reply");
+        Assert.Equal(0, await run);
+    }
+
+    [Fact]
     public void Ws_bad_expect_is_a_usage_error()
     {
         var so = new StringWriter();

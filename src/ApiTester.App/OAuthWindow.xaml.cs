@@ -72,6 +72,7 @@ public partial class OAuthWindow : Window
         string tokenUrl = TokenUrlBox.Text.Trim();
         if (tokenUrl.Length == 0) { SetStatus("Enter the token endpoint URL.", error: true); return; }
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         FetchButton.IsEnabled = false;
         try

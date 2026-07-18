@@ -160,8 +160,17 @@ public static class TokenCommand
         string? workspace, CliServices services, TextWriter stderr)
     {
         AppState state;
-        try { state = CliWorkspace.Load(workspace, services.LiveStatePath); }
-        catch (CliDataException ex) { stderr.WriteLine($"warning: could not load state to save the token ({ex.Message})"); return; }
+        // A --workspace file that doesn't exist yet is created fresh (like `send --capture`); a
+        // missing live state is already handled by CliWorkspace.Load returning an empty state.
+        if (workspace is not null && !File.Exists(workspace))
+        {
+            state = new AppState();
+        }
+        else
+        {
+            try { state = CliWorkspace.Load(workspace, services.LiveStatePath); }
+            catch (CliDataException ex) { stderr.WriteLine($"warning: could not load state to save the token ({ex.Message})"); return; }
+        }
 
         var saved = new List<string>();
         foreach (var url in forUrls)

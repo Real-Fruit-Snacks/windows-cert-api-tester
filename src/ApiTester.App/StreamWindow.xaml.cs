@@ -91,6 +91,7 @@ public partial class StreamWindow : Window
             return;
         }
 
+        _cts?.Dispose();   // the previous session has finished by the time Connect is enabled again
         _cts = new CancellationTokenSource();
         SetConnectingUi();
 
@@ -119,23 +120,32 @@ public partial class StreamWindow : Window
     private async System.Threading.Tasks.Task RunWebSocketAsync(string url)
     {
         Append("—", $"Connecting to {url} …");
-        _ws = new WebSocketSession();
-        await _ws.ConnectAsync(url, _cert, null, _insecure, _cts!.Token);
-        Append("—", "Connected. Type a message below and press Enter to send.");
-        SetConnectedUi(canSend: true);
-
+        var session = new WebSocketSession();
+        _ws = session;
         try
         {
-            await foreach (var msg in _ws.ReceiveAllAsync(_cts.Token))
-            {
-                if (msg.IsClose) { Append("—", "Server closed the connection."); break; }
-                Append("<", msg.IsText ? msg.Text : $"[binary {msg.Bytes.Length} bytes]");
-            }
-        }
-        catch (OperationCanceledException) { /* disconnect requested */ }
-        catch (Exception ex) { Append("!", ex.Message); }
+            await session.ConnectAsync(url, _cert, null, _insecure, _cts!.Token);
+            Append("—", "Connected. Type a message below and press Enter to send.");
+            SetConnectedUi(canSend: true);
 
-        SetDisconnectedUi();
+            try
+            {
+                await foreach (var msg in session.ReceiveAllAsync(_cts.Token))
+                {
+                    if (msg.IsClose) { Append("—", "Server closed the connection."); break; }
+                    Append("<", msg.IsText ? msg.Text : $"[binary {msg.Bytes.Length} bytes]");
+                }
+            }
+            catch (OperationCanceledException) { /* disconnect requested */ }
+            catch (Exception ex) { Append("!", ex.Message); }
+        }
+        finally
+        {
+            // Dispose the socket for this session so a connect/disconnect cycle doesn't leak it.
+            await session.DisposeAsync();
+            if (ReferenceEquals(_ws, session)) _ws = null;
+            SetDisconnectedUi();
+        }
     }
 
     private async System.Threading.Tasks.Task RunSseAsync(string url)

@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-07-18
+
+### Fixed
+- **Stream console no longer leaks a socket per connection** — each WebSocket session is now disposed
+  when it ends (and its cancellation source reused cleanly), so repeated connect/disconnect cycles
+  don't accumulate `ClientWebSocket` handles.
+- **`certapi token --save --workspace <file>`** now creates the workspace file when it doesn't exist
+  yet, instead of warning and skipping the save.
+- **`certapi ws --expect 0`** returns after sending instead of waiting for a reply that isn't coming.
+- **OAuth token requests** report a clean "timed out" instead of surfacing a raw cancellation when the
+  token endpoint is slow.
+
 ## [1.41.0] - 2026-07-18
 
 ### Added

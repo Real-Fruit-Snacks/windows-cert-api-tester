@@ -141,6 +141,10 @@ public static class OAuthClient
             raw = await response.Content.ReadAsStringAsync(ct);
             return Parse(raw);
         }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Failure("timeout", "The token request timed out.", "");
+        }
         catch (HttpRequestException ex)
         {
             return Failure("request_failed", ex.Message, "");
