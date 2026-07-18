@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 2026-07-18
+
+### Added
+- **Endpoint discovery (fuzzing)** — point the tool at a website and a wordlist of candidate
+  endpoints and it probes each one to show which exist. In the app, the new **Discover…** window
+  streams colour-coded results (Found / Unauthorized / MethodNotAllowed / …), hides 404s and
+  errors by default, opens any hit in a request tab on double-click, and can save all discoveries
+  as a collection. Headless: `certapi fuzz <base-url> -w <wordlist>` with `--methods`,
+  `--concurrency`, `--delay`, status `--match`/`--hide`/`--all`, `--json`, `-o`, `-w -` (stdin),
+  and `--save-collection`. Captured auth tokens are attached automatically, so you can log in
+  first and then discover authenticated endpoints. A starter wordlist ships in
+  `wordlists/common-api-endpoints.txt`.
+
+### Changed
+- Workspaces exported from the app are now stamped with the current schema version, so an
+  explicit “None (never send auth)” survives a round-trip through export and re-import.
+
 ## [1.26.0] - 2026-07-17
 
 ### Added

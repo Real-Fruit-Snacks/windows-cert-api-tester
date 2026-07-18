@@ -46,6 +46,8 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
   private.
 - **Collection defaults** — collections remember their website + client certificate, so opening
   any endpoint is immediately sendable.
+- **Endpoint discovery** — probe a wordlist against a website to map an undocumented API, in the
+  app (**Discover…**) or headless (`certapi fuzz`). Discoveries open as tabs or save as a collection.
 - **`--debug` / `--log-file`** — every certapi command can explain exactly what it sent, looked
   up, and negotiated, on screen or into a log file.
 - **Import from cURL** — paste a `curl` command and it opens a ready-to-send tab with the method, URL, query, headers, body, and auth filled in (understands `-X`, `-H`, `-d`, `-u`, `-k`, Bearer headers, quoting, and line continuations).
@@ -82,6 +84,16 @@ Type a base like `https://internal.corp` in the WEBSITE row and click the saved-
 
 ### Organise requests (collections)
 Switch the sidebar to **COLLECTIONS**, then **Save current request…** to store it in a folder. Double-click a saved request to reopen it in a tab. Each saved request shows a **known-good dot** after you send it — mint for a 2xx, red for a failure — with a tooltip of when it was last checked.
+
+### Discovering endpoints
+
+No API docs? Probe a wordlist to see what exists:
+
+    certapi fuzz https://api.example.com -w wordlists/common-api-endpoints.txt --cert "CN=My Client"
+
+Each line is a path (or `METHOD path`); `#` comments and blanks are ignored. Anything but a 404 or
+a connection error counts as a discovery. Add `--save-collection Discovered` to keep the hits, or
+`--json` for machine output. In the app, use **Discover…** in the toolbar.
 
 ### Environments & variables
 Open the **ENV** selector (title bar) → **Edit** to define `{{variable}}` values per environment (Dev / Staging / Prod). Use `{{name}}` anywhere — URL, query, headers, body, or the auth fields — and it's substituted when you send. Switch environments to point the same requests at a different backend.

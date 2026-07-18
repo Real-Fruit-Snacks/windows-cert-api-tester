@@ -1,0 +1,49 @@
+# Common API endpoints to probe when no documentation is available.
+# One per line; "METHOD path" pins a method; blank lines and #comments are ignored.
+/
+/health
+/healthz
+/ready
+/status
+/ping
+/version
+/info
+/metrics
+/api
+/api/v1
+/api/v2
+/openapi.json
+/swagger.json
+/swagger/index.html
+/.well-known/openapi
+/users
+/user
+/accounts
+/account
+/login
+POST /login
+/logout
+/auth
+POST /auth/token
+/token
+/session
+/admin
+/config
+/settings
+/products
+/orders
+/items
+/search
+/files
+/upload
+/download
+/events
+/logs
+/jobs
+/tasks
+/notifications
+/webhooks
+/roles
+/permissions
+/groups
+/teams

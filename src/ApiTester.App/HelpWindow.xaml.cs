@@ -26,6 +26,7 @@ public partial class HelpWindow : Window
             ("Requests & tabs", RequestsAndTabs),
             ("Certificates & mTLS", Certificates),
             ("Collections & history", Collections),
+            ("Discovering endpoints", Discovery),
             ("Environments & variables", Environments),
             ("Automatic tokens", AutoTokens),
             ("Importing & exporting", Importing),
@@ -214,6 +215,21 @@ public partial class HelpWindow : Window
           "automatically, so clicking through an imported API just works."),
         Sub("HISTORY"),
         P("History lists your recent requests, labelled by path with the host beneath. Click one to reload the entire request — website, certificate, headers, auth, timeout, and body — and the response it returned. The app also remembers your window, last certificate, and settings between runs."));
+
+    private UIElement Discovery() => Section("Discovering endpoints",
+        P("When an API ships without documentation, use Discover to find out which endpoints exist. " +
+          "Click “Discover…” in the toolbar, point it at a website, choose (or paste) a list of candidate " +
+          "paths, and it sends a request to each one with your client certificate and any captured token."),
+        Sub("READING THE RESULTS"),
+        P("Each row shows the outcome: Found (2xx), Unauthorized (401/403 — it exists but needs auth), " +
+          "MethodNotAllowed (405 — it exists, wrong method), Redirect (3xx), ServerError (5xx), NotFound (404), " +
+          "OtherStatus (any other code), or Error (couldn't connect). Everything except NotFound and Error is " +
+          "treated as a discovery. Hide the noise with the “Hide 404s / errors” toggle."),
+        Sub("TURNING FINDINGS INTO REQUESTS"),
+        P("Double-click a row to open that endpoint in a new request tab, or “Save discovered to collection…” " +
+          "to store them all as saved requests you can run later."),
+        NoteBox("The same discovery runs headless: certapi fuzz <website> -w <wordlist>. A starter wordlist " +
+                "ships in the repo under wordlists/common-api-endpoints.txt."));
 
     private UIElement Environments() => Section("Environments & variables",
         P("Define values once and reuse them anywhere with {{name}} placeholders — ideal for switching between Dev, Staging, and Prod without editing every request."),
