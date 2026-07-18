@@ -49,7 +49,7 @@ public class RequestModelMappingTests
         Assert.Equal("https://api.example/v1", m.BaseUrl);
         Assert.Equal("/widgets/{id}", m.Path);
         Assert.Empty(m.QueryParams);
-        Assert.Equal("None", m.AuthType);
+        Assert.Equal("Auto", m.AuthType);
         Assert.Equal("https://api.example/v1/widgets/{id}", m.EffectiveUrl());
     }
 

@@ -137,4 +137,48 @@ public static class TokenService
     /// <summary>Header-safe: non-empty, no whitespace or control characters.</summary>
     private static bool IsTokenShaped(string? value) =>
         !string.IsNullOrEmpty(value) && !value.Any(c => char.IsWhiteSpace(c) || char.IsControl(c));
+
+    /// <summary>Detect a token in a response and upsert it into the state's per-origin store
+    /// (newest wins). Returns the stored token, or null when none was found.</summary>
+    public static SessionToken? Capture(AppState state, string url, byte[] body, string? contentType,
+        IReadOnlyList<KeyValuePair<string, string>> headers)
+    {
+        if (Detect(url, body, contentType, headers) is not { } found) return null;
+        state.SessionTokens.RemoveAll(t => t.Origin == found.Origin);
+        state.SessionTokens.Add(found);
+        return found;
+    }
+
+    /// <summary>The live (unexpired) captured token for a URL's origin, honoring the global
+    /// auto-token switch. Null when there is none.</summary>
+    public static SessionToken? TokenFor(AppState state, string url)
+    {
+        if (!state.AutoTokens || OriginOf(url) is not { } origin) return null;
+        var t = state.SessionTokens.FirstOrDefault(x => x.Origin == origin);
+        return t is { IsExpired: false } ? t : null;
+    }
+
+    /// <summary>The expired token for a URL's origin, if any — lets callers explain why no
+    /// auth went out.</summary>
+    public static SessionToken? ExpiredTokenFor(AppState state, string url) =>
+        OriginOf(url) is { } origin
+            ? state.SessionTokens.FirstOrDefault(t => t.Origin == origin && t.IsExpired)
+            : null;
+
+    /// <summary>Attach "Authorization: Bearer …" for the URL's origin when no explicit
+    /// Authorization header is present and a live token exists. Returns the token used
+    /// (null otherwise), surfacing an expired token for messaging.</summary>
+    public static SessionToken? AutoAttach(AppState state, string url,
+        List<KeyValuePair<string, string>> headers, out SessionToken? expired)
+    {
+        expired = null;
+        if (headers.Any(h => h.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))) return null;
+        if (TokenFor(state, url) is { } live)
+        {
+            headers.Add(new("Authorization", "Bearer " + live.Token));
+            return live;
+        }
+        if (state.AutoTokens) expired = ExpiredTokenFor(state, url);
+        return null;
+    }
 }

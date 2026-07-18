@@ -14,7 +14,7 @@ public sealed class RequestModel : INotifyPropertyChanged
     private string _path = "";
     private string? _body;
     private string _contentType = "application/json";
-    private string _authType = "None";
+    private string _authType = "Auto";
     private string? _authUser;
     private string? _authSecret;
     private string? _certThumbprint;
@@ -115,7 +115,7 @@ public sealed class RequestModel : INotifyPropertyChanged
         Path = e.Url;
         Body = e.Body ?? "";
         ContentType = e.ContentType;
-        AuthType = e.AuthType switch { "Bearer" => "Bearer", "Basic" => "Basic", _ => "None" };
+        AuthType = e.AuthType switch { "Bearer" => "Bearer", "Basic" => "Basic", "None" => "None", _ => "Auto" };
         AuthUser = e.AuthUser;
         AuthSecret = e.AuthSecret;
         CertThumbprint = e.CertThumbprint;
