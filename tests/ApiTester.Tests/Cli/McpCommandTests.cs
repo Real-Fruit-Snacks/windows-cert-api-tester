@@ -35,7 +35,8 @@ public class McpCommandTests
             await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
             var host = new Uri(upstream.BaseUrl).Host;   // 127.0.0.1
             var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
-                insecure: true, timeout: 30, includeLocalMachine: false, workspace: null, new CliServices());
+                insecure: true, timeout: 30, includeLocalMachine: false, workspace: null,
+                noAutoToken: false, new CliServices());
 
             var result = Tool(tools, "send_request").Handler(Args($"{{\"method\":\"GET\",\"url\":\"{upstream.BaseUrl}\"}}"));
             Assert.False(result.IsError);
@@ -49,7 +50,8 @@ public class McpCommandTests
     public void Send_request_refuses_a_host_off_the_allowlist_before_connecting()
     {
         var tools = McpCommand.BuildTools(null, new HostAllowlist(new[] { "internal.corp" }),
-            insecure: false, timeout: 5, includeLocalMachine: false, workspace: null, new CliServices());
+            insecure: false, timeout: 5, includeLocalMachine: false, workspace: null,
+            noAutoToken: false, new CliServices());
         var result = Tool(tools, "send_request").Handler(Args("{\"url\":\"https://evil.com/x\"}"));
         Assert.True(result.IsError);
         Assert.Contains("not allowed", result.Json);
@@ -67,7 +69,7 @@ public class McpCommandTests
                     HasClientAuthEku = true, Certificate = null! }
             }
         };
-        var tools = McpCommand.BuildTools(null, new HostAllowlist(Array.Empty<string>()), false, 5, false, null, services);
+        var tools = McpCommand.BuildTools(null, new HostAllowlist(Array.Empty<string>()), false, 5, false, null, false, services);
         var result = Tool(tools, "list_certificates").Handler(Args("{}"));
         Assert.False(result.IsError);
         Assert.Contains("CN=A", result.Json);
@@ -76,7 +78,7 @@ public class McpCommandTests
     [Fact]
     public void Self_test_passes()
     {
-        var tools = McpCommand.BuildTools(null, new HostAllowlist(Array.Empty<string>()), false, 5, false, null, new CliServices());
+        var tools = McpCommand.BuildTools(null, new HostAllowlist(Array.Empty<string>()), false, 5, false, null, false, new CliServices());
         var result = Tool(tools, "self_test").Handler(Args("{}"));
         Assert.False(result.IsError);
         using var doc = JsonDocument.Parse(result.Json);
@@ -101,12 +103,60 @@ public class McpCommandTests
             await using var upstream = await LoopbackMtlsServer.StartRedirectAsync(server, client.Thumbprint!, "https://evil.example/steal");
             var host = new Uri(upstream.BaseUrl).Host;   // 127.0.0.1 — only this host is allowed
             var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
-                insecure: true, timeout: 30, includeLocalMachine: false, workspace: null, new CliServices());
+                insecure: true, timeout: 30, includeLocalMachine: false, workspace: null,
+                noAutoToken: false, new CliServices());
 
             var result = Tool(tools, "send_request").Handler(Args($"{{\"url\":\"{upstream.BaseUrl}\"}}"));
             Assert.False(result.IsError);
             using var doc = JsonDocument.Parse(result.Json);
             Assert.Equal(302, doc.RootElement.GetProperty("status").GetInt32());   // returned, not followed
         }
+    }
+
+    [Fact]
+    public async Task Send_request_captures_then_reuses_a_session_token()
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("McpClient", ca, false, true);
+        await using var server = await LoopbackMtlsServer.StartAsync(
+            serverCert, clientCert.Thumbprint!, "{\"access_token\":\"mcp-tok\"}");
+
+        var services = new CliServices { IsGuiRunning = () => false };
+        var tools = McpCommand.BuildTools(clientCert, new HostAllowlist(new List<string>()),
+            insecure: true, timeout: 30, includeLocalMachine: false, workspace: null,
+            noAutoToken: false, services);
+        var send = tools.Single(t => t.Name == "send_request");
+
+        ToolResult Call(string json) =>
+            send.Handler(System.Text.Json.JsonDocument.Parse(json).RootElement);
+
+        var first = Call($"{{\"url\":\"{server.BaseUrl}\"}}");
+        Assert.Contains("captured bearer token", first.Json);
+
+        var second = Call($"{{\"url\":\"{server.BaseUrl}\"}}");
+        Assert.Contains("using captured token", second.Json);
+
+        // An explicit Authorization header wins over the session token.
+        var explicitAuth = Call($"{{\"url\":\"{server.BaseUrl}\",\"headers\":{{\"Authorization\":\"Bearer mine\"}}}}");
+        Assert.DoesNotContain("using captured token", explicitAuth.Json);
+    }
+
+    [Fact]
+    public async Task No_auto_token_disables_the_session_store()
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("McpClient", ca, false, true);
+        await using var server = await LoopbackMtlsServer.StartAsync(
+            serverCert, clientCert.Thumbprint!, "{\"access_token\":\"mcp-tok\"}");
+
+        var services = new CliServices { IsGuiRunning = () => false };
+        var tools = McpCommand.BuildTools(clientCert, new HostAllowlist(new List<string>()),
+            insecure: true, timeout: 30, includeLocalMachine: false, workspace: null,
+            noAutoToken: true, services);
+        var send = tools.Single(t => t.Name == "send_request");
+        var first = send.Handler(System.Text.Json.JsonDocument.Parse($"{{\"url\":\"{server.BaseUrl}\"}}").RootElement);
+        Assert.DoesNotContain("captured bearer token", first.Json);
     }
 }

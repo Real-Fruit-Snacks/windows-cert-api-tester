@@ -256,7 +256,7 @@ public static class SendCommand
         catch (Exception ex) { stderr.WriteLine($"warning: could not save captured values: {ex.Message}"); }
     }
 
-    internal static string BuildEnvelope(ApiResponse r, bool includeBody)
+    internal static string BuildEnvelope(ApiResponse r, bool includeBody, IReadOnlyList<string>? notes = null)
     {
         bool binary = false;
         string? text = null;
@@ -282,6 +282,7 @@ public static class SendCommand
             ["clientCertPresented"] = r.Connection?.ClientCertificateSent ?? false,
             ["error"] = r.Error is null ? null : new { kind = r.Error.Kind.ToString(), message = r.Error.Message }
         };
+        if (notes is { Count: > 0 }) obj["notes"] = notes;
         if (includeBody && r.Error is null)
         {
             if (binary) obj["bodyBase64"] = Convert.ToBase64String(r.Body);
