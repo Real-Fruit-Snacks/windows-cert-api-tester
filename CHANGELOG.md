@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.1] - 2026-07-18
+
+### Fixed
+- **Session capture — address scheme** — a URL typed into the capture browser without a scheme is no
+  longer forced to `https://`. Loopback/`localhost` hosts default to `http://`, so a local mock or dev
+  server is reachable; other hosts still default to `https://`.
+- **Session capture — visible errors** — a failed resource fetch in the capture browser now shows the
+  error in the panel instead of leaving a blank page, and the window only auto-navigates to a genuine
+  absolute URL.
+
+### Changed
+- **Mock route listing** — the in-app Help now lists the `/cookie-auth` route alongside the others
+  (the README, Pages site, and handbook were already updated).
+
 ## [1.47.0] - 2026-07-18
 
 ### Added

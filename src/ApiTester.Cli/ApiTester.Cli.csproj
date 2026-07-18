@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>certapi</AssemblyName>
     <RootNamespace>ApiTester.Cli</RootNamespace>
-    <Version>1.47.0</Version>
+    <Version>1.47.1</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
