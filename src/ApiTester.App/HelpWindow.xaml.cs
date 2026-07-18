@@ -250,7 +250,9 @@ public partial class HelpWindow : Window
           "lists each result. In suites, certapi run passes a request only when all its assertions pass — " +
           "a request with no assertions still passes on any 2xx, so tests are opt-in per request."),
         NoteBox("Run a suite headless with certapi run <collection>; failed assertions are printed on " +
-                "stderr and included in --json output, and the exit code is non-zero if any request fails."));
+                "stderr and included in --json output, and the exit code is non-zero if any request fails. " +
+                "Add --data <file.csv|.json> to repeat the request(s) once per row, each row's columns " +
+                "filling {{variables}} — table-testing an endpoint across many inputs."));
 
     private UIElement Environments() => Section("Environments & variables",
         P("Define values once and reuse them anywhere with {{name}} placeholders — ideal for switching between Dev, Staging, and Prod without editing every request."),

@@ -123,6 +123,39 @@ public class RunCommandTests
     }
 
     [Fact]
+    public async Task Data_driven_run_iterates_rows_and_injects_variables()
+    {
+        await using var l = await Loopback.StartAsync();
+        var state = new AppState();
+        var folder = new CollectionNode { Name = "suite", IsFolder = true };
+        var req = new RequestModel { Method = "GET", Path = l.Server.BaseUrl, IgnoreServerCert = true, CertThumbprint = l.Client.Thumbprint };
+        req.Headers.Add(new HeaderRow { Name = "X-Id", Value = "{{id}}" });   // resolved only when the dataset supplies id
+        folder.Children.Add(new CollectionNode { Name = "get", Request = req });
+        state.Collections.Add(folder);
+        var ws = Path.Combine(Path.GetTempPath(), $"certapi-dd-{Guid.NewGuid():N}.json");
+        state.SaveTo(ws);
+        var csv = Path.Combine(Path.GetTempPath(), $"certapi-dd-{Guid.NewGuid():N}.csv");
+        File.WriteAllText(csv, "id\n1\n2\n");
+        try
+        {
+            var svc = Services(l, false, ws);
+            var so = new StringWriter();
+            int code = CliApp.Run(new[] { "run", "--all", "--workspace", ws, "--no-record", "--strict-vars", "--data", csv },
+                so, new StringWriter(), services: svc);
+            Assert.Equal(0, code);
+            Assert.Contains("[row 1]", so.ToString());
+            Assert.Contains("[row 2]", so.ToString());
+            Assert.Contains("2 passed", so.ToString());
+
+            // Without the dataset, {{id}} is unresolved and --strict-vars fails the request.
+            int code2 = CliApp.Run(new[] { "run", "--all", "--workspace", ws, "--no-record", "--strict-vars" },
+                new StringWriter(), new StringWriter(), services: Services(l, false, ws));
+            Assert.Equal(1, code2);
+        }
+        finally { File.Delete(ws); File.Delete(csv); }
+    }
+
+    [Fact]
     public async Task Live_state_runs_record_results_unless_the_gui_is_open()
     {
         await using var l = await Loopback.StartAsync();

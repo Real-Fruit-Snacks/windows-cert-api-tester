@@ -21,6 +21,8 @@ public static class RunCommand
           --all                   Run every saved request in the workspace
           --workspace <file>      Load collections from a workspace file (default: live GUI state)
           --env <name>            Environment for {{variables}}; --var k=v overrides (repeatable)
+          --data <file>           Data-driven run: repeat the request(s) once per row of a CSV or
+                                  JSON file, the row's columns overriding {{variables}}
           --record / --no-record  Write known-good results back (default: on for live state,
                                   off for workspace files; skipped while the GUI is running)
           --strict-vars           Unresolved {{tokens}} fail the request
@@ -40,6 +42,9 @@ public static class RunCommand
 
           # A login-first suite: the login response's token carries through the suite
           certapi run "api/login then browse" --env Staging
+
+          # Data-driven: run one request once per row of users.csv (columns become {{variables}})
+          certapi run "api/Get user" --data .\users.csv
 
           # CI: machine-readable results, no writes at all, fail the job on any failure
           certapi run --all --workspace .\suite.json --no-record --no-auto-token --json
@@ -61,12 +66,30 @@ public static class RunCommand
         bool strictVars = args.Flag("--strict-vars");
         bool json = args.Flag("--json");
         bool noAutoToken = args.Flag("--no-auto-token");
+        string? dataFile = args.Value("--data");
         var positionals = args.Positionals();
         if (positionals.Count > 1 || (positionals.Count == 0 && !all)) throw new CliUsageException(Help);
 
         var state = CliWorkspace.Load(workspace, services.LiveStatePath);
         var targets = CliWorkspace.ResolveTargets(state, positionals.FirstOrDefault(), all);
-        var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
+
+        // Data-driven runs: one iteration per dataset row, its columns overriding the variables.
+        IReadOnlyList<IReadOnlyDictionary<string, string>?> rows;
+        if (dataFile is null) rows = new IReadOnlyDictionary<string, string>?[] { null };
+        else
+        {
+            try { rows = DataSet.Load(dataFile).Cast<IReadOnlyDictionary<string, string>?>().ToList(); }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
+            { throw new CliDataException($"Could not read data file '{dataFile}': {ex.Message}"); }
+            if (rows.Count == 0) throw new CliDataException($"The data file '{dataFile}' has no rows.");
+        }
+
+        Dictionary<string, string> BuildIterVars(IReadOnlyDictionary<string, string>? row)
+        {
+            var v = CliWorkspace.BuildVars(state, envName, varOverrides);
+            if (row is not null) foreach (var kv in row) v[kv.Key] = kv.Value;
+            return v;
+        }
 
         // If --env names an existing environment, make it the capture target so a token captured
         // by one request in this run is reusable by later requests via {{var}}.
@@ -85,30 +108,38 @@ public static class RunCommand
         bool tokensCaptured = false;
         var results = new List<(string Path, RequestModel Model, ApiResponse Response)>();
         var clock = Stopwatch.StartNew();
-        foreach (var (path, node) in targets)
+        int rowIndex = 0;
+        foreach (var row in rows)
         {
-            var (response, url) = Execute(path, node.Request!, state, noAutoToken, vars, strictVars, stderr, services);
-            results.Add((path, node.Request!, response));
-            if (!noAutoToken && response.Error is null &&
-                TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
+            rowIndex++;
+            var vars = BuildIterVars(row);
+            string label = dataFile is null ? "" : $"[row {rowIndex}] ";
+            foreach (var (path, node) in targets)
             {
-                stderr.WriteLine($"{path}: captured bearer token for {TokenService.HostOf(url)} ({captured.Source})");
-                tokensCaptured = true;
-            }
-            if (record) node.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
-            if (node.Request!.Assertions.Any(a => a.Enabled))
-                foreach (var ar in AssertionEvaluator.Evaluate(node.Request!.Assertions, response).Where(a => !a.Passed))
-                    stderr.WriteLine($"{path}: assertion failed — {ar.Description} (got {ar.Actual ?? "∅"})");
-            if (response.Error is null && node.Request!.Captures.Count > 0)
-            {
-                var outcome = CaptureApplier.Apply(state, node.Request!.Captures, response.Body, response.ContentType, response.Headers);
-                if (outcome.Count > 0)
+                string id = label + path;
+                var (response, url) = Execute(id, node.Request!, state, noAutoToken, vars, strictVars, stderr, services);
+                results.Add((id, node.Request!, response));
+                if (!noAutoToken && response.Error is null &&
+                    TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
                 {
-                    capturedAny = true;
-                    var okVars = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
-                    if (okVars.Count > 0) stderr.WriteLine($"{path}: captured " + string.Join(", ", okVars));
-                    foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"{path}: capture '{b.Variable}' failed: {b.Error}");
-                    vars = CliWorkspace.BuildVars(state, envName, varOverrides);
+                    stderr.WriteLine($"{id}: captured bearer token for {TokenService.HostOf(url)} ({captured.Source})");
+                    tokensCaptured = true;
+                }
+                if (record) node.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+                if (node.Request!.Assertions.Any(a => a.Enabled))
+                    foreach (var ar in AssertionEvaluator.Evaluate(node.Request!.Assertions, response).Where(a => !a.Passed))
+                        stderr.WriteLine($"{id}: assertion failed — {ar.Description} (got {ar.Actual ?? "∅"})");
+                if (response.Error is null && node.Request!.Captures.Count > 0)
+                {
+                    var outcome = CaptureApplier.Apply(state, node.Request!.Captures, response.Body, response.ContentType, response.Headers);
+                    if (outcome.Count > 0)
+                    {
+                        capturedAny = true;
+                        var okVars = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
+                        if (okVars.Count > 0) stderr.WriteLine($"{id}: captured " + string.Join(", ", okVars));
+                        foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"{id}: capture '{b.Variable}' failed: {b.Error}");
+                        vars = BuildIterVars(row);
+                    }
                 }
             }
         }

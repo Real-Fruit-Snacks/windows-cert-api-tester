@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-07-18
+
+### Added
+- **Data-driven runs** — `certapi run <path> --data <file.csv|.json>` repeats the request(s) once
+  per row of a dataset, each row's columns overriding `{{variables}}`. Results are labelled
+  `[row N]`; combine with assertions to table-test an endpoint across many inputs in one command.
+
 ## [1.33.0] - 2026-07-18
 
 ### Added
