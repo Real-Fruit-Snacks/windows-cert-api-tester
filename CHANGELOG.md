@@ -17,10 +17,6 @@ All notable changes to this project are documented here. The format follows
   first and then discover authenticated endpoints. A starter wordlist ships in
   `wordlists/common-api-endpoints.txt`.
 
-### Changed
-- Workspaces exported from the app are now stamped with the current schema version, so an
-  explicit “None (never send auth)” survives a round-trip through export and re-import.
-
 ## [1.26.0] - 2026-07-17
 
 ### Added
