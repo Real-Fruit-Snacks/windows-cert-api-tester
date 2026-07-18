@@ -172,4 +172,89 @@ public class AutoTokenCliTests
         }
         finally { if (File.Exists(state)) File.Delete(state); }
     }
+
+    [Fact]
+    public async Task Run_reuses_a_token_captured_earlier_in_the_suite()
+    {
+        var state = TempState();
+        try
+        {
+            using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+            using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+            using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
+            await using var server = await LoopbackMtlsServer.StartAsync(
+                serverCert, clientCert.Thumbprint!, "{\"access_token\":\"suite-tok\"}");
+
+            var ws = new AppState();
+            var folder = new CollectionNode { Name = "api", IsFolder = true };
+            folder.Children.Add(new CollectionNode
+            {
+                Name = "login", IsFolder = false,
+                Request = new RequestModel { Method = "GET", Path = server.BaseUrl, AuthType = "Auto", IgnoreServerCert = true, CertThumbprint = clientCert.Thumbprint }
+            });
+            folder.Children.Add(new CollectionNode
+            {
+                Name = "list", IsFolder = false,
+                Request = new RequestModel { Method = "GET", Path = server.BaseUrl, AuthType = "Auto", IgnoreServerCert = true, CertThumbprint = clientCert.Thumbprint }
+            });
+            ws.Collections.Add(folder);
+            ws.SaveTo(state);
+
+            var services = new CliServices
+            {
+                LiveStatePath = state,
+                IsGuiRunning = () => false,
+                FindCertificate = _ => clientCert
+            };
+            var so = new StringWriter();
+            var se = new StringWriter();
+            int code = CliApp.Run(new[] { "run", "api" }, so, se, new MemoryStream(), services);
+
+            Assert.Equal(0, code);
+            // LoopbackMtlsServer.BaseUrl is "https://127.0.0.1:<port>/" (not "localhost"), so that's
+            // the host TokenService.HostOf reports back in the note (see Task 4's note on this).
+            Assert.Contains("api/login: captured bearer token for 127.0.0.1", se.ToString());
+            Assert.Contains("api/list: using captured token for 127.0.0.1", se.ToString());
+            Assert.Single(AppState.LoadFrom(state).SessionTokens);   // persisted after the suite
+        }
+        finally { if (File.Exists(state)) File.Delete(state); }
+    }
+
+    [Fact]
+    public async Task Run_respects_no_auto_token_and_explicit_none()
+    {
+        var state = TempState();
+        try
+        {
+            using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+            using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+            using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
+            await using var server = await LoopbackMtlsServer.StartAsync(
+                serverCert, clientCert.Thumbprint!, "{\"access_token\":\"tok\"}");
+
+            var ws = new AppState();
+            ws.SessionTokens.Add(new SessionToken
+            {
+                Origin = TokenService.OriginOf(server.BaseUrl)!, Token = "tok", Source = "seed", CapturedUtc = DateTime.UtcNow
+            });
+            var folder = new CollectionNode { Name = "api", IsFolder = true };
+            folder.Children.Add(new CollectionNode
+            {
+                Name = "anon", IsFolder = false,
+                Request = new RequestModel { Method = "GET", Path = server.BaseUrl, AuthType = "None", IgnoreServerCert = true, CertThumbprint = clientCert.Thumbprint }
+            });
+            ws.Collections.Add(folder);
+            ws.SaveTo(state);
+
+            var services = new CliServices { LiveStatePath = state, IsGuiRunning = () => false, FindCertificate = _ => clientCert };
+            var se = new StringWriter();
+            CliApp.Run(new[] { "run", "api" }, new StringWriter(), se, new MemoryStream(), services);
+            Assert.DoesNotContain("using captured token", se.ToString());   // explicit None never sends
+
+            var se2 = new StringWriter();
+            CliApp.Run(new[] { "run", "api", "--no-auto-token" }, new StringWriter(), se2, new MemoryStream(), services);
+            Assert.DoesNotContain("using captured token", se2.ToString());
+        }
+        finally { if (File.Exists(state)) File.Delete(state); }
+    }
 }

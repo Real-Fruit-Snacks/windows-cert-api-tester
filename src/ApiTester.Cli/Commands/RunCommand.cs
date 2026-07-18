@@ -37,6 +37,7 @@ public static class RunCommand
         bool noRecord = args.Flag("--no-record");
         bool strictVars = args.Flag("--strict-vars");
         bool json = args.Flag("--json");
+        bool noAutoToken = args.Flag("--no-auto-token");
         var positionals = args.Positionals();
         if (positionals.Count > 1 || (positionals.Count == 0 && !all)) throw new CliUsageException(Help);
 
@@ -58,12 +59,19 @@ public static class RunCommand
         }
 
         bool capturedAny = false;
+        bool tokensCaptured = false;
         var results = new List<(string Path, RequestModel Model, ApiResponse Response)>();
         var clock = Stopwatch.StartNew();
         foreach (var (path, node) in targets)
         {
-            var response = Execute(node.Request!, vars, strictVars, stderr, services);
+            var (response, url) = Execute(path, node.Request!, state, noAutoToken, vars, strictVars, stderr, services);
             results.Add((path, node.Request!, response));
+            if (!noAutoToken && response.Error is null &&
+                TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
+            {
+                stderr.WriteLine($"{path}: captured bearer token for {TokenService.HostOf(url)} ({captured.Source})");
+                tokensCaptured = true;
+            }
             if (record) node.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
             if (response.Error is null && node.Request!.Captures.Count > 0)
             {
@@ -81,12 +89,12 @@ public static class RunCommand
         clock.Stop();
 
         bool guiBlocksLiveWrite = workspace is null && services.IsGuiRunning();
-        if ((record || capturedAny) && !guiBlocksLiveWrite)
+        if ((record || capturedAny || tokensCaptured) && !guiBlocksLiveWrite)
         {
             try { state.SaveTo(workspace ?? services.LiveStatePath); }
             catch (Exception ex) { stderr.WriteLine($"warning: could not save results: {ex.Message}"); }
         }
-        else if (capturedAny && guiBlocksLiveWrite)
+        else if ((capturedAny || tokensCaptured) && guiBlocksLiveWrite)
         {
             stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
         }
@@ -128,8 +136,9 @@ public static class RunCommand
         return failed == 0 ? ExitCodes.Ok : ExitCodes.Failure;
     }
 
-    private static ApiResponse Execute(
-        RequestModel m, Dictionary<string, string> vars, bool strictVars, TextWriter stderr, CliServices services)
+    private static (ApiResponse Response, string Url) Execute(
+        string path, RequestModel m, AppState state, bool noAutoToken,
+        Dictionary<string, string> vars, bool strictVars, TextWriter stderr, CliServices services)
     {
         var unresolved = new List<string>();
         string R(string s)
@@ -156,11 +165,18 @@ public static class RunCommand
         string url = R(m.EffectiveUrl());
         string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
 
+        if (!noAutoToken && m.AuthType == "Auto" &&
+            TokenService.AutoAttach(state, url, headers, out _) is { } used)
+        {
+            stderr.WriteLine($"{path}: using captured token for {TokenService.HostOf(url)}");
+            services.Log.Debug($"{path}: auto token attached for {used.Origin} ({used.Source})");
+        }
+
         if (unresolved.Count > 0)
         {
             var tokens = string.Join(", ", unresolved.Select(u => "{{" + u + "}}"));
             if (strictVars)
-                return new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"unresolved variables: {tokens}") };
+                return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"unresolved variables: {tokens}") }, url);
             stderr.WriteLine($"warning: unresolved variables: {tokens}");
         }
 
@@ -169,7 +185,7 @@ public static class RunCommand
         {
             cert = services.FindCertificate(m.CertThumbprint!);
             if (cert is null)
-                return new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"certificate {m.CertThumbprint} not found in the store") };
+                return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"certificate {m.CertThumbprint} not found in the store") }, url);
         }
 
         var request = new ApiRequest
@@ -181,7 +197,11 @@ public static class RunCommand
             ContentType = body is not null && m.ContentType != "(none)" ? m.ContentType : null,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
-        return services.Client.SendAsync(request, cert, m.IgnoreServerCert,
+        var response = services.Client.SendAsync(request, cert, m.IgnoreServerCert,
             cancellationToken: services.Cancel).GetAwaiter().GetResult();
+        services.Log.Debug($"{path}: " + (response.Error is null
+            ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
+            : $"[{response.Error.Kind}] {response.Error.Message}"));
+        return (response, url);
     }
 }
