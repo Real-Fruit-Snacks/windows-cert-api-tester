@@ -63,4 +63,7 @@ Separately from tokens, the app keeps a **cookie jar** like a browser: a `Set-Co
 is stored and sent back on later requests to that host, so cookie-based logins work across a session.
 On the CLI (command-line interface), `certapi run --cookies` keeps a jar for the run.
 
+To capture a cookie session from a **browser login** (and persist it across restarts and to the CLI),
+see [Session Capture](26-Session-Capture.md).
+
 Next: [Data-Driven Runs](13-Data-Driven-Runs.md).

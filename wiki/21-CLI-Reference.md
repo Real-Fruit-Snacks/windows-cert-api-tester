@@ -71,7 +71,8 @@ body cleanly.
 - `--windows-auth` — Windows Integrated Auth with your signed-in account (aliases `--ntlm`,
   `--negotiate`)
 - `--windows-user <DOMAIN\user>` / `--windows-password <p>` — explicit Windows credentials
-- `--no-auto-token` — disable automatic bearer-token capture/reuse
+- `--no-auto-token` — disable automatic attach/reuse of the captured bearer token **and** the
+  captured session cookies (see [Session Capture](26-Session-Capture.md)) for this request
 
 **TLS / certificates**
 
@@ -130,8 +131,10 @@ The interactive **authorization-code** grant is app-only (see [Authentication](0
 - `--record` / `--no-record` — write known-good results back (default: on for live state, off for
   workspace files; skipped while the GUI is running)
 - `--strict-vars` — unresolved `{{tokens}}` fail the request
-- `--no-auto-token` — don't capture/attach session tokens
-- `--cookies` — keep a cookie jar for the run
+- `--no-auto-token` — don't attach captured session tokens **or** captured session cookies
+- `--cookies` — keep a per-run cookie jar so a login's `Set-Cookie` carries across the run (this is
+  separate from captured cookies from [Session Capture](26-Session-Capture.md), which attach
+  automatically)
 - `--json` — JSON results instead of the table
 
 A request passes when its assertions pass, or on any 2xx if it has none. Exit 1 if any request fails.
