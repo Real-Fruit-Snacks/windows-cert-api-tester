@@ -337,18 +337,66 @@
                 <TabItem Header="Body">
                     <DockPanel Margin="10">
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="CONTENT-TYPE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
-                            <ComboBox x:Name="ContentTypeCombo" Width="260" Margin="8,0,0,0" SelectedIndex="0">
-                                <ComboBoxItem>application/json</ComboBoxItem>
-                                <ComboBoxItem>application/xml</ComboBoxItem>
-                                <ComboBoxItem>text/plain</ComboBoxItem>
-                                <ComboBoxItem>application/x-www-form-urlencoded</ComboBoxItem>
-                                <ComboBoxItem>(none)</ComboBoxItem>
-                            </ComboBox>
+                            <RadioButton x:Name="BodyModeText" Content="Text" GroupName="BodyMode" IsChecked="True"
+                                         VerticalAlignment="Center" Margin="0,0,14,0" Checked="BodyMode_Changed"/>
+                            <RadioButton x:Name="BodyModeForm" Content="Form data (multipart)" GroupName="BodyMode"
+                                         VerticalAlignment="Center" Checked="BodyMode_Changed"/>
                         </StackPanel>
-                        <TextBox x:Name="BodyBox" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
-                                 Tag="{}{ &quot;example&quot;: &quot;request body&quot; }"
-                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+                        <Grid>
+                            <!-- text body -->
+                            <DockPanel x:Name="TextBodyPanel">
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="CONTENT-TYPE" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="ContentTypeCombo" Width="260" Margin="8,0,0,0" SelectedIndex="0">
+                                        <ComboBoxItem>application/json</ComboBoxItem>
+                                        <ComboBoxItem>application/xml</ComboBoxItem>
+                                        <ComboBoxItem>text/plain</ComboBoxItem>
+                                        <ComboBoxItem>application/x-www-form-urlencoded</ComboBoxItem>
+                                        <ComboBoxItem>(none)</ComboBoxItem>
+                                    </ComboBox>
+                                </StackPanel>
+                                <TextBox x:Name="BodyBox" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                                         Tag="{}{ &quot;example&quot;: &quot;request body&quot; }"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+                            </DockPanel>
+                            <!-- multipart form body -->
+                            <DockPanel x:Name="FormBodyPanel" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" Foreground="{StaticResource Text.Faint}"
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Text="multipart/form-data — tick “File” and use “…” to upload a file; leave it unticked for a text field. The Content-Type and boundary are set for you."/>
+                                <Button DockPanel.Dock="Bottom" x:Name="AddFormPartButton" Content="+ Add field" Width="120"
+                                        HorizontalAlignment="Left" Margin="0,8,0,0" Click="AddFormPart_Click"/>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="FormItems">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="1.4*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                             Tag="field name" VerticalContentAlignment="Center"/>
+                                                    <CheckBox Grid.Column="2" Content="File" IsChecked="{Binding IsFile}" Margin="8,0,0,0"
+                                                              VerticalAlignment="Center" ToolTip="Upload the value as a file"/>
+                                                    <TextBox Grid.Column="3" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                             Tag="value or file path" Margin="6,0,0,0" VerticalContentAlignment="Center"/>
+                                                    <Button Grid.Column="4" Style="{StaticResource MiniButton}" Margin="6,0,0,0" Content="…"
+                                                            Tag="{Binding}" Click="BrowseFormFile_Click" ToolTip="Choose a file to upload"/>
+                                                    <Button Grid.Column="5" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
+                                                            Content="&#x2715;" Tag="{Binding}" Click="RemoveFormPart_Click" ToolTip="Remove"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Grid>
                     </DockPanel>
                 </TabItem>
                 <TabItem Header="Auth">

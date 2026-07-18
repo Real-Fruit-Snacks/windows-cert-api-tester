@@ -47,6 +47,18 @@ public sealed class RequestModel : INotifyPropertyChanged
     public ObservableCollection<CaptureRule> Captures { get; set; } = new();
     public ObservableCollection<AssertionRule> Assertions { get; set; } = new();
 
+    private bool _isMultipart;
+    /// <summary>When true, the body is sent as multipart/form-data built from <see cref="FormParts"/>.</summary>
+    public bool IsMultipart { get => _isMultipart; set { _isMultipart = value; Raise(nameof(IsMultipart)); } }
+    public ObservableCollection<FormPart> FormParts { get; set; } = new();
+
+    /// <summary>The enabled, named multipart parts as core parts (files by path, else text values).</summary>
+    public IEnumerable<MultipartPart> EnabledParts() =>
+        FormParts.Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.Name))
+                 .Select(p => p.IsFile
+                     ? new MultipartPart(p.Name.Trim(), null, p.Value)
+                     : new MultipartPart(p.Name.Trim(), p.Value ?? "", null));
+
     /// <summary>The enabled, non-empty query parameters as key/value pairs.</summary>
     public IEnumerable<KeyValuePair<string, string>> EnabledParams() =>
         QueryParams.Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.Key))
@@ -67,6 +79,8 @@ public sealed class RequestModel : INotifyPropertyChanged
             Headers = Headers.Select(h => new HeaderRow { Enabled = h.Enabled, Name = h.Name, Value = h.Value }).ToList(),
             Captures = Captures.Select(c => new CaptureRule { Enabled = c.Enabled, Variable = c.Variable, Source = c.Source, Path = c.Path }).ToList(),
             Assertions = Assertions.Select(a => new AssertionRule { Enabled = a.Enabled, Target = a.Target, Op = a.Op, Path = a.Path, Value = a.Value }).ToList(),
+            IsMultipart = IsMultipart,
+            FormParts = FormParts.Select(p => new FormPart { Enabled = p.Enabled, Name = p.Name, IsFile = p.IsFile, Value = p.Value }).ToList(),
             Body = string.IsNullOrEmpty(Body) ? null : Body,
             ContentType = ContentType,
             AuthType = AuthType,
@@ -135,6 +149,10 @@ public sealed class RequestModel : INotifyPropertyChanged
         Assertions.Clear();
         foreach (var a in e.Assertions)
             Assertions.Add(new AssertionRule { Enabled = a.Enabled, Target = a.Target, Op = a.Op, Path = a.Path, Value = a.Value });
+        IsMultipart = e.IsMultipart;
+        FormParts.Clear();
+        foreach (var p in e.FormParts)
+            FormParts.Add(new FormPart { Enabled = p.Enabled, Name = p.Name, IsFile = p.IsFile, Value = p.Value });
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

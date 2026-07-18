@@ -230,8 +230,11 @@ public static class RunCommand
             Method = new HttpMethod(m.Method),
             Url = url,
             Headers = headers,
-            Body = body,
-            ContentType = body is not null && m.ContentType != "(none)" ? m.ContentType : null,
+            Body = m.IsMultipart ? null : body,
+            Parts = m.IsMultipart
+                ? m.EnabledParts().Select(p => p with { Name = R(p.Name), Value = p.Value is null ? null : R(p.Value) }).ToList()
+                : null,
+            ContentType = !m.IsMultipart && body is not null && m.ContentType != "(none)" ? m.ContentType : null,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };
         var response = services.Client.SendAsync(request, cert, m.IgnoreServerCert,

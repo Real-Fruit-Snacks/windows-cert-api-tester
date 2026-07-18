@@ -134,6 +134,8 @@ public sealed class HistoryEntry
     public ResponseSnapshot? Response { get; set; }
     public List<CaptureRule> Captures { get; set; } = new();
     public List<AssertionRule> Assertions { get; set; } = new();
+    public bool IsMultipart { get; set; }
+    public List<FormPart> FormParts { get; set; } = new();
 
     [JsonIgnore] public string EffectiveUrl => UrlHelper.Combine(BaseUrl, Url);
 
@@ -354,6 +356,25 @@ public sealed class ParamRow : System.ComponentModel.INotifyPropertyChanged
 
     public bool Enabled { get => _enabled; set { _enabled = value; Raise(nameof(Enabled)); } }
     public string Key { get => _key; set { _key = value; Raise(nameof(Key)); } }
+    public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
+}
+
+/// <summary>One row in the multipart/form-data body editor: a text field or a file upload.</summary>
+public sealed class FormPart : System.ComponentModel.INotifyPropertyChanged
+{
+    private bool _enabled = true;
+    private string _name = "";
+    private bool _isFile;
+    private string _value = "";
+
+    public bool Enabled { get => _enabled; set { _enabled = value; Raise(nameof(Enabled)); } }
+    public string Name { get => _name; set { _name = value; Raise(nameof(Name)); } }
+
+    /// <summary>False: <see cref="Value"/> is a text field value. True: <see cref="Value"/> is a file path to upload.</summary>
+    public bool IsFile { get => _isFile; set { _isFile = value; Raise(nameof(IsFile)); } }
     public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;

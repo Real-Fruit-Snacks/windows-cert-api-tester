@@ -249,6 +249,10 @@ public partial class MainWindow : Window
             ParamsItems.ItemsSource = m.QueryParams;
             BodyBox.Text = m.Body ?? "";
             SelectContentType(m.ContentType);
+            FormItems.ItemsSource = m.FormParts;
+            BodyModeForm.IsChecked = m.IsMultipart;
+            BodyModeText.IsChecked = !m.IsMultipart;
+            UpdateBodyPanels();
             AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 2, "Basic" => 3, "None" => 1, _ => 0 };
             BearerTokenBox.Text = m.AuthType == "Bearer" ? m.AuthSecret ?? "" : "";
             BasicUserBox.Text = m.AuthUser ?? "";
@@ -277,6 +281,7 @@ public partial class MainWindow : Window
 
         m.Body = BodyBox.Text;
         m.ContentType = SelectedContentType();
+        m.IsMultipart = BodyModeForm.IsChecked == true;
         m.AuthType = AuthTypeCombo.SelectedIndex switch { 2 => "Bearer", 3 => "Basic", 1 => "None", _ => "Auto" };
         m.AuthUser = BasicUserBox.Text;
         m.AuthSecret = AuthTypeCombo.SelectedIndex == 2 ? BearerTokenBox.Text : BasicPassBox.Text;
@@ -1499,6 +1504,32 @@ public partial class MainWindow : Window
             (string.IsNullOrEmpty(DiagnosticsBox.Text) ? "" : "\n\n" + DiagnosticsBox.Text);
     }
 
+    // ---------- multipart form body ----------
+
+    private void BodyMode_Changed(object sender, RoutedEventArgs e) => UpdateBodyPanels();
+
+    private void UpdateBodyPanels()
+    {
+        if (TextBodyPanel is null || FormBodyPanel is null) return;   // during initial load
+        bool form = BodyModeForm.IsChecked == true;
+        TextBodyPanel.Visibility = form ? Visibility.Collapsed : Visibility.Visible;
+        FormBodyPanel.Visibility = form ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void AddFormPart_Click(object sender, RoutedEventArgs e) => ActiveRequest?.FormParts.Add(new FormPart());
+
+    private void RemoveFormPart_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: FormPart row }) ActiveRequest?.FormParts.Remove(row);
+    }
+
+    private void BrowseFormFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: FormPart row }) return;
+        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Choose a file to upload" };
+        if (dlg.ShowDialog(this) == true) { row.Value = dlg.FileName; row.IsFile = true; }
+    }
+
     private void AddAssertionButton_Click(object sender, RoutedEventArgs e) => ActiveRequest?.Assertions.Add(new AssertionRule());
 
     private void RemoveAssertionButton_Click(object sender, RoutedEventArgs e)
@@ -1557,14 +1588,21 @@ public partial class MainWindow : Window
         if (m.AuthType == "Auto")
             TokenService.AutoAttach(_state, url, headers, out _);
         _unresolvedVars = unresolved;
-        string? contentType = body is not null && m.ContentType != "(none)" ? m.ContentType : null;
+        string? contentType = !m.IsMultipart && body is not null && m.ContentType != "(none)" ? m.ContentType : null;
+
+        var vars = CurrentVars();
+        string R(string s) => VariableResolver.Resolve(s ?? "", vars).Result;
+        var parts = m.IsMultipart
+            ? m.EnabledParts().Select(p => p with { Name = R(p.Name), Value = p.Value is null ? null : R(p.Value) }).ToList()
+            : null;
 
         return new ApiRequest
         {
             Method = new HttpMethod(m.Method),
             Url = url,
             Headers = headers,
-            Body = body,
+            Body = m.IsMultipart ? null : body,
+            Parts = parts,
             ContentType = contentType,
             Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
         };

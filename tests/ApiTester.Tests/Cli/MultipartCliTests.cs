@@ -59,6 +59,46 @@ public class MultipartCliTests
     }
 
     [Fact]
+    public async Task Run_uploads_a_saved_multipart_request()
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("RunClient", ca, false, true);
+        await using var server = await LoopbackMtlsServer.StartEchoAsync(serverCert, clientCert.Thumbprint!);
+
+        var file = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".txt");
+        File.WriteAllText(file, "SAVED-FILE-XYZ");
+
+        // A saved multipart request. Assertions on the echoed request body prove the parts really went.
+        var state = new AppState();
+        var folder = new CollectionNode { Name = "suite", IsFolder = true };
+        var req = new RequestModel
+        {
+            Method = "POST", Path = server.BaseUrl, IgnoreServerCert = true,
+            CertThumbprint = clientCert.Thumbprint, IsMultipart = true
+        };
+        req.FormParts.Add(new FormPart { Name = "note", Value = "hi", IsFile = false });
+        req.FormParts.Add(new FormPart { Name = "doc", Value = file, IsFile = true });
+        req.Assertions.Add(new AssertionRule { Target = AssertTarget.BodyText, Op = AssertOp.Contains, Value = "name=note" });
+        req.Assertions.Add(new AssertionRule { Target = AssertTarget.BodyText, Op = AssertOp.Contains, Value = "SAVED-FILE-XYZ" });
+        folder.Children.Add(new CollectionNode { Name = "upload", Request = req });
+        state.Collections.Add(folder);
+        var ws = Path.Combine(Path.GetTempPath(), $"certapi-mp-{Guid.NewGuid():N}.json");
+        state.SaveTo(ws);   // round-trips IsMultipart + FormParts through serialization
+
+        try
+        {
+            var services = new CliServices { LiveStatePath = ws, IsGuiRunning = () => false, FindCertificate = _ => clientCert };
+            var so = new StringWriter();
+            var se = new StringWriter();
+            int code = CliApp.Run(new[] { "run", "--all", "--workspace", ws, "--no-record" }, so, se, services: services);
+            Assert.Equal(0, code);            // assertions passed → the multipart body was sent and echoed
+            Assert.Contains("PASS", so.ToString());
+        }
+        finally { File.Delete(file); File.Delete(ws); }
+    }
+
+    [Fact]
     public void Form_and_data_together_is_a_usage_error()
     {
         var so = new StringWriter();

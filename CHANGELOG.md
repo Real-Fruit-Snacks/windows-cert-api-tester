@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-07-18
+
+### Added
+- **Multipart body editor in the app** — the **Body** tab now has a **Form data (multipart)** mode:
+  add fields, tick **File** to upload a file (with a file picker), and send. Multipart requests save
+  into collections and run in suites like any other, so `certapi run` can exercise upload endpoints
+  too. (The `certapi send -F` command line shipped in 1.31.0.)
+
 ## [1.32.0] - 2026-07-18
 
 ### Added

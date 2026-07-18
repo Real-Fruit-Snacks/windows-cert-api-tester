@@ -181,7 +181,7 @@ public partial class HelpWindow : Window
         Bullets(
             "Params — a key/value grid for the query string. Type a ?query in the URL and it splits into the grid; the grid is recombined onto the URL, correctly encoded, when you send.",
             "Headers — a key/value grid; tick a row to include it.",
-            "Body — a request body with a content-type selector.",
+            "Body — a request body with a content-type selector, or switch it to Form data (multipart) to add fields and upload files (tick File).",
             "Auth — Auto (use a captured token, the default), None, Bearer token, or Basic (username / password). The helper builds the Authorization header for you.",
             "Capture — save a value from the response into a {{variable}} for later requests (see Automatic tokens).",
             "Tests — assert on the response so a suite can pass/fail (see Testing responses)."),
