@@ -1544,8 +1544,11 @@ public partial class MainWindow : Window
         var request = BuildRequest();
         _cts = new CancellationTokenSource();
         SendButton.IsEnabled = false;
+        SendButton.Content = "Sending…";
         CancelButton.IsEnabled = true;
         StatusText.Text = "Sending…";
+        SendProgress.Visibility = Visibility.Visible;
+        ShowWaitingHint();
         try
         {
             var response = await _apiClient.SendAsync(
@@ -1609,7 +1612,9 @@ public partial class MainWindow : Window
         finally
         {
             SendButton.IsEnabled = true;
+            SendButton.Content = "Send";
             CancelButton.IsEnabled = false;
+            SendProgress.Visibility = Visibility.Collapsed;
             _cts?.Dispose();
             _cts = null;
         }
@@ -1916,6 +1921,24 @@ public partial class MainWindow : Window
             FontFamily = new System.Windows.Media.FontFamily("Consolas"),
             FontSize = 12.5
         };
+    }
+
+    /// <summary>Clear the response views to a "waiting…" state while a request is in flight, so a
+    /// previous response can't be mistaken for the new one whichever tab is showing.</summary>
+    private void ShowWaitingHint()
+    {
+        var run = new System.Windows.Documents.Run("Waiting for response…")
+        {
+            Foreground = (System.Windows.Media.Brush)FindResource("Accent")
+        };
+        PrettyRich.Document = new System.Windows.Documents.FlowDocument(new System.Windows.Documents.Paragraph(run))
+        {
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            FontSize = 12.5
+        };
+        RawBox.Text = "Waiting for response…";
+        ResponseHeadersBox.Text = "";
+        DiagnosticsBox.Text = "";
     }
 
     private string SelectedMethod() => ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!;

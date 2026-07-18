@@ -425,6 +425,12 @@
             <GridSplitter x:Name="ResponseSplitter" Grid.Row="5" Height="6" HorizontalAlignment="Stretch" Background="Transparent"
                           VerticalAlignment="Center"/>
 
+            <!-- indeterminate "sending…" bar, overlaid on the top edge of the response area -->
+            <ProgressBar x:Name="SendProgress" Grid.Row="6" Panel.ZIndex="5" Height="3"
+                         VerticalAlignment="Top" HorizontalAlignment="Stretch" IsIndeterminate="True"
+                         Visibility="Collapsed" Background="Transparent" BorderThickness="0"
+                         Foreground="{StaticResource Accent}"/>
+
             <!-- response -->
             <ContentControl x:Name="ResponseHost" Grid.Row="6" Focusable="False">
             <DockPanel>

@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.1] - 2026-07-18
+
+### Changed
+- Clearer feedback while a request is in flight: the **Send** button now reads "Sending…", a slim
+  indeterminate progress bar appears across the top of the response area, and the response views
+  show "Waiting for response…" — so a previous response can't be mistaken for the new one.
+
 ## [1.28.0] - 2026-07-18
 
 ### Added
