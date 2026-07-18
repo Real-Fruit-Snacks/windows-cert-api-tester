@@ -257,4 +257,44 @@ public class AutoTokenCliTests
         }
         finally { if (File.Exists(state)) File.Delete(state); }
     }
+
+    [Fact]
+    public async Task A_corrupt_live_state_does_not_block_a_plain_send()
+    {
+        var state = TempState();
+        try
+        {
+            File.WriteAllText(state, "not json{{");
+
+            using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+            using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
+            using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("CliClient", ca, false, true);
+            await using var server = await LoopbackMtlsServer.StartAsync(serverCert, clientCert.Thumbprint!, "{\"ok\":true}");
+
+            var services = new CliServices
+            {
+                LiveStatePath = state,
+                IsGuiRunning = () => false,
+                ListCertificates = _ => new[]
+                {
+                    new CertificateInfo
+                    {
+                        Subject = "CN=CliClient", Issuer = "CN=CA", Thumbprint = clientCert.Thumbprint!,
+                        NotBefore = DateTime.Now.AddDays(-1), NotAfter = DateTime.Now.AddDays(30),
+                        HasClientAuthEku = true, Certificate = clientCert
+                    }
+                }
+            };
+
+            var so = new StringWriter();
+            var se = new StringWriter();
+            var body = new MemoryStream();
+            int code = CliApp.Run(new[] { "send", server.BaseUrl, "--cert", "CliClient", "--insecure" }, so, se, body, services);
+
+            Assert.Equal(0, code);
+            Assert.Equal("{\"ok\":true}", Encoding.UTF8.GetString(body.ToArray()));
+            Assert.Contains("warning: could not read the live state", se.ToString());
+        }
+        finally { if (File.Exists(state)) File.Delete(state); }
+    }
 }

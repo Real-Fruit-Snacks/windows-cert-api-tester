@@ -148,7 +148,7 @@ public static class SendCommand
         // The state is always loaded now: even without --env, the live state may hold a
         // captured session token for this URL's origin. A --workspace that doesn't exist yet
         // is fine when --capture is present — it is created fresh on save.
-        var state = LoadWorkspaceOrEmpty(workspace, services);
+        var state = LoadWorkspaceOrEmpty(workspace, services, stderr);
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
         var unresolved = new List<string>();
         string R(string s)
@@ -275,11 +275,24 @@ public static class SendCommand
     }
 
     /// <summary>Like <see cref="CliWorkspace.Load"/>, but a missing explicit workspace file yields an
-    /// empty workspace instead of an error — --capture is allowed to create the file on save.</summary>
-    private static AppState LoadWorkspaceOrEmpty(string? workspace, CliServices services) =>
-        workspace is not null && !File.Exists(workspace)
-            ? new AppState()
-            : CliWorkspace.Load(workspace, services.LiveStatePath);
+    /// empty workspace instead of an error — --capture is allowed to create the file on save. A
+    /// corrupt *live* state (no --workspace given) is tolerated the same way the GUI tolerates it:
+    /// warn on stderr and start fresh, rather than failing every plain send. An explicit --workspace
+    /// keeps its current behavior — a corrupt file the caller named is a data error.</summary>
+    private static AppState LoadWorkspaceOrEmpty(string? workspace, CliServices services, TextWriter stderr)
+    {
+        if (workspace is not null && !File.Exists(workspace)) return new AppState();
+        if (workspace is null)
+        {
+            try { return CliWorkspace.Load(null, services.LiveStatePath); }
+            catch (CliDataException ex)
+            {
+                stderr.WriteLine($"warning: could not read the live state ({ex.Message}) — continuing without saved tokens/environments");
+                return new AppState();
+            }
+        }
+        return CliWorkspace.Load(workspace, services.LiveStatePath);
+    }
 
     private static void SaveState(AppState state, string? workspace, CliServices services, TextWriter stderr)
     {
