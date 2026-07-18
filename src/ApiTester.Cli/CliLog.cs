@@ -66,7 +66,11 @@ public sealed class CliLog : IDisposable
         }
     }
 
-    public void Dispose() => _file?.Dispose();
+    public void Dispose()
+    {
+        try { _file?.Dispose(); }
+        catch { /* never break the command over logging */ }
+    }
 
     private sealed class TeeWriter : TextWriter
     {
