@@ -61,6 +61,7 @@ public sealed record MockRequestLog(string Method, string Path, int Status, stri
 ///   <item><c>/sse</c> — a short <c>text/event-stream</c>.</item>
 ///   <item><c>/token</c> — an OAuth 2.0 token response.</item>
 ///   <item><c>/windows-auth</c> — a 401 NTLM challenge, then an authenticated response.</item>
+///   <item><c>/cookie-auth</c> — sets a session cookie, then reports authenticated once it returns.</item>
 ///   <item><c>Upgrade: websocket</c> (any path) — a WebSocket echo.</item>
 ///   <item>anything else — the JSON echo.</item>
 /// </list>
@@ -197,6 +198,22 @@ public sealed class MockServer : IAsyncDisposable
                     "{\"access_token\":\"mock-access-token\",\"token_type\":\"Bearer\"," +
                     "\"expires_in\":3600,\"refresh_token\":\"mock-refresh-token\",\"scope\":\"mock\"}", ct);
             }
+            else if (path.Equals("/cookie-auth", StringComparison.Ordinal))
+            {
+                // Emulates a cookie-session-protected endpoint: hands out a cookie until the client
+                // presents it, then reports the request as authenticated. Lets session capture be
+                // exercised end to end.
+                status = 200;
+                bool hasCookie = headers.TryGetValue("Cookie", out var cookie) &&
+                                 cookie.Contains("MOCKSID=ok", StringComparison.Ordinal);
+                if (hasCookie)
+                    await WriteResponseAsync(stream, 200, "application/json",
+                        "{\"server\":\"certapi mock\",\"authenticated\":\"cookie\"}", ct);
+                else
+                    await WriteResponseAsync(stream, 200, "application/json",
+                        "{\"server\":\"certapi mock\",\"authenticated\":false}", ct,
+                        setCookie: "MOCKSID=ok; Path=/");
+            }
             else
             {
                 status = 200;
@@ -229,13 +246,15 @@ public sealed class MockServer : IAsyncDisposable
         });
     }
 
-    private static async Task WriteResponseAsync(Stream stream, int status, string contentType, string body, CancellationToken ct)
+    private static async Task WriteResponseAsync(Stream stream, int status, string contentType, string body,
+        CancellationToken ct, string? setCookie = null)
     {
         var bytes = Encoding.UTF8.GetBytes(body);
         var head =
             $"HTTP/1.1 {status} {ReasonPhrase(status)}\r\n" +
             $"Content-Type: {contentType}; charset=utf-8\r\n" +
             $"Content-Length: {bytes.Length}\r\n" +
+            (setCookie is null ? "" : $"Set-Cookie: {setCookie}\r\n") +
             "Access-Control-Allow-Origin: *\r\n" +
             "Connection: close\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);

@@ -7,6 +7,28 @@ namespace ApiTester.Tests;
 public class MockServerTests
 {
     [Fact]
+    public async Task Captured_cookie_is_attached_on_the_next_request()
+    {
+        await using var srv = MockServer.Start(0, MockTlsMode.Http);
+        var target = srv.BaseUrl + "cookie-auth";
+
+        // Simulate a capture: store the cookie the login handed out.
+        var state = new AppState();
+        CookieService.Capture(state, TokenService.OriginOf(target)!,
+            new[] { new SessionCookie { Name = "MOCKSID", Value = "ok", Path = "/", Domain = new Uri(target).Host } });
+
+        // A fresh request whose jar is seeded from the store should be recognized as authenticated.
+        var jar = new System.Net.CookieContainer();
+        CookieService.SeedContainer(state, target, jar);
+
+        var resp = await new ApiClient().SendAsync(
+            new ApiRequest { Method = HttpMethod.Get, Url = target }, null, cookies: jar);
+
+        Assert.Equal(200, resp.StatusCode);
+        Assert.Contains("\"authenticated\":\"cookie\"", Encoding.UTF8.GetString(resp.Body));
+    }
+
+    [Fact]
     public async Task Http_echo_reflects_the_request()
     {
         await using var srv = MockServer.Start(0, MockTlsMode.Http);
