@@ -111,6 +111,34 @@ public class MockServerTests
     }
 
     [Fact]
+    public async Task Concurrent_requests_do_not_cross_talk()
+    {
+        await using var srv = MockServer.Start(0, MockTlsMode.Http);
+        var client = new ApiClient();
+
+        // Fire 20 requests in parallel, each carrying a unique marker; each response must echo its
+        // own marker back — a shared-state or accept-loop race would mix them up.
+        var tasks = Enumerable.Range(0, 20).Select(async i =>
+        {
+            var resp = await client.SendAsync(new ApiRequest
+            {
+                Method = HttpMethod.Post,
+                Url = srv.BaseUrl + "echo",
+                Body = $"marker-{i}",
+                ContentType = "text/plain"
+            }, clientCertificate: null);
+            return (i, ok: resp.IsSuccess, body: Encoding.UTF8.GetString(resp.Body));
+        }).ToArray();
+
+        var results = await Task.WhenAll(tasks);
+        foreach (var (i, ok, body) in results)
+        {
+            Assert.True(ok, $"request {i} failed");
+            Assert.Contains($"marker-{i}", body);
+        }
+    }
+
+    [Fact]
     public async Task WebSocket_route_echoes_frames()
     {
         await using var srv = MockServer.Start(0, MockTlsMode.Http);

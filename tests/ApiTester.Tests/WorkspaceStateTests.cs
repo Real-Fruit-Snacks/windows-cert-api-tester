@@ -82,6 +82,81 @@ public class WorkspaceStateTests
     }
 
     [Fact]
+    public void SaveTo_and_LoadFrom_preserve_every_persisted_field()
+    {
+        // Guards against silent data loss: if a newer field stops being serialized (a stray
+        // [JsonIgnore], a rename, a getter-only property), the user loses their tokens / tests /
+        // multipart config on restart — and this test must fail rather than let that ship.
+        var path = Path.Combine(Path.GetTempPath(), $"certapi-fields-{Guid.NewGuid():N}.json");
+        try
+        {
+            var state = new AppState
+            {
+                Theme = "Light",
+                AutoTokens = false,
+                IgnoreServerCertErrors = true,
+                TimeoutSeconds = 45,
+                SessionTokens =
+                {
+                    new SessionToken
+                    {
+                        Origin = "https://api.example.com:443",
+                        Token = "tok-123",
+                        Source = "oauth",
+                        CapturedUtc = new DateTime(2026, 7, 18, 12, 0, 0, DateTimeKind.Utc),
+                        ExpiresUtc = new DateTime(2026, 7, 18, 13, 0, 0, DateTimeKind.Utc)
+                    }
+                },
+                Tabs =
+                {
+                    new RequestModel
+                    {
+                        Method = "POST",
+                        Path = "/upload",
+                        IsMultipart = true,
+                        FormParts = { new FormPart { Enabled = true, Name = "file", IsFile = true, Value = @"C:\x.bin" } },
+                        Captures = { new CaptureRule { Enabled = true, Variable = "id", Source = CaptureSource.Body, Path = "data.id" } },
+                        Assertions = { new AssertionRule { Enabled = true, Target = AssertTarget.Status, Op = AssertOp.Equals, Value = "201" } }
+                    }
+                }
+            };
+            state.SaveTo(path);
+
+            var back = AppState.LoadFrom(path);
+
+            Assert.Equal("Light", back.Theme);
+            Assert.False(back.AutoTokens);
+            Assert.True(back.IgnoreServerCertErrors);
+            Assert.Equal(45, back.TimeoutSeconds);
+
+            var token = Assert.Single(back.SessionTokens);
+            Assert.Equal("https://api.example.com:443", token.Origin);
+            Assert.Equal("tok-123", token.Token);
+            Assert.Equal("oauth", token.Source);
+            Assert.Equal(new DateTime(2026, 7, 18, 13, 0, 0, DateTimeKind.Utc), token.ExpiresUtc!.Value.ToUniversalTime());
+
+            var tab = Assert.Single(back.Tabs);
+            Assert.True(tab.IsMultipart);
+            var part = Assert.Single(tab.FormParts);
+            Assert.Equal("file", part.Name);
+            Assert.True(part.IsFile);
+            Assert.Equal(@"C:\x.bin", part.Value);
+
+            var capture = Assert.Single(tab.Captures);
+            Assert.Equal("id", capture.Variable);
+            Assert.Equal(CaptureSource.Body, capture.Source);
+            Assert.Equal("data.id", capture.Path);
+
+            var assertion = Assert.Single(tab.Assertions);
+            Assert.Equal(AssertTarget.Status, assertion.Target);
+            Assert.Equal(AssertOp.Equals, assertion.Op);
+            Assert.Equal("201", assertion.Value);
+            Assert.True(assertion.Enabled);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void SaveTo_and_LoadFrom_round_trip_an_explicit_path()
     {
         var path = Path.Combine(Path.GetTempPath(), $"certapi-test-{Guid.NewGuid():N}.json");
