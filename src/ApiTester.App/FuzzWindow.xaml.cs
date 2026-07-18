@@ -5,6 +5,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using ApiTester.Core;
 
 namespace ApiTester.App;
@@ -24,8 +25,36 @@ public partial class FuzzWindow : Window
         public string SizeText { get; init; } = "";
         public string Ms { get; init; } = "";
         public string Path { get; init; } = "";
+        public Brush OutcomeColor { get; init; } = Brushes.Gray;
         public FuzzResult Result { get; init; } = null!;
     }
+
+    // Per-outcome text colours, frozen once and reused so rows don't each allocate a brush.
+    private static readonly Brush CFound = Frozen("#63F2AB");
+    private static readonly Brush CUnauthorized = Frozen("#F2C94C");
+    private static readonly Brush CMethodNotAllowed = Frozen("#56CCF2");
+    private static readonly Brush CRedirect = Frozen("#9B8CF2");
+    private static readonly Brush CServerError = Frozen("#F2637A");
+    private static readonly Brush CError = Frozen("#E06C75");
+    private static readonly Brush CMuted = Frozen("#8A97A0");
+
+    private static Brush Frozen(string hex)
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Brush OutcomeBrush(FuzzOutcome o) => o switch
+    {
+        FuzzOutcome.Found => CFound,
+        FuzzOutcome.Unauthorized => CUnauthorized,
+        FuzzOutcome.MethodNotAllowed => CMethodNotAllowed,
+        FuzzOutcome.Redirect => CRedirect,
+        FuzzOutcome.ServerError => CServerError,
+        FuzzOutcome.Error => CError,
+        _ => CMuted
+    };
 
     private readonly AppState _state;
     private readonly ApiClient _client;
@@ -62,6 +91,14 @@ public partial class FuzzWindow : Window
     {
         base.OnSourceInitialized(e);
         NativeTheme.ApplyDarkTitleBar(this);
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // Stop any in-flight discovery run so closing (or double-click-to-open) doesn't leave
+        // probes hammering the target after the window is gone.
+        _cts?.Cancel();
+        base.OnClosing(e);
     }
 
     private void Header_Drag(object sender, MouseButtonEventArgs e)
@@ -147,6 +184,7 @@ public partial class FuzzWindow : Window
         SizeText = r.Error is null ? Human(r.SizeBytes) : "—",
         Ms = r.Elapsed.TotalMilliseconds.ToString("F0"),
         Path = r.Path,
+        OutcomeColor = OutcomeBrush(r.Outcome),
         Result = r
     };
 

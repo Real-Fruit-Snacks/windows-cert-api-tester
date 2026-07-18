@@ -631,4 +631,74 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
+    <!-- ============ DataGrid ============ -->
+    <Style TargetType="DataGrid">
+        <Setter Property="Background" Value="{StaticResource Bg.Panel}"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Soft}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="RowBackground" Value="Transparent"/>
+        <Setter Property="AlternatingRowBackground" Value="Transparent"/>
+        <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Border}"/>
+        <Setter Property="VerticalGridLinesBrush" Value="{StaticResource Border}"/>
+        <Setter Property="RowHeaderWidth" Value="0"/>
+        <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+        <Setter Property="FontSize" Value="12"/>
+    </Style>
+
+    <Style TargetType="DataGridColumnHeader">
+        <Setter Property="Background" Value="{StaticResource Bg.Input}"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Muted}"/>
+        <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridColumnHeader">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="DataGridRow">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Soft}"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Bg.Raised}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="DataGridCell">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource Text.Soft}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridCell">
+                    <Border x:Name="cell" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" Padding="8,5">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="cell" Property="Background" Value="#1b63f2ab"/>
+                            <Setter Property="Foreground" Value="{StaticResource Text.Normal}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
