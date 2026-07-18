@@ -13,6 +13,12 @@ public static class ExportCommand
         document — auth is exported as a security scheme only, never the secrets.
         workspace: writes the whole workspace as a portable JSON file (window geometry
         stripped). Note: workspace files include request auth values and history.
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          certapi export openapi -o api.json
+          certapi export workspace -o workspace.json
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)

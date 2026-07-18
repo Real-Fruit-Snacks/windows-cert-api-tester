@@ -10,6 +10,13 @@ public static class ImportCommand
 
         Adds requests to your collections — the live GUI state by default, or a workspace
         file. --into names a root-level folder (created if needed).
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          certapi import curl "curl -X POST https://api.example.com/login -d '{}'"
+          certapi import openapi .\petstore.json
+          certapi import openapi .\petstore.json --workspace .\suite.json
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)

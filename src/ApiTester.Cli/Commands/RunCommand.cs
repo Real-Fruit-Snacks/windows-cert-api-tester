@@ -22,7 +22,28 @@ public static class RunCommand
           --record / --no-record  Write known-good results back (default: on for live state,
                                   off for workspace files; skipped while the GUI is running)
           --strict-vars           Unresolved {{tokens}} fail the request
+          --no-auto-token         Don't capture or attach session tokens during this run
           --json                  JSON results instead of the table
+
+        Requests whose Auth is "Auto" attach the captured token for their host; a token
+        captured by one request (e.g. a login) is reused by the rest of the suite.
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          # Run one request, a folder, or everything
+          certapi run "petstore/Get pet by id"
+          certapi run petstore/smoke
+          certapi run --all
+
+          # A login-first suite: the login response's token carries through the suite
+          certapi run "api/login then browse" --env Staging
+
+          # CI: machine-readable results, no writes, fail the job on any failure
+          certapi run --all --workspace .\suite.json --no-record --json
+
+          # Investigate a flaky suite with full diagnostics
+          certapi run api --debug --log-file suite-debug.log
 
         Exit codes: 0 all passed · 1 any failure · 2 usage · 3 data error.
         """;

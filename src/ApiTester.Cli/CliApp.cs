@@ -45,6 +45,21 @@ public static class CliApp
           mcp               Run an MCP server so AI agents can make mTLS calls
           help [command]    Show help (for one command, or this overview)
 
+        Global options (work on every command, anywhere on the line):
+          --debug           Rich diagnostics on stderr: resolved URLs, headers (Authorization
+                            masked), certificate lookup, TLS details, timings, full stack traces
+          --log-file <path> Append everything (diagnostics + all stderr output) to a log file
+
+        Examples:
+          certapi certs
+          certapi send https://api.example.com/health --cert "CN=My Client"
+          certapi send https://api.example.com/login -X POST -d "{\"user\":\"me\"}"
+              # a token in the response (access_token / id_token / …) is captured
+              # automatically and reused for later requests to the same host
+          certapi run smoke-suite --env Staging
+          certapi selftest
+          certapi send https://api.example.com/x --debug --log-file certapi.log
+
         Run 'certapi help <command>' for options. 'certapi --version' prints the version.
         """;
 

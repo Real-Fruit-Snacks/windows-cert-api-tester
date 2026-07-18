@@ -24,6 +24,13 @@ public static class SendCommand
           --store <location>      CurrentUser (default); LocalMachine searches both stores
           --insecure              Ignore server certificate errors
 
+        Automatic tokens:
+          A bearer token found in a response (access_token, id_token, token, accessToken, jwt,
+          or an X-Auth-Token / X-Access-Token header) is captured and scoped to that host.
+          Later sends to the same host attach it automatically — unless you pass explicit auth
+          (--bearer / --basic / an Authorization header).
+          --no-auto-token         Disable capture and reuse for this invocation
+
         Variables:
           --env <name>            Environment ({{var}} values) from your workspace
           --var k=v               Override/add a variable (repeatable)
@@ -40,6 +47,32 @@ public static class SendCommand
           --json                  Print a JSON result envelope instead of the raw body
           --fail                  Exit 1 when the HTTP status is 400 or higher
           -q, --quiet             No metadata line on stderr
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          # Simple GET with a client certificate picked by subject
+          certapi send https://api.example.com/users --cert "CN=My Client"
+
+          # POST JSON, pretty-print the response
+          certapi send https://api.example.com/users -X POST -d "{\"name\":\"Ada\"}" --pretty
+
+          # Log in once, then call the API — the token is captured and reused automatically
+          certapi send https://api.example.com/login -X POST -d "{\"user\":\"me\",\"pass\":\"…\"}"
+          certapi send https://api.example.com/orders          # sends Authorization: Bearer …
+
+          # Headers, query strings, and a file body
+          certapi send "https://api.example.com/search?q=abc" -H "Accept: application/json"
+          certapi send https://api.example.com/upload -X PUT --data-file .\payload.json
+
+          # Environments and capture rules
+          certapi send https://{{host}}/login --env Staging --capture session=data.session_id
+
+          # Save a binary body, keep stderr clean, fail the build on HTTP errors
+          certapi send https://api.example.com/report.pdf -o report.pdf -q --fail
+
+          # Troubleshoot a failing endpoint with full diagnostics in a file
+          certapi send https://api.example.com/broken --debug --log-file broken.log
 
         The body goes to stdout; everything else goes to stderr. Exit 0 on a delivered
         response (any status unless --fail), 1 on transport errors, 2/3 on usage/data errors.

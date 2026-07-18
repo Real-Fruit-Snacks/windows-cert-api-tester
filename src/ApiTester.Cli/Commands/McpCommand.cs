@@ -25,6 +25,17 @@ public static class McpCommand
           --insecure              Ignore upstream server-certificate errors (internal CAs)
           --timeout <seconds>     Per-request upstream timeout (default 100)
           --workspace <file>      Load saved requests / environments from a workspace file
+          --no-auto-token         Don't capture/reuse bearer tokens across the session's calls
+
+        Tokens returned by one tool call (e.g. a login via send_request) are captured in
+        memory for this session and attached to later calls to the same host.
+
+        Global: --debug (verbose diagnostics) and --log-file <path> work here too.
+
+        Examples:
+          certapi mcp --cert "CN=Agent Client" --allow api.example.com
+          certapi mcp --cert 4A8823… --allow api.example.com --allow auth.example.com --insecure
+          certapi mcp --cert "CN=Agent Client" --allow api.example.com --workspace .\suite.json
 
         Speaks JSON-RPC 2.0 over stdin/stdout; diagnostics go to stderr. Stop with Ctrl+C or by
         closing stdin. Exit 0 clean shutdown, 2 usage, 3 data error.
