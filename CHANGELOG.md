@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-07-18
+
 ### Added
 - **Ad-hoc assertions on `certapi send`** — `--assert "<expr>"` (repeatable) checks the response and
   exits 1 if it fails, so a single `send` is a CI smoke test without a saved workspace. Expressions:
@@ -641,7 +643,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.48.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.49.0...HEAD
+[1.49.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.48.0...v1.49.0
 [1.48.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.2...v1.48.0
 [1.47.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.1...v1.47.2
 [1.47.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.0...v1.47.1
