@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Ad-hoc assertions on `certapi send`** — `--assert "<expr>"` (repeatable) checks the response and
+  exits 1 if it fails, so a single `send` is a CI smoke test without a saved workspace. Expressions:
+  `status == 200`, `status < 300`, `time < 500`, `header <name> contains <v>`, `body <jsonpath> exists`,
+  `body-text matches <regex>`; operators `== != contains matches exists !exists < >`. Reuses the same
+  evaluator behind the GUI Tests tab and `certapi run`.
+
 ## [1.48.0] - 2026-07-18
 
 ### Changed

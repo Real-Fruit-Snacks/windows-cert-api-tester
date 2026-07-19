@@ -131,6 +131,41 @@ public class SendCommandTests
     }
 
     [Fact]
+    public async Task Assert_passes_and_exits_0()
+    {
+        // The loopback server returns {"ok":true} with 200.
+        var r = await RunAsync(new[]
+        {
+            "send", "{URL}", "--cert", "CliClient", "--insecure",
+            "--assert", "status == 200", "--assert", "body ok == true", "--assert", "body-text contains ok"
+        });
+        Assert.Equal(0, r.Code);
+        Assert.Contains("3/3 passed", r.Err);
+    }
+
+    [Fact]
+    public async Task Failing_assert_exits_1_and_reports_it()
+    {
+        var r = await RunAsync(new[]
+        {
+            "send", "{URL}", "--cert", "CliClient", "--insecure", "--assert", "status == 500"
+        });
+        Assert.Equal(1, r.Code);
+        Assert.Contains("FAIL", r.Err);
+        Assert.Contains("actual: 200", r.Err);
+    }
+
+    [Fact]
+    public void Malformed_assert_is_a_usage_error()
+    {
+        var se = new StringWriter();
+        int code = CliApp.Run(new[] { "send", "https://h/", "--assert", "bogus == 1" },
+                              new StringWriter(), se, new MemoryStream(), new CliServices { LiveStatePath = TempState() });
+        Assert.Equal(2, code);
+        Assert.Contains("--assert", se.ToString());
+    }
+
+    [Fact]
     public void Invalid_timeout_is_a_usage_error()
     {
         foreach (var bad in new[] { "abc", "0", "-5" })

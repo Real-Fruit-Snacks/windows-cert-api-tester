@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -52,6 +53,13 @@ public static class SendCommand
                                   send (repeatable). path is a JSON body path (access_token,
                                   data.token) or header:Name for a response header.
 
+        Testing:
+          --assert "<expr>"       Check the response and exit 1 if it fails (repeatable). Syntax:
+                                    status == 200 | status < 300 | time < 500
+                                    header <name> contains <v> | body <jsonpath> exists
+                                    body-text matches <regex>
+                                  ops: == != contains matches exists !exists < >
+
         Output:
           -o, --output <file>     Write the body to a file instead of stdout
           --include               Print status line and headers before the body
@@ -92,6 +100,9 @@ public static class SendCommand
           # Save a binary body, keep stderr clean, fail the build on HTTP errors
           certapi send https://api.example.com/report.pdf -o report.pdf -q --fail
 
+          # A one-line CI smoke test: assert the status and a JSON field, exit 1 if either fails
+          certapi send https://api.example.com/health --assert "status == 200" --assert "body status == ok"
+
           # Troubleshoot a failing endpoint with full diagnostics in a file
           certapi send https://api.example.com/broken --debug --log-file broken.log
 
@@ -131,6 +142,7 @@ public static class SendCommand
         bool fail = args.Flag("--fail");
         bool quiet = args.Flag("-q", "--quiet");
         var captureSpecs = args.Values("--capture");
+        var assertSpecs = args.Values("--assert");
         bool noAutoToken = args.Flag("--no-auto-token");
         bool windowsAuth = args.Flag("--windows-auth", "--ntlm", "--negotiate");
         string? winUser = args.Value("--windows-user");
@@ -158,6 +170,15 @@ public static class SendCommand
                 Source = header ? CaptureSource.Header : CaptureSource.Body,
                 Path = header ? path["header:".Length..] : path
             });
+        }
+
+        // Ad-hoc response assertions (--assert). The specs were consumed above (before Positionals);
+        // parse them here so a bad expression is a clean usage error before anything is sent.
+        var assertRules = new List<AssertionRule>();
+        foreach (var raw in assertSpecs)
+        {
+            try { assertRules.Add(AssertionParser.Parse(raw)); }
+            catch (FormatException ex) { throw new CliUsageException($"--assert: {ex.Message}"); }
         }
         if (data is not null && dataFile is not null)
             throw new CliUsageException("-d/--data and --data-file are mutually exclusive.");
@@ -332,6 +353,23 @@ public static class SendCommand
         }
 
         if (response.Error is not null) return ExitCodes.Failure;
+
+        // ---- assertions ----
+        bool assertionsFailed = false;
+        if (assertRules.Count > 0)
+        {
+            var results = AssertionEvaluator.Evaluate(assertRules, response);
+            foreach (var r in results)
+            {
+                stderr.WriteLine(r.Passed
+                    ? $"  PASS  {r.Description}"
+                    : $"  FAIL  {r.Description}  (actual: {r.Actual ?? "<none>"})");
+                if (!r.Passed) assertionsFailed = true;
+            }
+            stderr.WriteLine($"assertions: {results.Count(r => r.Passed)}/{results.Count} passed");
+        }
+
+        if (assertionsFailed) return ExitCodes.Failure;
         if (fail && response.StatusCode is >= 400) return ExitCodes.Failure;
         return ExitCodes.Ok;
     }

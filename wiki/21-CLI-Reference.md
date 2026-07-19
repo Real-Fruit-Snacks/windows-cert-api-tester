@@ -88,6 +88,15 @@ body cleanly.
 - `--strict-vars` — unresolved `{{tokens}}` become an error
 - `--capture var=path` — save a response value into a variable (`header:Name` for a header)
 
+**Testing**
+
+- `--assert "<expr>"` — check the response and exit 1 if it fails (repeatable). Expression syntax:
+  `status == 200`, `status < 300`, `time < 500`, `header <name> contains <v>`,
+  `body <jsonpath> exists`, `body-text matches <regex>`. Operators: `==` `!=` `contains` `matches`
+  `exists` `!exists` `<` `>`. Lets a single `certapi send` be a CI (continuous integration) smoke
+  test without a saved workspace — the same checks the GUI's Tests tab and `certapi run` apply to
+  saved requests.
+
 **Output**
 
 - `-o, --output <file>` — write the body to a file
