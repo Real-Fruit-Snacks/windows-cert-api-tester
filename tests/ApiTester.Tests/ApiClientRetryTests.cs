@@ -281,7 +281,9 @@ public class ApiClientRetryTests
 
         Assert.Equal(200, resp.StatusCode);
         Assert.Equal(2, resp.Attempts);
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3),
+        // Half the backoff, not a tight bound: the claim is that the 10s wait was skipped, and 5s
+        // says that unambiguously while leaving room for a handshake on a loaded runner.
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5),
             $"The computed 10s backoff appears to have been used anyway: took {clock.Elapsed}.");
     }
 
@@ -344,7 +346,8 @@ public class ApiClientRetryTests
 
         Assert.Equal(200, resp.StatusCode);
         Assert.Equal(2, resp.Attempts);
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3),
+        // Half the backoff, for the same reason as the sibling test above.
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5),
             $"An HTTP-date Retry-After was not understood: took {clock.Elapsed}.");
     }
 

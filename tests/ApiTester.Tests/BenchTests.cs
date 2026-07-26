@@ -157,7 +157,19 @@ public class BenchTests
     public async Task Cancelling_a_bench_returns_what_it_measured_instead_of_throwing()
     {
         await using var l = await Loopback.StartAsync();
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+
+        // Cancel once the bench is demonstrably under way rather than after a fixed delay: a timer
+        // armed before the run raced the server startup and the first handshake, so on a loaded
+        // machine it could fire before a single request had been sent. Keying off the server having
+        // served requests makes "a bench was interrupted mid-flight" true by construction.
+        using var cts = new CancellationTokenSource();
+        using var giveUp = new CancellationTokenSource(TimeSpan.FromSeconds(30));   // fail rather than hang
+        _ = Task.Run(async () =>
+        {
+            while (l.Server.RequestCount < 10 && !giveUp.Token.IsCancellationRequested)
+                await Task.Delay(10);
+            cts.Cancel();
+        });
 
         var result = await Bench.RunAsync(
             Get(l), l.Client, Insecure, new BenchOptions(Count: 5000, Concurrency: 2), null, cts.Token);
