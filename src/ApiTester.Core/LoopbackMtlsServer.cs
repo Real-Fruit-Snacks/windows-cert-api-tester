@@ -30,6 +30,32 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
     /// its attempt count against.</summary>
     public int RequestCount { get; private set; }
 
+    private int _keepAliveConnectionCount;
+
+    /// <summary>How many TLS handshakes a StartKeepAliveAsync server has completed — 1-based ordinals
+    /// handed out with Interlocked.Increment directly against the backing field, so the getter can
+    /// never observe a value written out of order by two handshakes racing to complete. Recorded only
+    /// once AuthenticateAsServerAsync returns: a failed handshake is not a connection.</summary>
+    public int ConnectionCount => _keepAliveConnectionCount;
+
+    private int _keepAliveTotalRequestCount;
+
+    /// <summary>How many requests a StartKeepAliveAsync server has answered across every connection it
+    /// has accepted — contrast with the per-connection ordinal ("req=") embedded in each response
+    /// body, which restarts at 1 on every new connection.</summary>
+    public int TotalRequestCount => _keepAliveTotalRequestCount;
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, string?>
+        _keepAliveThumbprintsByConnection = new();
+
+    /// <summary>One entry per TLS handshake a StartKeepAliveAsync server has completed, in handshake
+    /// order: the client certificate presented on that connection, as GetCertHashString() renders it
+    /// (the same uppercase SHA-1 form X509Certificate2.Thumbprint uses), or null when none was
+    /// presented. A snapshot is built fresh on every read from a concurrent dictionary, so a caller can
+    /// read it while other connections are still being accepted without tearing.</summary>
+    public IReadOnlyList<string?> ClientCertificateThumbprintsByConnection =>
+        _keepAliveThumbprintsByConnection.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+
     private LoopbackMtlsServer(TcpListener listener, int port,
         Func<TcpClient, CancellationToken, Task> handleClient)
     {
@@ -822,6 +848,142 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
             "Connection: close\r\n\r\n";
         await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
         await ssl.FlushAsync(ct);
+    }
+
+    /// <summary>A server that keeps the connection open (HTTP/1.1 keep-alive) and records what it saw
+    /// per connection: how many TLS handshakes it completed, which client certificate was presented on
+    /// each, and how many requests arrived. "The server completed one handshake for N requests" is the
+    /// only honest — and the only non-timing — way to prove connection pooling.</summary>
+    /// <param name="requireClientCertificate">When true the handshake demands a client certificate;
+    /// whichever one is presented is accepted and recorded, so one server can observe two different
+    /// client certificates arriving on two different connections.</param>
+    public static Task<LoopbackMtlsServer> StartKeepAliveAsync(
+        X509Certificate2 serverCertificate,
+        bool requireClientCertificate = true)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        // The handler is built before the instance exists, so the per-connection ordinal and the
+        // per-request counters it hands out are written back through the captured variable once the
+        // instance exists — the same trick StartFlakyAsync uses for its single counter.
+        LoopbackMtlsServer? started = null;
+        started = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleKeepAliveAsync(
+                client, serverCertificate, requireClientCertificate,
+                thumbprint => started!.RecordKeepAliveHandshake(thumbprint),
+                () => started!.RecordKeepAliveRequest(),
+                ct));
+        return Task.FromResult(started);
+    }
+
+    /// <summary>Assigns the next 1-based connection ordinal and records the thumbprint presented on it.
+    /// Called only after AuthenticateAsServerAsync returns, so a failed handshake never consumes an
+    /// ordinal or appears in ClientCertificateThumbprintsByConnection.</summary>
+    private int RecordKeepAliveHandshake(string? clientCertificateThumbprint)
+    {
+        int ordinal = Interlocked.Increment(ref _keepAliveConnectionCount);
+        _keepAliveThumbprintsByConnection[ordinal] = clientCertificateThumbprint;
+        return ordinal;
+    }
+
+    /// <summary>Bumps TotalRequestCount for a request answered on a keep-alive connection.</summary>
+    private int RecordKeepAliveRequest() => Interlocked.Increment(ref _keepAliveTotalRequestCount);
+
+    private static async Task HandleKeepAliveAsync(
+        TcpClient client, X509Certificate2 serverCert, bool requireClientCertificate,
+        Func<string?, int> recordHandshake, Func<int> recordRequest, CancellationToken ct)
+    {
+        // The validation callback fires during the handshake below and is the only place the
+        // presented certificate (or its absence) can be observed; accepting unconditionally is what
+        // lets one server see two different client certificates on two different connections rather
+        // than rejecting the second.
+        string? clientCertThumbprint = null;
+        await using var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false,
+            userCertificateValidationCallback: (_, cert, _, _) =>
+            {
+                clientCertThumbprint = cert?.GetCertHashString();
+                return true;
+            });
+        var options = new SslServerAuthenticationOptions
+        {
+            ClientCertificateRequired = requireClientCertificate,
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            ServerCertificate = serverCert
+        };
+        await ssl.AuthenticateAsServerAsync(options, ct);
+        // Recorded only now — after the handshake completes — never before.
+        int connectionOrdinal = recordHandshake(clientCertThumbprint);
+
+        // Raw bytes, not the StringBuilder-of-UTF8 pattern the other handlers use: keep-alive requires
+        // knowing exactly where one request ends and the next begins, and an incremental UTF-8 decode
+        // can split a multi-byte character across two reads. Latin1 is byte-preserving for the header
+        // block, which is what lets the split be found and re-sliced safely.
+        var pending = new List<byte>();
+        var readBuffer = new byte[8192];
+        int requestOrdinalOnThisConnection = 0;
+
+        while (!ct.IsCancellationRequested)
+        {
+            int headerEnd = FindHeaderEnd(pending);
+            int contentLength = 0;
+            while (true)
+            {
+                if (headerEnd >= 0)
+                {
+                    contentLength = ParseContentLength(
+                        Encoding.Latin1.GetString(pending.GetRange(0, headerEnd).ToArray()));
+                    if (pending.Count >= headerEnd + 4 + contentLength) break;
+                }
+                int n = await ssl.ReadAsync(readBuffer, ct);
+                if (n == 0) return;   // client closed the connection — not an error, just done
+                for (int i = 0; i < n; i++) pending.Add(readBuffer[i]);
+                if (headerEnd < 0) headerEnd = FindHeaderEnd(pending);
+            }
+
+            int totalLen = headerEnd + 4 + contentLength;
+            string headerText = Encoding.Latin1.GetString(pending.GetRange(0, headerEnd).ToArray());
+            string requestLine = headerText.Split("\r\n")[0];
+            var requestLineParts = requestLine.Split(' ');
+            string path = requestLineParts.Length > 1 ? requestLineParts[1] : "/";
+            string cookie = "none";
+            foreach (var line in headerText.Split("\r\n"))
+                if (line.StartsWith("Cookie:", StringComparison.OrdinalIgnoreCase))
+                    cookie = line["Cookie:".Length..].Trim();
+
+            requestOrdinalOnThisConnection++;
+            recordRequest();
+
+            string bodyText =
+                $"conn={connectionOrdinal} req={requestOrdinalOnThisConnection} " +
+                $"cert={clientCertThumbprint ?? "none"} cookie={cookie} path={path}";
+            var bodyBytes = Encoding.UTF8.GetBytes(bodyText);
+            var head =
+                "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/plain\r\n" +
+                "Set-Cookie: srv=ok; Path=/\r\n" +
+                $"Content-Length: {bodyBytes.Length}\r\n\r\n";
+            // Deliberately no Connection: close — HTTP/1.1 keep-alive is the entire point of this
+            // server, and is what every other handler in this file opts out of.
+            await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+            await ssl.WriteAsync(bodyBytes, ct);
+            await ssl.FlushAsync(ct);
+
+            // Carry over whatever bytes of the next request already arrived in this same read.
+            pending.RemoveRange(0, totalLen);
+        }
+    }
+
+    /// <summary>Finds the byte offset of the blank-line sequence (\r\n\r\n) that ends an HTTP header
+    /// block, or -1 if it has not arrived yet. Scanning raw bytes (rather than a decoded string) is
+    /// what makes it safe to call before a multi-byte body has fully arrived.</summary>
+    private static int FindHeaderEnd(List<byte> data)
+    {
+        for (int i = 0; i + 3 < data.Count; i++)
+            if (data[i] == (byte)'\r' && data[i + 1] == (byte)'\n' &&
+                data[i + 2] == (byte)'\r' && data[i + 3] == (byte)'\n')
+                return i;
+        return -1;
     }
 
     private static int ParseContentLength(string requestText)

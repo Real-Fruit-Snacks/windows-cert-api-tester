@@ -22,6 +22,11 @@ public partial class MainWindow : Window
 {
     private readonly CertificateStoreService _certService = new();
     private readonly ApiClient _apiClient = new();
+    // One instance for the whole GUI session, alongside _apiClient: the handler cache keys the
+    // trust predicate by delegate identity, so a fresh lambda built per send could never let two
+    // requests to the same host share a pooled connection. Assigned in the constructor, after
+    // _state's field initializer has run (see below), rather than inline here.
+    private readonly TrustPredicates _trustPredicates;
     private readonly System.Net.CookieContainer _cookieJar = new();   // browser-like session cookies across sends
     private readonly ResponseFormatter _formatter = new();
     private readonly AppState _state = AppState.Load();
@@ -68,6 +73,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _trustPredicates = new TrustPredicates(_state);
 
         // Restore persisted window bounds.
         if (_state.WindowWidth is > 400) Width = _state.WindowWidth.Value;
@@ -136,6 +142,9 @@ public partial class MainWindow : Window
         _browserSession?.Dispose();
         _browserCts?.Cancel();
         _browserCts?.Dispose();
+        // _apiClient lives for the whole session; FuzzWindow only borrows it (ShowDialog, so it is
+        // always closed again before this window can close), so nothing else can still be using it.
+        _apiClient.Dispose();
 
         base.OnClosing(e);
     }
@@ -2247,10 +2256,11 @@ public partial class MainWindow : Window
         {
             // Attach any browser-captured session cookies for this origin before sending.
             CookieService.SeedContainer(_state, request.Url, _cookieJar);
+            string host = TokenService.HostOf(request.Url);
             response = await _apiClient.SendAsync(
                 request, cert,
                 transport: model.Transport.ToOptions(model.IgnoreServerCert),
-                trustServerCertificate: c => c is not null && TrustService.IsTrusted(_state, TokenService.HostOf(request.Url), c.Thumbprint!),
+                trustServerCertificate: _trustPredicates.For(host),
                 cookies: _cookieJar, cancellationToken: _cts.Token);
             RenderResponse(response);
             ShowAssertionResults(model, response);

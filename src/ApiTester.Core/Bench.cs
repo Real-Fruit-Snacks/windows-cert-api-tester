@@ -32,14 +32,15 @@ public static class Bench
     /// latency. Never writes a file, never touches saved state, and never records a known-good
     /// result: a measurement is not an observation worth keeping.
     /// <para><b>What the latency includes.</b> One <see cref="ApiClient"/> instance is shared by every
-    /// worker, but that client builds a fresh handler — and therefore a fresh connection — for each
-    /// send, because the TLS handshake diagnostics it reports (negotiated protocol, cipher suite,
-    /// server certificate, whether the client certificate was presented) are captured per send. So
-    /// there is no connection pooling here: every measured request pays its own TCP connect and TLS
-    /// handshake, and the figures below include that cost. They answer "how long does a request to
-    /// this endpoint take, from cold" rather than "how fast can a warm client stream requests at it".
-    /// Pooling would need the diagnostics moved off that per-send capture, a change to the most
-    /// safety-critical file in the product, so the limitation is stated instead of hidden.</para>
+    /// worker, and that client now pools connections: the first request to an origin pays the TCP
+    /// connect and TLS handshake, and every later request that shares the same client certificate,
+    /// trust policy, and other handler-defining settings reuses that connection and measures only the
+    /// request and response. So the figures below are dominated by warm, pooled requests unless
+    /// <see cref="BenchOptions.WarmUp"/> is left unset and the run is short enough that the first
+    /// connection's cost still shows up in the distribution — which is exactly what --warmup exists to
+    /// discard. The one path that still pays a full connection every time is a request routed through a
+    /// proxy: the CONNECT tunnel is established by the handler itself, not by a callback attributable to
+    /// one connection, so proxied requests are never pooled.</para>
     /// <para><b>Retries.</b> Whatever <paramref name="transport"/> says is honored as given. A caller
     /// that wants the failure rate a bench exists to measure should switch retries off before calling,
     /// because a retry converts a failure into a slow success.</para>
@@ -68,7 +69,9 @@ public static class Bench
         if (duration is null && total == 0) return Empty();
 
         // One client for the whole run — see the remarks above for what that does and does not buy.
-        var client = new ApiClient();
+        // Every worker task is awaited (Task.WhenAll below) before this method returns, so disposing
+        // it here, once every send it could ever issue has finished, is safe.
+        using var client = new ApiClient();
 
         async Task<Sample?> SendOnceAsync()
         {

@@ -11,8 +11,13 @@ using System.Text;
 
 namespace ApiTester.Core;
 
-public sealed class ApiClient
+public sealed class ApiClient : IDisposable
 {
+    // Instance-scoped, never static: two ApiClient instances must never be able to see — or ever
+    // dispose — each other's pooled connections.
+    private readonly HttpHandlerCache _handlerCache = new();
+    private bool _disposed;
+
     public async Task<ApiResponse> SendAsync(
         ApiRequest request,
         X509Certificate2? clientCertificate,
@@ -21,6 +26,7 @@ public sealed class ApiClient
         System.Net.CookieContainer? cookies = null,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         transport ??= new TransportOptions();
         // Refuse an unusable combination up front rather than opening a socket and quietly
         // ignoring whichever setting lost.
@@ -42,6 +48,16 @@ public sealed class ApiClient
             try { await Task.Delay(delay, cancellationToken); }
             catch (OperationCanceledException) { return response with { Attempts = attempt }; }
         }
+    }
+
+    /// <summary>Disposes every handler this client ever cached — including any pooled connections
+    /// they still hold open — and refuses any further send with <see cref="ObjectDisposedException"/>.
+    /// Safe to call more than once.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _handlerCache.Dispose();
     }
 
     /// <summary>Whether the result of one attempt earns another. Kept deterministic and free of the
@@ -140,162 +156,133 @@ public sealed class ApiClient
         System.Net.CookieContainer? cookies,
         CancellationToken cancellationToken)
     {
-        bool ignoreServerCertificateErrors = transport.IgnoreServerCertificateErrors;
+        // Set only by the proxied path's own Validate callback below. The shared direct-connection
+        // handler has no per-call state a connect attempt could write into — see
+        // ServerCertificateUntrustedException for how that path reports the identical fact instead.
+        // Always false when this send turns out to be direct.
         bool serverUntrusted = false;
-
-        // Captured during the TLS handshake for the diagnostics view.
-        var negotiatedProtocol = SslProtocols.None;
-        TlsCipherSuite cipher = default;
-        bool clientCertSent = false;
-        string? srvSubject = null, srvIssuer = null, srvThumb = null;
-        DateTime? srvNotAfter = null;
-        IReadOnlyList<string> chain = Array.Empty<string>();
-
-        // Shared server-certificate validation used by both the direct and proxied paths.
-        bool Validate(object _, X509Certificate? cert, X509Chain? certChain, SslPolicyErrors errors)
-        {
-            if (cert is not null)
-            {
-                using var c = new X509Certificate2(cert);
-                srvSubject = c.Subject;
-                srvIssuer = c.Issuer;
-                srvThumb = c.Thumbprint;
-                srvNotAfter = c.NotAfter;
-            }
-            if (certChain is not null)
-                chain = certChain.ChainElements.Select(e => e.Certificate.Subject).ToList();
-
-            if (errors == SslPolicyErrors.None) return true;
-            if (ignoreServerCertificateErrors) return true;
-            if (trustServerCertificate is not null)
-            {
-                using var c = cert is null ? null : new X509Certificate2(cert);
-                if (trustServerCertificate(c)) return true;
-            }
-            serverUntrusted = true;
-            return false;
-        }
 
         bool viaProxy = ProxyWillBeUsed(request.Url, transport);
 
-        var handler = new SocketsHttpHandler
-        {
-            // Use the machine's configured proxy — including "Automatically detect settings"
-            // (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options —
-            // authenticating with the signed-in user's Windows credentials when required.
-            DefaultProxyCredentials = CredentialCache.DefaultCredentials
-        };
-        switch (transport.Proxy)
-        {
-            case ProxyMode.None:
-                // Bypassing the proxy also restores the ConnectCallback path below, which is the
-                // only place the TLS details can be read.
-                handler.UseProxy = false;
-                break;
-            case ProxyMode.Explicit:
-                handler.Proxy = new WebProxy(transport.ProxyUrl)
-                {
-                    Credentials = transport.ProxyUser is null
-                        ? CredentialCache.DefaultCredentials
-                        : new NetworkCredential(transport.ProxyUser, transport.ProxyPassword)
-                };
-                handler.UseProxy = true;
-                break;
-        }
-        // Never let the handler follow redirects: it does so internally, so the intermediate
-        // responses — and with them every hop, its status, and where the client certificate was
-        // presented — are unobservable. SendAsync runs the chain itself instead.
-        handler.AllowAutoRedirect = false;
-        // Decoding is the default every other HTTP client uses; turning it off relays the bytes
-        // exactly as the server framed them, which is what a byte-exact relay test needs.
-        handler.AutomaticDecompression = transport.Decompress
-            ? DecompressionMethods.All
-            : DecompressionMethods.None;
-        // A shared cookie jar carries Set-Cookie values across requests (session testing); without
-        // one, the per-handler default container means cookies don't persist between calls.
-        if (cookies is not null) { handler.CookieContainer = cookies; handler.UseCookies = true; }
-
-        // Windows Integrated Auth (Negotiate/NTLM): set server credentials so the handler runs the
-        // challenge/response handshake automatically. Connection-bound, so it needs the pooled
-        // connection to persist across the handshake legs — which SocketsHttpHandler does.
-        if (request.WindowsAuth is { } wa)
-        {
-            handler.Credentials = wa.UseDefaultCredentials
-                ? CredentialCache.DefaultCredentials
-                : new NetworkCredential(wa.Username, wa.Password, wa.Domain);
-            handler.PreAuthenticate = true;
-        }
-
+        // The two paths differ only in which handler answers the send, whether this call owns it
+        // outright, and where its handshake diagnostics can be found. Everything else below — the
+        // send/redirect/response loop, cookies, retries-of-hops, error classification — is written
+        // once and runs the same for both, via that one difference.
+        SendTransport sendTransport;
         if (viaProxy)
         {
+            // Captured per call: this handler belongs to this one send alone, so a plain closure is
+            // all the sharing it will ever need. Contrast the direct path's ConnectCallback, which is
+            // shared by every call that reuses the cached handler and so cannot capture anything
+            // call-specific — that is exactly why this handler is never cached, whatever else about
+            // the request would otherwise have let it be: the CONNECT tunnel's TLS is established by
+            // the handler itself and observed through a handler-wide callback that cannot be
+            // attributed to the connection it belongs to. Sharing it would either blank these
+            // diagnostics or blur them across origins.
+            //
+            // The tunnel's own protocol/cipher/client-cert-sent facts are never observable here —
+            // only the server certificate is, because Validate runs either way — so the
+            // HandshakeInfo built below hardcodes those three to null/null/false rather than
+            // capturing variables nothing would ever assign.
+            string? srvSubject = null, srvIssuer = null, srvThumb = null;
+            DateTime? srvNotAfter = null;
+            IReadOnlyList<string> chain = Array.Empty<string>();
+
+            bool Validate(object _, X509Certificate? cert, X509Chain? certChain, SslPolicyErrors errors)
+            {
+                if (cert is not null)
+                {
+                    using var c = new X509Certificate2(cert);
+                    srvSubject = c.Subject;
+                    srvIssuer = c.Issuer;
+                    srvThumb = c.Thumbprint;
+                    srvNotAfter = c.NotAfter;
+                }
+                if (certChain is not null)
+                    chain = certChain.ChainElements.Select(e => e.Certificate.Subject).ToList();
+
+                if (errors == SslPolicyErrors.None) return true;
+                if (transport.IgnoreServerCertificateErrors) return true;
+                if (trustServerCertificate is not null)
+                {
+                    using var c = cert is null ? null : new X509Certificate2(cert);
+                    if (trustServerCertificate(c)) return true;
+                }
+                serverUntrusted = true;
+                return false;
+            }
+
+            var handler = BuildCommonHandler(transport, request.WindowsAuth);
             // Let the handler drive the proxy CONNECT + TLS; capture the server cert in the callback.
             handler.SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate };
             if (clientCertificate is not null)
                 handler.SslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
+
+            sendTransport = new SendTransport(
+                handler,
+                disposeHandler: true,
+                // The origin argument is meaningless here — there is exactly one handshake this call
+                // could ever have observed, the one Validate above just captured.
+                lookupHandshake: _ => new HandshakeInfo(
+                    null, null, false, srvSubject, srvIssuer, srvThumb, srvNotAfter, chain),
+                release: null);
         }
         else
         {
-            // Establish the transport ourselves so we can read the negotiated TLS details.
-            handler.ConnectCallback = async (context, ct) =>
-            {
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                // A --resolve override replaces the address we dial and nothing else: TargetHost
-                // (SNI) below and the Host header the handler wrote both keep the original name,
-                // so the server sees an ordinary request for the hostname the user typed.
-                var pinned = transport.Resolve.FirstOrDefault(r =>
-                    r.Port == context.DnsEndPoint.Port &&
-                    string.Equals(r.Host, context.DnsEndPoint.Host, StringComparison.OrdinalIgnoreCase));
-                EndPoint destination = pinned is null
-                    ? context.DnsEndPoint
-                    : new IPEndPoint(IPAddress.Parse(pinned.Address), context.DnsEndPoint.Port);
-                try { await socket.ConnectAsync(destination, ct); }
-                catch { socket.Dispose(); throw; }
-
-                var network = new NetworkStream(socket, ownsSocket: true);
-                if (context.InitialRequestMessage.RequestUri!.Scheme != Uri.UriSchemeHttps)
-                    return network;
-
-                var ssl = new SslStream(network, leaveInnerStreamOpen: false, Validate);
-                // TargetHost stays the requested hostname so SNI is unaffected by a --resolve override.
-                var sslOptions = new SslClientAuthenticationOptions { TargetHost = context.DnsEndPoint.Host };
-                // Without ALPN a hand-driven TLS stream can never negotiate the pinned version.
-                if (transport.Version is HttpVersionMode.Http2)
-                    sslOptions.ApplicationProtocols = [SslApplicationProtocol.Http2];
-                else if (transport.Version is HttpVersionMode.Http11)
-                    sslOptions.ApplicationProtocols = [SslApplicationProtocol.Http11];
-                if (clientCertificate is not null)
-                    sslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
-
-                try { await ssl.AuthenticateAsClientAsync(sslOptions, ct); }
-                catch { await ssl.DisposeAsync(); throw; }
-
-                negotiatedProtocol = ssl.SslProtocol;
-                try { cipher = ssl.NegotiatedCipherSuite; } catch { /* not available on all platforms */ }
-                clientCertSent = ssl.LocalCertificate is not null;
-                return ssl;
-            };
+            var key = HandlerKey.For(clientCertificate, transport, trustServerCertificate, request.WindowsAuth);
+            var entry = _handlerCache.Rent(key, () =>
+                CreateDirectHandlerEntry(clientCertificate, transport, trustServerCertificate, request.WindowsAuth));
+            sendTransport = new SendTransport(
+                entry.Handler,
+                disposeHandler: false,
+                lookupHandshake: entry.Lookup,
+                release: () => _handlerCache.Return(entry));
         }
 
-        ConnectionInfo BuildConnection() => new()
-        {
-            ViaProxy = viaProxy,
-            ProxyUri = viaProxy ? ProxyUriFor(request.Url, transport) : null,
-            TlsProtocol = FormatProtocol(negotiatedProtocol),
-            CipherSuite = cipher == default ? null : cipher.ToString(),
-            ClientCertificateSent = clientCertSent,
-            ClientCertificateSubject = clientCertificate?.Subject,
-            ServerCertificateSubject = srvSubject,
-            ServerCertificateIssuer = srvIssuer,
-            ServerCertificateThumbprint = srvThumb,
-            ServerCertificateNotAfter = srvNotAfter,
-            ServerCertificateChain = chain
-        };
-
-        using var http = new HttpClient(handler, disposeHandler: true) { Timeout = request.Timeout };
-        var stopwatch = Stopwatch.StartNew();
         // Declared outside the try so a failure part-way along a chain still reports the hops that
         // had already been taken — that is where the client certificate went.
         var hops = new List<RedirectHop>();
+        // Every origin this send visited, in hop order, so BuildConnection can find the handshake
+        // that established the connection actually used even when the very last hop opened none of
+        // its own (an https -> http downgrade, say).
+        var visitedOrigins = new List<string>();
+        // A caller who supplies no jar gets a private one for this send only — precisely what the
+        // handler's own fresh default cookie container gave every call before this, including
+        // carrying a cookie across the hops of one redirect chain but never into a later SendAsync.
+        var jar = cookies ?? new System.Net.CookieContainer();
+
+        ConnectionInfo BuildConnection()
+        {
+            // Scan backwards: the most recent visited origin that has a recorded handshake is the
+            // one that established the connection this response actually came back over. Never an
+            // unrelated origin's data, because only origins this same send visited are ever
+            // considered.
+            HandshakeInfo? info = null;
+            for (int i = visitedOrigins.Count - 1; i >= 0 && info is null; i--)
+                info = sendTransport.LookupHandshake(visitedOrigins[i]);
+
+            return new()
+            {
+                ViaProxy = viaProxy,
+                ProxyUri = viaProxy ? ProxyUriFor(request.Url, transport) : null,
+                TlsProtocol = info?.TlsProtocol,
+                CipherSuite = info?.CipherSuite,
+                ClientCertificateSent = info?.ClientCertificateSent ?? false,
+                ClientCertificateSubject = clientCertificate?.Subject,
+                ServerCertificateSubject = info?.ServerCertificateSubject,
+                ServerCertificateIssuer = info?.ServerCertificateIssuer,
+                ServerCertificateThumbprint = info?.ServerCertificateThumbprint,
+                ServerCertificateNotAfter = info?.ServerCertificateNotAfter,
+                ServerCertificateChain = info?.ServerCertificateChain ?? Array.Empty<string>()
+            };
+        }
+
+        // Disposed in this order at method exit: http first (harmless either way — the send it
+        // wraps has already finished), then the lease this send holds on a cached handler (a no-op
+        // for the proxied path, whose private handler http already owns via disposeHandler above).
+        using var handlerLease = sendTransport;
+        using var http = new HttpClient(sendTransport.Handler, sendTransport.DisposeHandler) { Timeout = request.Timeout };
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             string currentUrl = request.Url;
@@ -305,11 +292,33 @@ public sealed class ApiClient
 
             while (true)
             {
+                var hopUri = new Uri(currentUrl);
+                visitedOrigins.Add(OriginKey(hopUri));
+
                 using var message = BuildMessage(
                     request, transport, currentUrl, currentMethod, sentHeaders, sendBody);
 
+                // Composed by hand rather than left to the handler (see BuildCommonHandler's
+                // UseCookies = false): added even if the caller set a Cookie header themselves,
+                // because .NET's own cookie layer appends rather than replaces, and this has to match.
+                string cookieHeader = jar.GetCookieHeader(hopUri);
+                if (!string.IsNullOrEmpty(cookieHeader))
+                    message.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+
                 using var response = await http.SendAsync(
                     message, HttpCompletionOption.ResponseContentRead, cancellationToken);
+
+                // Applied before the redirect decision below, so the next hop carries what this one
+                // just set.
+                if (response.Headers.TryGetValues("Set-Cookie", out var setCookieValues))
+                {
+                    foreach (var value in setCookieValues)
+                    {
+                        // A malformed cookie is ignored, exactly as the handler's own cookie layer does.
+                        try { jar.SetCookies(hopUri, value); }
+                        catch (System.Net.CookieException) { /* ignored, as the handler's layer does */ }
+                    }
+                }
 
                 if (transport.FollowRedirects && RedirectTarget(response, currentUrl) is { } target)
                 {
@@ -419,7 +428,13 @@ public sealed class ApiClient
             stopwatch.Stop();
             var socketError = FirstSocketError(ex);
             var kind =
-                serverUntrusted ? ApiErrorKind.ServerCertificateUntrusted
+                // serverUntrusted is the proxied path's own per-request flag (always false on the
+                // direct path); ServerCertificateUntrustedException is how the shared direct-path
+                // handler reports the identical fact instead, since it has no per-request state to
+                // set a flag in. Checked first because the exception derives from
+                // AuthenticationException on purpose (see its own remarks), so the next branch would
+                // otherwise misclassify it as a merely-refused client certificate.
+                serverUntrusted || HasInner<ServerCertificateUntrustedException>(ex) ? ApiErrorKind.ServerCertificateUntrusted
                 : HasInner<AuthenticationException>(ex) ? ApiErrorKind.CertificateRefused
                 : socketError switch
                 {
@@ -460,6 +475,208 @@ public sealed class ApiClient
             };
         }
     }
+
+    /// <summary>The one difference between the proxied and direct send paths: which handler answers
+    /// the send, whether this call owns it outright (and so must dispose it when the send ends), and
+    /// where its handshake diagnostics live. Isolating exactly that is what lets the
+    /// send/redirect/response loop in <see cref="SendOnceAsync"/> be written once instead of forked
+    /// into two near-identical copies.</summary>
+    private sealed class SendTransport : IDisposable
+    {
+        public SocketsHttpHandler Handler { get; }
+        public bool DisposeHandler { get; }
+        public Func<string, HandshakeInfo?> LookupHandshake { get; }
+        private readonly Action? _release;
+
+        public SendTransport(
+            SocketsHttpHandler handler, bool disposeHandler,
+            Func<string, HandshakeInfo?> lookupHandshake, Action? release)
+        {
+            Handler = handler;
+            DisposeHandler = disposeHandler;
+            LookupHandshake = lookupHandshake;
+            _release = release;
+        }
+
+        // Drops this send's lease on a cached handler (direct path); a no-op for the proxied path,
+        // whose private handler the owning HttpClient disposes on its own via DisposeHandler.
+        public void Dispose() => _release?.Invoke();
+    }
+
+    /// <summary>The handler settings both send paths need, before either the proxied path's
+    /// SslOptions or the direct path's ConnectCallback is layered on top of it.</summary>
+    private static SocketsHttpHandler BuildCommonHandler(TransportOptions transport, WindowsAuthOptions? windowsAuth)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            // Use the machine's configured proxy — including "Automatically detect settings"
+            // (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options —
+            // authenticating with the signed-in user's Windows credentials when required.
+            DefaultProxyCredentials = CredentialCache.DefaultCredentials
+        };
+        switch (transport.Proxy)
+        {
+            case ProxyMode.None:
+                // Bypassing the proxy also restores the ConnectCallback path, which is the only
+                // place the TLS details can be read.
+                handler.UseProxy = false;
+                break;
+            case ProxyMode.Explicit:
+                handler.Proxy = new WebProxy(transport.ProxyUrl)
+                {
+                    Credentials = transport.ProxyUser is null
+                        ? CredentialCache.DefaultCredentials
+                        : new NetworkCredential(transport.ProxyUser, transport.ProxyPassword)
+                };
+                handler.UseProxy = true;
+                break;
+        }
+        // Never let the handler follow redirects: it does so internally, so the intermediate
+        // responses — and with them every hop, its status, and where the client certificate was
+        // presented — are unobservable. SendAsync runs the chain itself instead.
+        handler.AllowAutoRedirect = false;
+        // Decoding is the default every other HTTP client uses; turning it off relays the bytes
+        // exactly as the server framed them, which is what a byte-exact relay test needs.
+        handler.AutomaticDecompression = transport.Decompress
+            ? DecompressionMethods.All
+            : DecompressionMethods.None;
+        // A shared handler must never carry any one caller's cookie jar — see the per-send cookie
+        // handling in SendOnceAsync, which reproduces the old per-handler-default-container behavior
+        // by hand instead of leaving it to the handler.
+        handler.UseCookies = false;
+
+        // Windows Integrated Auth (Negotiate/NTLM): set server credentials so the handler runs the
+        // challenge/response handshake automatically. Connection-bound, so it needs the pooled
+        // connection to persist across the handshake legs — which SocketsHttpHandler does.
+        if (windowsAuth is { } wa)
+        {
+            handler.Credentials = wa.UseDefaultCredentials
+                ? CredentialCache.DefaultCredentials
+                : new NetworkCredential(wa.Username, wa.Password, wa.Domain);
+            handler.PreAuthenticate = true;
+        }
+        return handler;
+    }
+
+    /// <summary>Builds the one handler an entire family of equivalent direct-connection requests will
+    /// share, and the <see cref="HandlerEntry"/> that owns it. Everything captured here — the client
+    /// certificate, the trust decision, the transport's TLS-relevant settings — is exactly what
+    /// <see cref="HandlerKey"/> keys sharing on, so every call that ever reaches this handler already
+    /// agrees on all of it.</summary>
+    private static HandlerEntry CreateDirectHandlerEntry(
+        X509Certificate2? clientCertificate,
+        TransportOptions transport,
+        Func<X509Certificate2?, bool>? trustServerCertificate,
+        WindowsAuthOptions? windowsAuth)
+    {
+        var handler = BuildCommonHandler(transport, windowsAuth);
+
+        var certificateCopy = clientCertificate is null ? null : new X509Certificate2(clientCertificate);
+
+        // Resolved before the callback below is ever invoked: the entry cannot exist until after the
+        // handler it wraps does, but the callback needs to record into that same entry.
+        HandlerEntry? self = null;
+
+        // Establish the transport ourselves so we can read the negotiated TLS details. Unlike the
+        // per-call handler it replaces, this callback runs once per *connection* this handler ever
+        // opens — never once per request — because the handler itself is now shared across requests.
+        handler.ConnectCallback = async (context, ct) =>
+        {
+            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            // A --resolve override replaces the address we dial and nothing else: TargetHost
+            // (SNI) below and the Host header the handler wrote both keep the original name,
+            // so the server sees an ordinary request for the hostname the user typed.
+            var pinned = transport.Resolve.FirstOrDefault(r =>
+                r.Port == context.DnsEndPoint.Port &&
+                string.Equals(r.Host, context.DnsEndPoint.Host, StringComparison.OrdinalIgnoreCase));
+            EndPoint destination = pinned is null
+                ? context.DnsEndPoint
+                : new IPEndPoint(IPAddress.Parse(pinned.Address), context.DnsEndPoint.Port);
+            try { await socket.ConnectAsync(destination, ct); }
+            catch { socket.Dispose(); throw; }
+
+            var network = new NetworkStream(socket, ownsSocket: true);
+            if (context.InitialRequestMessage.RequestUri!.Scheme != Uri.UriSchemeHttps)
+                return network;
+
+            // Declared inside the callback rather than in the method that builds the handler: this
+            // callback runs once per connection, so these locals are per-connection even though the
+            // handler — and this delegate instance — is shared by every request that reuses it. That
+            // is what keeps a shared handler safe to call concurrently: two connections opening at
+            // once never trample the same variables the way fields on the handler would.
+            string? srvSubject = null, srvIssuer = null, srvThumb = null;
+            DateTime? srvNotAfter = null;
+            IReadOnlyList<string> chain = Array.Empty<string>();
+            bool untrusted = false;
+
+            bool Validate(object _, X509Certificate? cert, X509Chain? certChain, SslPolicyErrors errors)
+            {
+                if (cert is not null)
+                {
+                    using var c = new X509Certificate2(cert);
+                    srvSubject = c.Subject;
+                    srvIssuer = c.Issuer;
+                    srvThumb = c.Thumbprint;
+                    srvNotAfter = c.NotAfter;
+                }
+                if (certChain is not null)
+                    chain = certChain.ChainElements.Select(e => e.Certificate.Subject).ToList();
+
+                if (errors == SslPolicyErrors.None) return true;
+                if (transport.IgnoreServerCertificateErrors) return true;
+                if (trustServerCertificate is not null)
+                {
+                    using var c = cert is null ? null : new X509Certificate2(cert);
+                    if (trustServerCertificate(c)) return true;
+                }
+                untrusted = true;
+                return false;
+            }
+
+            var ssl = new SslStream(network, leaveInnerStreamOpen: false, Validate);
+            // TargetHost stays the requested hostname so SNI is unaffected by a --resolve override.
+            var sslOptions = new SslClientAuthenticationOptions { TargetHost = context.DnsEndPoint.Host };
+            // Without ALPN a hand-driven TLS stream can never negotiate the pinned version.
+            if (transport.Version is HttpVersionMode.Http2)
+                sslOptions.ApplicationProtocols = [SslApplicationProtocol.Http2];
+            else if (transport.Version is HttpVersionMode.Http11)
+                sslOptions.ApplicationProtocols = [SslApplicationProtocol.Http11];
+            // The entry-owned copy, never the caller's own object: this callback is shared by every
+            // connection this handler ever opens, long after the SendAsync call that created the
+            // handler has returned, so it must not depend on the caller's X509Certificate2 staying
+            // alive or undisposed (see certificateCopy's own remarks above).
+            if (certificateCopy is not null)
+                sslOptions.ClientCertificates = new X509CertificateCollection { certificateCopy };
+
+            try { await ssl.AuthenticateAsClientAsync(sslOptions, ct); }
+            catch (Exception ex)
+            {
+                await ssl.DisposeAsync();
+                // Only when *this* validation is what refused it: any other authentication failure
+                // (protocol mismatch, no certificate presented, and so on) keeps its own classification.
+                if (untrusted) throw new ServerCertificateUntrustedException(ex.Message, ex);
+                throw;
+            }
+
+            var info = new HandshakeInfo(
+                FormatProtocol(ssl.SslProtocol),
+                CipherSuiteOf(ssl),
+                ssl.LocalCertificate is not null,
+                srvSubject, srvIssuer, srvThumb, srvNotAfter, chain);
+            self!.RecordHandshake(OriginKey(context.InitialRequestMessage.RequestUri!), info);
+
+            return ssl;
+        };
+
+        var entry = new HandlerEntry(handler, certificateCopy);
+        self = entry;
+        return entry;
+    }
+
+    // host:port, lowercased, IPv6 brackets stripped, computed from a Uri on both the recording side
+    // (inside the ConnectCallback above) and the lookup side (BuildConnection in SendOnceAsync) so
+    // the two can never disagree about which origin a connection belongs to.
+    private static string OriginKey(Uri uri) => uri.Host.Trim('[', ']').ToLowerInvariant() + ":" + uri.Port;
 
     /// <summary>The message for one hop. A chain rebuilds it from the original <see cref="ApiRequest"/>
     /// every time rather than resending the previous message: an HttpContent can only be consumed
@@ -637,4 +854,14 @@ public sealed class ApiClient
         SslProtocols.None => null,
         _ => p.ToString()
     };
+
+    /// <summary>The negotiated cipher suite, or null when the platform cannot report one ("default"
+    /// means unavailable, not a real negotiated value) — its own helper so the direct-connection
+    /// handshake applies exactly the same rule the per-call closure used to.</summary>
+    private static string? CipherSuiteOf(SslStream ssl)
+    {
+        TlsCipherSuite cipher = default;
+        try { cipher = ssl.NegotiatedCipherSuite; } catch { /* not available on all platforms */ }
+        return cipher == default ? null : cipher.ToString();
+    }
 }

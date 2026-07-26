@@ -65,12 +65,12 @@ public static class BenchCommand
           --json                  A JSON envelope instead of the summary table
 
         What the numbers include:
-          Each request opens its own connection, so every latency below covers the TCP connect
-          and the TLS handshake as well as the response. This client captures the handshake
-          diagnostics per send (negotiated protocol, cipher suite, server certificate), so
-          there is no connection pooling to hide that cost. Read the figures as "how long one
-          request to this endpoint takes, from cold", not "how fast a warm client can stream
-          requests at it".
+          Connections are pooled and reused, so only the first request to an origin pays the TCP
+          connect and TLS handshake; later requests measure the request and response alone. Use
+          --warmup to discard that first-connection cost so the figures describe a warmed-up
+          endpoint instead of "how long the first request takes, from cold". A request routed
+          through a proxy still opens its own connection every time, because the proxied path
+          cannot be pooled — see --proxy above.
 
         A bench never writes anything: no known-good results, no captured tokens, no state
         file. The workspace is read for {{variables}}, saved requests, and pinned certificates
@@ -102,10 +102,11 @@ public static class BenchCommand
         report but that) · 2 usage · 3 data error.
         """;
 
-    /// <summary>The limitation a reader of these numbers must not be misled about, in one line, in
-    /// both output forms. See <see cref="Bench.RunAsync"/> for why pooling is not available.</summary>
+    /// <summary>The one thing a reader of these numbers must not be misled about, in one line, in
+    /// both output forms. See <see cref="Bench.RunAsync"/> for what pooling does and does not cover.</summary>
     private const string ConnectionCaveat =
-        "each request opens its own connection, so these figures include connection setup.";
+        "connections are pooled and reused, so only the first request to an origin pays the TCP " +
+        "connect and TLS handshake.";
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {

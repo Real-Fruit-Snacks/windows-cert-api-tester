@@ -20,7 +20,8 @@ public sealed class SelfTestRunner
             await using var server = await LoopbackMtlsServer.StartAsync(
                 serverCert, clientCert.Thumbprint!, "{\"selfTest\":\"ok\"}");
 
-            var response = await new ApiClient().SendAsync(
+            using var client = new ApiClient();
+            var response = await client.SendAsync(
                 new ApiRequest { Method = HttpMethod.Get, Url = server.BaseUrl },
                 clientCert,
                 trustServerCertificate: c => c is not null && c.Thumbprint == serverCert.Thumbprint,

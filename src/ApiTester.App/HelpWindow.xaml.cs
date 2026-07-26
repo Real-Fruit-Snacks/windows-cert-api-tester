@@ -468,12 +468,13 @@ public partial class HelpWindow : Window
           "measured anything, however bad the failure rate — it reports numbers rather than passing " +
           "judgement. Exit 1 means no request got a response at all, where there is nothing to " +
           "report but that the endpoint could not be reached."),
-        NoteBox("What the latencies include: every request opens its own connection, because this " +
-                "client builds a fresh handler per send in order to capture that request's own " +
-                "handshake diagnostics. There is no connection pooling to hide the cost, so each " +
-                "measured request pays its own TCP connect and TLS handshake. Read the figures as " +
-                "“how long one request to this endpoint takes, from cold”, not “how fast a warm client " +
-                "can stream requests at it”. Retries are also forced off during a bench, because a " +
+        NoteBox("What the latencies include: connections are pooled and reused, so only the first " +
+                "request to an origin pays the TCP connect and TLS handshake — every later request " +
+                "that shares the same client certificate and trust policy reuses that connection and " +
+                "measures only the request and response. --warmup discards that first-connection cost " +
+                "so the figures describe a warmed-up endpoint. A request routed through a proxy still " +
+                "opens its own connection every time, because the proxied path can't be pooled. " +
+                "Retries are also forced off during a bench, because a " +
                 "retry turns a failure into a slow success and hides the failure rate the bench exists " +
                 "to measure — --bench-retries measures it anyway. There is no window for the bench: it " +
                 "is a command-line concern."),

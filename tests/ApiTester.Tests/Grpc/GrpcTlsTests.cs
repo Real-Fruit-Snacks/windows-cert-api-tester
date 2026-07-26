@@ -65,7 +65,13 @@ public class GrpcTlsTests
         {
             var status = Assert.IsType<GrpcStatusException>(ex);
             Assert.False(string.IsNullOrWhiteSpace(status.StatusDetail));
-            Assert.Contains("handshake", status.Message, StringComparison.OrdinalIgnoreCase);
+            // The guarded defect is that a refused handshake used to surface as a bare
+            // "A task was canceled." with the cause discarded. Assert that property directly rather
+            // than matching a phase word like "handshake": which phase the teardown is reported in
+            // is not guaranteed by the runtime and varied under load, so matching it made a real
+            // regression and a rescheduled thread indistinguishable.
+            Assert.DoesNotContain("A task was canceled", status.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("caused by", status.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 

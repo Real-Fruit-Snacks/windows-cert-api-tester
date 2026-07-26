@@ -6,6 +6,64 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.57.0] - 2026-07-26
+
+### Changed
+- **`ApiClient` now pools and reuses HTTP connections instead of opening a fresh one for every
+  send.** It used to construct a brand-new `SocketsHttpHandler` and `HttpClient` inside every
+  `SendAsync` call, so a 20-request suite performed 20 TLS (Transport Layer Security) handshakes
+  and no connection was ever reused. That was never an oversight left for later — the handshake
+  diagnostics (negotiated TLS protocol, cipher suite, whether the client certificate was presented,
+  the server certificate and chain) were captured into closure variables created fresh for each
+  call, which bound the handler carrying the connect callback to that one call; sharing a handler
+  across calls would have meant one call's diagnostics silently overwriting another's. This release
+  moves the capture from *per send* to *per connection*: a connect callback keyed by origin now
+  runs once, when a connection is established, rather than once for every request that happens to
+  use it, so the handler no longer has to be rebuilt to keep the diagnostics honest. `ApiClient` now
+  owns a bounded (capacity 8) Least Recently Used (LRU) cache of handlers, keyed by everything baked
+  into a handler — the client certificate (by SHA-256 hash, plus whether it carries a private key),
+  proxy configuration, `IgnoreServerCertificateErrors`, the trust callback's identity (via
+  `TrustPredicates`, which now memoizes one delegate instance per host — the reason repeated
+  requests to the same host can be recognised as reusable at all), decompression, HTTP version,
+  `--resolve` overrides, and Windows-auth credentials. Two requests share a connection only when
+  every one of those matches exactly; the key is deliberately conservative, because a wrong answer
+  here — reusing a connection across two different client certificates, say — would be a security
+  defect, not a performance bug. A request never reuses a connection established with a different
+  client certificate or a different trust policy. A request routed through a proxy still opens its
+  own connection and is never pooled: the CONNECT tunnel's TLS is established by the handler itself,
+  through a handler-wide callback that can't be attributed to the one connection it belongs to, so
+  there is nothing safe to key a shared handler on for that path. Proved by test, not asserted: two
+  equivalent sends to one origin through one `ApiClient` cause the server to complete exactly one
+  TLS handshake while answering both requests; a `certapi run` suite of two requests against one
+  host now opens one connection instead of two; a second request over a pooled connection still
+  presents the client certificate (verified server-side); and two different client certificates, two
+  different trust policies, two different sets of Windows-auth credentials, or two different
+  decompression settings each open their own connection rather than share one.
+- **What `ConnectionInfo` reports changed, on purpose, and it's user-visible.** With real pooling, a
+  second request over an existing connection performs no handshake, so there is nothing fresh to
+  report. `ConnectionInfo` now describes *the handshake that established the connection currently in
+  use*, not a handshake that just happened for this particular request — a second send to an
+  already-pooled origin shows the same negotiated protocol, cipher suite, and
+  client-certificate-presented value as the first, because that is what is actually true of the
+  connection carrying it, not because nothing was captured this time. This is more truthful than the
+  old behavior, which only ever showed fresh handshake data because it forced a fresh handshake on
+  every single request whether or not one was needed. Diagnostics are now a property of the
+  connection rather than of the individual request; the app's Diagnostics tab and `certapi bench`'s
+  own caveat are updated to say so, in `README.md`, `wiki/06-Certificates-and-mTLS.md`, and the
+  in-app Help window.
+- **Cookies moved off the handler to per-send handling**, so one caller's cookie jar can never leak
+  into another caller's request by way of a handler now shared across sends.
+- **`ApiClient` is now `IDisposable`.** The app disposes its instance when the main window closes,
+  and `Bench` and `SelfTestRunner` dispose the ones they create — the handler cache a long-lived
+  instance now holds is a real resource, not a stateless helper.
+- **The bench caveat changed to match.** `certapi bench`'s old caveat — "each request opens its own
+  connection, so these figures include connection setup" — is no longer true and is replaced
+  everywhere it appeared (the CLI summary, the `--json` envelope, `certapi bench --help`,
+  `Bench.RunAsync`'s remarks, the app's Help window, `wiki/21-CLI-Reference.md`, `README.md`, and
+  `docs/index.html`): connections are pooled and reused, so only the first request to an origin pays
+  the TCP connect and TLS handshake, `--warmup` exists to discard exactly that cost, and a request
+  routed through a proxy still opens its own connection every time.
+
 ## [1.56.0] - 2026-07-26
 
 ### Added
@@ -1084,7 +1142,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.56.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.57.0...HEAD
+[1.57.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.56.0...v1.57.0
 [1.56.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.1...v1.56.0
 [1.55.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.0...v1.55.1
 [1.55.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.54.0...v1.55.0

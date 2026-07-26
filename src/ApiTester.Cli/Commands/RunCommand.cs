@@ -182,6 +182,11 @@ public static class RunCommand
         }
 
         var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        // One instance for the whole run: ApiClient's handler cache keys the per-host trust
+        // predicate by delegate identity, so a caller that built a fresh lambda per request could
+        // never pool a connection with itself. This makes repeated requests to the same host reuse
+        // the same delegate instance instead.
+        var predicates = new TrustPredicates(state);
 
         // --diff-har: the same replay, but every response is compared against the one the archive
         // recorded. Named headers are added to the volatile defaults rather than replacing them —
@@ -198,7 +203,7 @@ public static class RunCommand
                 CompareHeaderValues = true
             };
             return RunHar(diffHar, cert, state, transportOverrides, showRedirects, json, stdout, stderr, services,
-                          diffOptions);
+                          predicates, diffOptions);
         }
 
         // A <file.har> positional (versus a live collection/folder name) replays its entries as an
@@ -206,7 +211,7 @@ public static class RunCommand
         // saved-collection path below.
         if (positionals.Count == 1 && positionals[0].EndsWith(".har", StringComparison.OrdinalIgnoreCase) &&
             File.Exists(positionals[0]))
-            return RunHar(positionals[0], cert, state, transportOverrides, showRedirects, json, stdout, stderr, services);
+            return RunHar(positionals[0], cert, state, transportOverrides, showRedirects, json, stdout, stderr, services, predicates);
 
         // A chain resolves every step up front — a chain naming a request that no longer exists must
         // fail before it makes a network call, not half-way through with a login already sent.
@@ -295,7 +300,7 @@ public static class RunCommand
         var skippedSteps = new List<string>();
         var clock = Stopwatch.StartNew();
         var flags = new RunFlags(noAutoToken, strictVars, record, showRedirects, harIncludeSecrets,
-                                 jar, transportOverrides, harEntries);
+                                 jar, transportOverrides, harEntries, predicates);
         if (chain is not null)
         {
             var vars = BuildIterVars(null);
@@ -404,7 +409,8 @@ public static class RunCommand
     /// so the per-request path can be shared without a twenty-argument signature.</summary>
     private sealed record RunFlags(
         bool NoAutoToken, bool StrictVars, bool Record, bool ShowRedirects, bool HarIncludeSecrets,
-        System.Net.CookieContainer? Jar, TransportOverrides TransportOverrides, List<HarEntry>? HarEntries);
+        System.Net.CookieContainer? Jar, TransportOverrides TransportOverrides, List<HarEntry>? HarEntries,
+        TrustPredicates Predicates);
 
     /// <summary>One request of a run: send it, capture what it yields, record the result, and report its
     /// assertions. Shared by a collection run and a chain so a step cannot drift from a suite entry —
@@ -420,7 +426,7 @@ public static class RunCommand
     {
         var (response, url) = Execute(id, node.Request!, state, flags.NoAutoToken, vars, flags.StrictVars, flags.Jar,
                                       flags.TransportOverrides, flags.ShowRedirects, stderr, services,
-                                      flags.HarEntries, flags.HarIncludeSecrets);
+                                      flags.HarEntries, flags.HarIncludeSecrets, flags.Predicates);
         results.Add((id, node.Request!, url, response));
         if (!flags.NoAutoToken && response.Error is null &&
             TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
@@ -484,7 +490,8 @@ public static class RunCommand
         string path, RequestModel m, AppState state, bool noAutoToken,
         Dictionary<string, string> vars, bool strictVars, System.Net.CookieContainer? cookies,
         TransportOverrides transportOverrides, bool showRedirects,
-        TextWriter stderr, CliServices services, List<HarEntry>? harEntries, bool harIncludeSecrets)
+        TextWriter stderr, CliServices services, List<HarEntry>? harEntries, bool harIncludeSecrets,
+        TrustPredicates predicates)
     {
         var unresolved = new List<string>();
         string R(string s)
@@ -566,7 +573,7 @@ public static class RunCommand
         // own IgnoreServerCert bypass (which trusts anything and is untouched above).
         var response = services.Client.SendAsync(request, cert,
             transport: transport,
-            trustServerCertificate: c => c is not null && TrustService.IsTrusted(state, host, c.Thumbprint!),
+            trustServerCertificate: predicates.For(host),
             cookies: effectiveJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug($"{path}: " + (response.Error is null
             ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
@@ -595,7 +602,8 @@ public static class RunCommand
     private static int RunHar(
         string path, System.Security.Cryptography.X509Certificates.X509Certificate2? cert, AppState state,
         TransportOverrides transportOverrides, bool showRedirects, bool json,
-        TextWriter stdout, TextWriter stderr, CliServices services, DiffOptions? diffOptions = null)
+        TextWriter stdout, TextWriter stderr, CliServices services, TrustPredicates predicates,
+        DiffOptions? diffOptions = null)
     {
         Har har;
         try { har = HarReader.Parse(File.ReadAllText(path)); }
@@ -625,7 +633,7 @@ public static class RunCommand
             string host = TokenService.HostOf(pr.Url);
             var response = services.Client.SendAsync(request, cert,
                 transport: transport,
-                trustServerCertificate: c => c is not null && TrustService.IsTrusted(state, host, c.Thumbprint!),
+                trustServerCertificate: predicates.For(host),
                 cancellationToken: services.Cancel).GetAwaiter().GetResult();
             // A transport failure produced no response to compare; it fails on its own terms below.
             DiffResult? diff = diffOptions is not null && response.Error is null

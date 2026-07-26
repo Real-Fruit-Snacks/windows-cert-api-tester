@@ -75,6 +75,13 @@ After a send, the **Diagnostics** tab (app) shows what actually happened in the 
   mutual TLS — worked), or whether the server didn't ask for one.
 - **Server certificate** — subject, issuer, thumbprint, expiry, and the chain.
 
+Connections are pooled and reused, so these diagnostics describe the handshake that established the
+connection your request used, not necessarily a handshake that just happened — a second send to the
+same host over a reused connection shows the same protocol, cipher, and client-certificate-presented
+values as the first, because there was no new handshake to observe. A connection is only ever reused
+by a request presenting the same client certificate and the same trust policy, so what you're shown is
+still true of the request in front of you.
+
 On the CLI, add `--debug` to print the same TLS details (and much more) to stderr.
 
 ## Proving the whole path works

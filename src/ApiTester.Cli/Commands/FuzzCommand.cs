@@ -146,6 +146,9 @@ public static class FuzzCommand
 
         // ---- variables ----
         var state = LoadState(workspace, services);
+        // Every probe targets the same base URL, so one predicate covers the whole run — and,
+        // unlike a fresh lambda per probe, lets probes to the same host share a pooled connection.
+        var predicates = new TrustPredicates(state);
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
         string R(string s) => VariableResolver.Resolve(s ?? "", vars).Result;   // (Result, Unresolved) tuple
         baseUrl = R(baseUrl);
@@ -202,7 +205,7 @@ public static class FuzzCommand
             var probe = request with { Headers = reqHeaders, Timeout = TimeSpan.FromSeconds(timeout) };
             var response = await services.Client.SendAsync(probe, cert,
                 transport: transport,
-                trustServerCertificate: c => c is not null && TrustService.IsTrusted(state, TokenService.HostOf(request.Url), c.Thumbprint!),
+                trustServerCertificate: predicates.For(TokenService.HostOf(request.Url)),
                 cancellationToken: ct);
             if (!noAutoToken && response.Error is null)
                 lock (captureLock) TokenService.Capture(state, request.Url, response.Body, response.ContentType, response.Headers);
