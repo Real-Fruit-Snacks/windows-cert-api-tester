@@ -98,7 +98,7 @@ public sealed class GrpcCaller : IAsyncDisposable
                 $"'{service}/{method}' is server-streaming; use the streaming call instead.");
         }
 
-        byte[] requestBytes = ProtoJsonWriter.ToProtobuf(methodDescriptor.InputType, requestJson);
+        byte[] requestBytes = ProtoJsonWriter.ToProtobuf(methodDescriptor.InputType, requestJson, _descriptors.FindMessage);
         var callMetadata = BuildMetadata(metadata);
 
         var grpcMethod = new Method<byte[], byte[]>(MethodType.Unary, service, method, ByteMarshaller, ByteMarshaller);
@@ -110,7 +110,7 @@ public sealed class GrpcCaller : IAsyncDisposable
         {
             byte[] responseBytes = await call.ResponseAsync;
             var elapsed = stopwatch.Elapsed;
-            string responseJson = ProtoJsonReader.ToJson(methodDescriptor.OutputType, responseBytes, indented: true);
+            string responseJson = ProtoJsonReader.ToJson(methodDescriptor.OutputType, responseBytes, indented: true, _descriptors.FindMessage);
             return new GrpcCallResult(0, "OK", "", responseJson, GrpcFailure.ToPairs(call.GetTrailers()), elapsed);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && ct.IsCancellationRequested)
@@ -173,7 +173,7 @@ public sealed class GrpcCaller : IAsyncDisposable
                 $"'{service}/{method}' is unary; use InvokeAsync instead.");
         }
 
-        byte[] requestBytes = ProtoJsonWriter.ToProtobuf(methodDescriptor.InputType, requestJson);
+        byte[] requestBytes = ProtoJsonWriter.ToProtobuf(methodDescriptor.InputType, requestJson, _descriptors.FindMessage);
         var callMetadata = BuildMetadata(metadata);
 
         var grpcMethod = new Method<byte[], byte[]>(MethodType.ServerStreaming, service, method, ByteMarshaller, ByteMarshaller);
@@ -198,7 +198,7 @@ public sealed class GrpcCaller : IAsyncDisposable
                 throw GrpcFailure.FromRpcException(ex);
             }
             if (!moved) break;
-            yield return ProtoJsonReader.ToJson(methodDescriptor.OutputType, call.ResponseStream.Current, indented: false);
+            yield return ProtoJsonReader.ToJson(methodDescriptor.OutputType, call.ResponseStream.Current, indented: false, _descriptors.FindMessage);
         }
     }
 

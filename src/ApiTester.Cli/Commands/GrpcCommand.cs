@@ -64,9 +64,9 @@ public static class GrpcCommand
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
         Well-known Protobuf types (google.protobuf.Timestamp, Duration, Struct, Any, the wrapper
-        types) render as ordinary messages rather than their special-cased JSON forms — a
-        Timestamp shows as {"seconds":"5","nanos":0}, not an ISO 8601 string — and are supplied
-        the same way.
+        types) render and are supplied in their canonical JSON forms — a Timestamp renders as an
+        RFC 3339 string ("2023-11-14T22:13:20Z"), not {"seconds":"5","nanos":0}. An unresolved
+        Any degrades visibly ({"@type":...,"value":"<base64>"}) rather than failing the call.
 
         Examples:
           (Examples use PowerShell quoting; in cmd.exe write JSON bodies as "{\"user\":\"me\"}".)

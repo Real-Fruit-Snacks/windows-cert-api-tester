@@ -6,6 +6,56 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.56.0] - 2026-07-26
+
+### Added
+- **`certapi grpc call` renders and accepts the well-known Protobuf types in their canonical
+  JavaScript Object Notation (JSON) forms.** Google.Protobuf for C# has no `DynamicMessage`: a
+  descriptor built at runtime from server-reflection bytes has no compiled .NET type behind it,
+  so Google's own `JsonFormatter`/`JsonParser` cannot operate on it, which is why `certapi grpc`
+  carries its own hand-rolled, descriptor-driven converter (`ProtoJsonWriter`/`ProtoJsonReader`
+  in `ApiTester.Grpc`). Until now that converter treated every well-known type as an ordinary
+  nested message; this release implements the canonical mapping from the Protocol Buffers
+  (Protobuf) JSON specification (protobuf.dev, "ProtoJSON Format"), in both directions — a
+  response renders in canonical form, and a request body supplied in canonical form encodes
+  correctly onto the wire. `Timestamp` is an RFC 3339 string, always UTC `Z`, with 0, 3, 6, or 9
+  fractional digits (`"2023-11-14T22:13:20.5Z"`), and accepts a numeric UTC offset on input and
+  converts it; `Duration` is seconds with an `s` suffix (`"1.500s"`, `"-3s"`); the nine wrapper
+  types (`DoubleValue`, `FloatValue`, `Int64Value`, `UInt64Value`, `Int32Value`, `UInt32Value`,
+  `BoolValue`, `StringValue`, `BytesValue`) render as the bare underlying value —
+  `Int64Value`/`UInt64Value` as a JSON string per the existing 64-bit-integer rule, `BytesValue`
+  as base64 — and a wrapper holding its type's default still renders as that default (`0`, `""`,
+  `false`), which is what distinguishes a present-but-default wrapper from an absent one;
+  `Struct` is a plain JSON object, `Value` is any JSON value including `null`, and `ListValue` is
+  a JSON array; `FieldMask` is comma-joined lowerCamelCase paths (`"user.displayName,photo"`),
+  converted to and from the wire's snake_case; and `Empty` is `{}`. `Any` renders as an object
+  with `"@type"` plus the payload's fields inlined, or the payload nested under `"value"` instead
+  when it is itself a well-known type — and the expansion is best-effort: when the type URL
+  resolves against the descriptors reflection fetched, the payload is expanded; when it doesn't,
+  or its bytes don't decode, the field degrades to `{"@type":…,"value":"<base64>"}` rather than
+  failing the call, so one unresolvable `Any` never sinks a whole response. Correctness is proved
+  differentially rather than against hand-written expectations: the tests compare our writer's
+  output against Google's own `JsonFormatter`, and our reader's encoding against `JsonParser`,
+  over descriptors rebuilt at runtime from reflection bytes — the real production condition.
+  Malformed input is a clean data error, not a crash: an unparseable timestamp, duration, or
+  field mask in a request body exits 3 naming the offending field, for example `'all.fTimestamp':
+  'not-a-time' is not a valid RFC 3339 timestamp (google.protobuf.Timestamp expects e.g.
+  "2023-11-14T22:13:20Z").`
+
+### Changed
+- **This changes the shape of `certapi grpc call`'s output — a script parsing the old form will
+  see something different.** A `google.protobuf.Timestamp` that rendered as
+  `{"seconds":1700000000,"nanos":0}` now renders as `"2023-11-14T22:13:20Z"`; a `StringValue`
+  that rendered as `{"value":"x"}` now renders as `"x"`; a `Duration` that rendered as
+  `{"seconds":1,"nanos":500000000}` now renders as `"1.500s"`. The request side gains the same
+  forms: a body may now supply these canonical shapes, and the old object forms are still
+  accepted for backward compatibility — except for `Struct` and `Value`, where a plain JSON
+  object is itself the canonical form, so `{"fStruct":{"fields":{...}}}` is now read as a
+  `Struct` whose one field is literally named `"fields"`, not as the old object-wrapped shape.
+  That exception isn't a shortcut taken here: it is exactly what Google's own `JsonParser` does
+  for these two types, and it is worth stating plainly rather than leaving it to be discovered by
+  surprise.
+
 ## [1.55.1] - 2026-07-26
 
 ### Fixed
@@ -1034,7 +1084,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.56.0...HEAD
+[1.56.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.1...v1.56.0
 [1.55.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.0...v1.55.1
 [1.55.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.54.0...v1.55.0
 [1.54.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.53.0...v1.54.0

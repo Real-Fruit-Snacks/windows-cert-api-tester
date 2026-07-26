@@ -1,6 +1,14 @@
 syntax = "proto3";
 package certapi.test;
 
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+
 // Deliberately wide: every field kind ApiTester.Grpc's JSON<->Protobuf conversion has to handle
 // appears here once, so the conversion tests can be differential — the same JSON through our
 // converter and through Google's own JsonParser/JsonFormatter must agree.
@@ -47,6 +55,31 @@ message AllTypes {
     string choice_string = 26;
     int32 choice_int = 27;
   }
+
+  // The well-known types below (Timestamp, Duration, the nine wrapper types, Struct/Value/ListValue,
+  // FieldMask, Empty, Any) each have a canonical JSON mapping distinct from an ordinary nested
+  // message's, so their conversion can be validated differentially against Google's own
+  // JsonFormatter/JsonParser. The repeated and map variants exist so that validation also covers the
+  // repeated-element and map-value positions, not only a field's singular form.
+  google.protobuf.Timestamp f_timestamp = 28;
+  google.protobuf.Duration f_duration = 29;
+  google.protobuf.DoubleValue w_double = 30;
+  google.protobuf.FloatValue w_float = 31;
+  google.protobuf.Int64Value w_int64 = 32;
+  google.protobuf.UInt64Value w_uint64 = 33;
+  google.protobuf.Int32Value w_int32 = 34;
+  google.protobuf.UInt32Value w_uint32 = 35;
+  google.protobuf.BoolValue w_bool = 36;
+  google.protobuf.StringValue w_string = 37;
+  google.protobuf.BytesValue w_bytes = 38;
+  google.protobuf.Struct f_struct = 39;
+  google.protobuf.Value f_value = 40;
+  google.protobuf.ListValue f_list = 41;
+  google.protobuf.FieldMask f_mask = 42;
+  google.protobuf.Empty f_empty = 43;
+  google.protobuf.Any f_any = 44;
+  repeated google.protobuf.Timestamp r_timestamp = 45;
+  map<string, google.protobuf.Timestamp> m_timestamp = 46;
 }
 
 message EchoRequest {

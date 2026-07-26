@@ -17,6 +17,15 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
     private readonly Dictionary<string, FileDescriptorProto> _protos = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ServiceDescriptor> _services = new(StringComparer.Ordinal);
 
+    // An Any's type URL names a message, not a service, and expanding one needs a by-name lookup over
+    // everything reflection has fetched — which is a strictly larger set than any single file's
+    // dependency closure (a service's own input/output types and their transitive dependencies),
+    // because the payload type an Any carries is not necessarily imported by the message that holds
+    // it. This is exactly what makes expansion work for a payload type the response message does not
+    // itself import: the server may have advertised that type's file for an entirely unrelated
+    // service, and this index is shared across every service this pool has ever resolved.
+    private readonly Dictionary<string, MessageDescriptor> _messages = new(StringComparer.Ordinal);
+
     /// <summary>The descriptor for a fully-qualified service name, built from the file the server
     /// reports plus the transitive closure of its dependencies. Cached: a `grpc call` should cost
     /// one reflection round trip, not one per lookup.</summary>
@@ -35,6 +44,14 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
         throw new GrpcMethodNotFoundException(
             $"Service '{serviceFullName}' was not found among the descriptors the server returned for it.");
     }
+
+    /// <summary>Resolves a message by its full name across every file server reflection has fetched so
+    /// far — the production resolver behind google.protobuf.Any expansion. Returns null when the name
+    /// is not among the descriptors fetched so far, which is the caller's cue to fall back to the
+    /// visible base64 rendering rather than fail the call (see ProtoJsonReader/Writer's Any
+    /// handling).</summary>
+    internal MessageDescriptor? FindMessage(string fullName) =>
+        _messages.TryGetValue(fullName, out var found) ? found : null;
 
     private void AddProto(FileDescriptorProto proto) => _protos.TryAdd(proto.Name, proto);
 
@@ -80,11 +97,23 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
         var built = FileDescriptor.BuildFromByteStrings(ordered.Select(p => p.ToByteString()).ToList());
 
         _services.Clear();
+        _messages.Clear();
         foreach (var file in built)
         {
             foreach (var service in file.Services)
                 _services[service.FullName] = service;
+            foreach (var message in file.MessageTypes)
+                AddMessageRecursive(message);
         }
+    }
+
+    /// <summary>Indexes a message and every message nested inside it, however deep. A nested message
+    /// (e.g. certapi.test.Outer.Inner) is a perfectly legal Any payload, but it is not in its file's
+    /// top-level MessageTypes list at all — only walking NestedTypes recursively finds it.</summary>
+    private void AddMessageRecursive(MessageDescriptor message)
+    {
+        _messages[message.FullName] = message;
+        foreach (var nested in message.NestedTypes) AddMessageRecursive(nested);
     }
 
     /// <summary><see cref="FileDescriptor.BuildFromByteStrings"/> requires each file's dependencies to

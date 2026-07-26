@@ -357,12 +357,17 @@ command line — an address whose scheme isn't `http`/`https`, a malformed `Serv
 client-streaming/bidirectional method (out of scope for this version) · `3` on a data problem —
 server reflection unavailable, or an unknown service/method/field, naming the offending one.
 
-Server reflection is required; there's no way to supply a compiled descriptor set instead. Well-known
-Protocol Buffers (Protobuf) types (`google.protobuf.Timestamp`, `Duration`, `Struct`, `Any`, the
-wrapper types) render as ordinary messages rather than their special-cased forms — a `Timestamp`
-shows as `{"seconds":"5","nanos":0}`, not an ISO 8601 string. `certapi serve` does not proxy gRPC —
-`HttpListener` is HTTP/1.1-only — so `certapi grpc` reaches the service directly with your
-certificate rather than going through the gateway.
+Server reflection is required; there's no way to supply a compiled descriptor set instead. The
+well-known Protocol Buffers (Protobuf) types render — and are accepted on the way in — in their
+canonical JSON forms rather than as ordinary messages: `Timestamp` is an RFC 3339 string
+(`"2023-11-14T22:13:20Z"`), `Duration` is seconds with an `s` suffix (`"1.500s"`), the wrapper
+types (`Int32Value`, `StringValue`, and the rest) are the bare underlying value, `Struct`/`Value`/
+`ListValue` are a plain JSON object/value/array, `FieldMask` is comma-joined lowerCamelCase paths,
+and `Empty` is `{}`. `Any` expands to `{"@type":…, …fields}` when its type resolves against the
+descriptors reflection fetched, and degrades to `{"@type":…,"value":"<base64>"}` rather than
+failing the call when it doesn't. `certapi serve` does not proxy gRPC — `HttpListener` is
+HTTP/1.1-only — so `certapi grpc` reaches the service directly with your certificate rather than
+going through the gateway.
 
 ## mcp
 

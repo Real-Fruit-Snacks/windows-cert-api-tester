@@ -84,6 +84,26 @@ public class GrpcCallerTests
     }
 
     [Fact]
+    public async Task An_any_field_is_expanded_using_the_real_descriptor_pool_resolving_the_type_url_from_reflection()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        await using var caller = Connect(server);
+
+        // Proves (G2)'s production resolver actually reaches the wire: DescriptorPool.FindMessage must
+        // resolve "certapi.test.Nested" from the descriptors server reflection fetched for this call,
+        // with no test-local stand-in resolver involved anywhere in this path.
+        var result = await caller.InvokeAsync("certapi.test.Echo", "Unary",
+            """{"all":{"fAny":{"@type":"type.googleapis.com/certapi.test.Nested","label":"packed","depth":3}}}""",
+            NoMetadata, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(result.ResponseJson);
+        var fAny = document.RootElement.GetProperty("all").GetProperty("fAny");
+        Assert.Equal("type.googleapis.com/certapi.test.Nested", fAny.GetProperty("@type").GetString());
+        Assert.Equal("packed", fAny.GetProperty("label").GetString());
+        Assert.Equal(3, fAny.GetProperty("depth").GetInt32());
+    }
+
+    [Fact]
     public async Task Metadata_sent_by_the_client_is_observed_by_the_server()
     {
         await using var server = await GrpcTestServer.StartAsync();

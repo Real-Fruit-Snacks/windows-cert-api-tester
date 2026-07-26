@@ -178,6 +178,123 @@ public class GrpcCliTests
         finally { if (File.Exists(live)) File.Delete(live); }
     }
 
+    /// <summary>The headline capability of this release, proved end to end: CLI argument ->
+    /// ProtoJsonWriter -> the wire -> a real in-process gRPC server -> back -> ProtoJsonReader ->
+    /// stdout. A timestamp and a duration go out as canonical JSON strings, survive the round trip
+    /// (EchoService copies request.All straight into the reply), and come back as the SAME canonical
+    /// strings — never the ordinary {"seconds":...,"nanos":...} shape a plain nested message would
+    /// render as.</summary>
+    [Fact]
+    public async Task Call_unary_round_trips_a_well_known_timestamp_and_duration_as_the_same_canonical_strings()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        string live = TempLive();
+        try
+        {
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            int code = CliApp.Run(
+                new[]
+                {
+                    "grpc", "call", server.Address, "certapi.test.Echo/Unary",
+                    "-d", """{"all":{"fTimestamp":"2023-11-14T22:13:20Z","fDuration":"1.500s"}}"""
+                },
+                stdout, stderr, services: Services(live));
+
+            Assert.Equal(0, code);
+            string output = stdout.ToString();
+            Assert.Contains("\"2023-11-14T22:13:20Z\"", output);
+            Assert.Contains("\"1.500s\"", output);
+        }
+        finally { if (File.Exists(live)) File.Delete(live); }
+    }
+
+    [Fact]
+    public async Task Call_with_a_malformed_timestamp_is_a_clean_data_error_naming_the_field()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        string live = TempLive();
+        try
+        {
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            int code = CliApp.Run(
+                new[]
+                {
+                    "grpc", "call", server.Address, "certapi.test.Echo/Unary",
+                    "-d", """{"all":{"fTimestamp":"not-a-time"}}"""
+                },
+                stdout, stderr, services: Services(live));
+
+            Assert.Equal(3, code);
+            string error = stderr.ToString();
+            Assert.Contains("fTimestamp", error);
+            AssertNoStackTraceReachedTheUser(error);
+        }
+        finally { if (File.Exists(live)) File.Delete(live); }
+    }
+
+    [Fact]
+    public async Task Call_with_a_malformed_duration_is_a_clean_data_error_naming_the_field()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        string live = TempLive();
+        try
+        {
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            int code = CliApp.Run(
+                new[]
+                {
+                    "grpc", "call", server.Address, "certapi.test.Echo/Unary",
+                    "-d", """{"all":{"fDuration":"5 seconds"}}"""
+                },
+                stdout, stderr, services: Services(live));
+
+            Assert.Equal(3, code);
+            string error = stderr.ToString();
+            Assert.Contains("fDuration", error);
+            AssertNoStackTraceReachedTheUser(error);
+        }
+        finally { if (File.Exists(live)) File.Delete(live); }
+    }
+
+    [Fact]
+    public async Task Call_with_a_malformed_field_mask_is_a_clean_data_error_naming_the_field()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        string live = TempLive();
+        try
+        {
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            int code = CliApp.Run(
+                new[]
+                {
+                    "grpc", "call", server.Address, "certapi.test.Echo/Unary",
+                    // Already snake_case: Google's own JsonParser rejects a literal underscore in a
+                    // JSON-form field mask path too (see ProtoJsonTests), so this is a genuine data
+                    // error rather than a hand-picked string our converter alone dislikes.
+                    "-d", """{"all":{"fMask":"user.display_name"}}"""
+                },
+                stdout, stderr, services: Services(live));
+
+            Assert.Equal(3, code);
+            string error = stderr.ToString();
+            Assert.Contains("fMask", error);
+            AssertNoStackTraceReachedTheUser(error);
+        }
+        finally { if (File.Exists(live)) File.Delete(live); }
+    }
+
+    /// <summary>Ruling 2's whole point: malformed input is a data error, never a crash. Neither a raw
+    /// .NET stack-frame line nor the internal exception type name may reach the user's stderr.</summary>
+    private static void AssertNoStackTraceReachedTheUser(string stderr)
+    {
+        Assert.DoesNotContain("   at ", stderr);
+        Assert.DoesNotContain("GrpcJsonException", stderr);
+    }
+
     [Fact]
     public async Task Call_with_an_unmatched_request_field_is_a_data_error_naming_the_field()
     {
