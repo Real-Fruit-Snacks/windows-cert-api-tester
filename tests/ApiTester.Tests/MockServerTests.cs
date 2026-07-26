@@ -95,7 +95,7 @@ public class MockServerTests
 
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = srv.BaseUrl },
-            clientCertificate: null, ignoreServerCertificateErrors: true);
+            clientCertificate: null, transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
         Assert.True(resp.IsSuccess);
         Assert.Contains("certapi mock", Encoding.UTF8.GetString(resp.Body));
@@ -111,7 +111,7 @@ public class MockServerTests
 
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = srv.BaseUrl },
-            clientCert, ignoreServerCertificateErrors: true);
+            clientCert, transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
         Assert.True(resp.IsSuccess);
         string body = Encoding.UTF8.GetString(resp.Body);
@@ -127,7 +127,7 @@ public class MockServerTests
 
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = srv.BaseUrl },
-            clientCertificate: null, ignoreServerCertificateErrors: true);
+            clientCertificate: null, transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
         Assert.False(resp.IsSuccess);   // the handshake is refused without a client cert
     }

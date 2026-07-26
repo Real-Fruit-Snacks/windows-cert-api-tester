@@ -297,6 +297,25 @@ public partial class MainWindow : Window
             IgnoreServerCertCheck.IsChecked = m.IgnoreServerCert;
             TimeoutBox.Text = m.TimeoutSeconds.ToString();
             SelectCertByThumbprint(m.CertThumbprint);
+            TransportProxyCombo.SelectedIndex = m.Transport.Proxy switch
+            {
+                ProxyMode.None => 1,
+                ProxyMode.Explicit => 2,
+                _ => 0
+            };
+            TransportProxyUrlBox.Text = m.Transport.ProxyUrl ?? "";
+            TransportProxyUserBox.Text = m.Transport.ProxyUser ?? "";
+            TransportProxyPassBox.Text = m.Transport.ProxyPassword ?? "";
+            TransportFollowRedirectsCheck.IsChecked = m.Transport.FollowRedirects;
+            TransportMaxRedirsBox.Text = m.Transport.MaxRedirects.ToString();
+            TransportDecompressCheck.IsChecked = m.Transport.Decompress;
+            TransportVersionCombo.SelectedIndex = m.Transport.Version switch
+            {
+                HttpVersionMode.Http11 => 1,
+                HttpVersionMode.Http2 => 2,
+                _ => 0
+            };
+            UpdateTransportPanels();
         }
         finally { _loading = false; }
     }
@@ -331,7 +350,52 @@ public partial class MainWindow : Window
         m.CertThumbprint = SelectedThumbprint();
         m.IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true;
         m.TimeoutSeconds = ParseTimeout();
+
+        // Transport settings are edited in place so the model instance the tab holds keeps its identity.
+        m.Transport.Proxy = TransportProxyCombo.SelectedIndex switch
+        {
+            1 => ProxyMode.None,
+            2 => ProxyMode.Explicit,
+            _ => ProxyMode.System
+        };
+        m.Transport.ProxyUrl = BlankToNull(TransportProxyUrlBox.Text);
+        m.Transport.ProxyUser = BlankToNull(TransportProxyUserBox.Text);
+        m.Transport.ProxyPassword = BlankToNull(TransportProxyPassBox.Text);
+        m.Transport.FollowRedirects = TransportFollowRedirectsCheck.IsChecked == true;
+        m.Transport.MaxRedirects = ParseMaxRedirects();
+        m.Transport.Decompress = TransportDecompressCheck.IsChecked == true;
+        m.Transport.Version = TransportVersionCombo.SelectedIndex switch
+        {
+            1 => HttpVersionMode.Http11,
+            2 => HttpVersionMode.Http2,
+            _ => HttpVersionMode.Auto
+        };
         // Headers and QueryParams edited in the grids are the model's own collections — already current.
+    }
+
+    private static string? BlankToNull(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private void TransportProxyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;   // a programmatic load updates the panels itself
+        UpdateTransportPanels();
+    }
+
+    private void TransportFollowRedirects_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        UpdateTransportPanels();
+    }
+
+    /// <summary>Show the explicit-proxy fields only for "Specific proxy…", and the hop limit only
+    /// while redirects are actually being followed.</summary>
+    private void UpdateTransportPanels()
+    {
+        if (TransportProxyPanel is null || TransportMaxRedirsPanel is null) return;   // during init
+        TransportProxyPanel.Visibility =
+            TransportProxyCombo.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        TransportMaxRedirsPanel.Visibility =
+            TransportFollowRedirectsCheck.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ShowTabResponse(RequestTab tab)
@@ -1641,6 +1705,13 @@ public partial class MainWindow : Window
         return 100;
     }
 
+    /// <summary>The hop limit as typed, falling back to the default while the box is empty or nonsense.</summary>
+    private int ParseMaxRedirects()
+    {
+        if (int.TryParse(TransportMaxRedirsBox.Text, out var n) && n > 0) return Math.Min(n, 100);
+        return 20;
+    }
+
     private List<KeyValuePair<string, string>> BuildHeaders()
     {
         var m = ActiveRequest!;
@@ -1798,7 +1869,9 @@ public partial class MainWindow : Window
             // Attach any browser-captured session cookies for this origin before sending.
             CookieService.SeedContainer(_state, request.Url, _cookieJar);
             var response = await _apiClient.SendAsync(
-                request, cert, model.IgnoreServerCert, cookies: _cookieJar, cancellationToken: _cts.Token);
+                request, cert,
+                transport: model.Transport.ToOptions(model.IgnoreServerCert),
+                cookies: _cookieJar, cancellationToken: _cts.Token);
             RenderResponse(response);
             ShowAssertionResults(model, response);
             if (_unresolvedVars.Count > 0)
@@ -1809,6 +1882,10 @@ public partial class MainWindow : Window
                 tab.LastResponse = response;
                 tab.LastRawText = _lastRawText;
                 tab.Snapshot = BuildSnapshot(response);
+                // Each redirect was a request of its own: trace them oldest-first, ahead of the
+                // final response, so the Network view reads the way a browser's does.
+                foreach (var hop in TransportDiagnostics.RedirectEntries(request, response))
+                    RecordNetwork(tab, hop);
                 RecordNetwork(tab, new NetworkEntry
                 {
                     Method = request.Method.Method,
@@ -1874,7 +1951,7 @@ public partial class MainWindow : Window
     private void RenderResponse(ApiResponse response)
     {
         _lastResponse = response;
-        DiagnosticsBox.Text = FormatDiagnostics(response.Connection);
+        DiagnosticsBox.Text = TransportDiagnostics.Format(response);
 
         if (response.Error is not null)
         {
@@ -1904,36 +1981,6 @@ public partial class MainWindow : Window
     {
         _lastPretty = (text, kind);
         PrettyRich.Document = SyntaxHighlighter.Build(text, kind);
-    }
-
-    private static string FormatDiagnostics(ConnectionInfo? c)
-    {
-        if (c is null) return "No connection details available.";
-        var sb = new StringBuilder();
-        sb.AppendLine("CONNECTION");
-        sb.AppendLine($"  Via proxy       : {(c.ViaProxy ? "yes" : "no")}");
-        sb.AppendLine($"  TLS protocol    : {c.TlsProtocol ?? "—"}");
-        sb.AppendLine($"  Cipher suite    : {c.CipherSuite ?? "—"}");
-        sb.AppendLine();
-        sb.AppendLine("CLIENT CERTIFICATE");
-        sb.AppendLine($"  Offered         : {c.ClientCertificateSubject ?? "none"}");
-        string presented = c.ClientCertificateSubject is null ? "n/a"
-            : c.ClientCertificateSent ? "yes — presented to the server"
-            : c.ViaProxy ? "unknown (connection went through a proxy)"
-            : "no — the server did not request a client certificate";
-        sb.AppendLine($"  Presented       : {presented}");
-        sb.AppendLine();
-        sb.AppendLine("SERVER CERTIFICATE");
-        sb.AppendLine($"  Subject         : {c.ServerCertificateSubject ?? "—"}");
-        sb.AppendLine($"  Issuer          : {c.ServerCertificateIssuer ?? "—"}");
-        sb.AppendLine($"  Thumbprint      : {c.ServerCertificateThumbprint ?? "—"}");
-        sb.AppendLine($"  Expires         : {c.ServerCertificateNotAfter?.ToString("u") ?? "—"}");
-        if (c.ServerCertificateChain.Count > 0)
-        {
-            sb.AppendLine("  Chain           :");
-            foreach (var s in c.ServerCertificateChain) sb.AppendLine($"    • {s}");
-        }
-        return sb.ToString();
     }
 
     // ---------- copy / save ----------
@@ -2092,7 +2139,7 @@ public partial class MainWindow : Window
             Body = truncated ? Array.Empty<byte>() : body,
             BodyTruncated = truncated,
             Headers = r.Headers.Select(h => new HeaderRow { Name = h.Key, Value = h.Value }).ToList(),
-            Diagnostics = FormatDiagnostics(r.Connection),
+            Diagnostics = TransportDiagnostics.Format(r),
             ErrorKind = r.Error?.Kind.ToString(),
             ErrorMessage = r.Error?.Message
         };

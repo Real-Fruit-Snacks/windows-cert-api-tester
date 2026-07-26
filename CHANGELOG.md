@@ -6,6 +6,50 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-07-25
+
+### Added
+- **Proxy control** — send through a proxy you name instead of whatever the machine happens to be
+  configured to use: `--proxy http://proxy.corp:8080` on `send`, `run`, and `fuzz` (with
+  `--proxy-user user:pass` when it authenticates), or `--no-proxy` to ignore the configured proxy
+  entirely, including an automatically detected or script-configured one. In the app, a new
+  **Transport** tab on the request editor sets the same per request, and the Diagnostics view now
+  names the proxy that was actually used.
+- **Visible redirects** — 3xx hops are followed by the client itself and reported, so you can see
+  where a request really ended up: `--show-redirects` prints the chain, `--json` includes it, and the
+  app lists each hop as a row in the Network trace. `--no-redirect` stops at the 3xx,
+  `--max-redirs <n>` changes the limit (default 20), and exceeding it is a clear "too many redirects"
+  error carrying the hops collected so far. Each hop flags the two things that matter when a client
+  certificate is in play — the `Authorization` header being dropped on a cross-origin hop, and a
+  downgrade from `https` to `http` — because a redirect to another host means your certificate is
+  about to be presented somewhere you didn't choose.
+- **Pin a hostname to an address** — `--resolve <host>:<port>:<ip>` (repeatable) dials the address you
+  give while still sending the original hostname in Server Name Indication (SNI) and the `Host`
+  header, so you can test one node behind a load balancer, or verify a Domain Name System (DNS)
+  cutover before it happens. `certapi send --all-ips` does the sweep for you: one send per address the
+  host resolves to, with a per-address table of status, elapsed time, and body length. Pinning needs a
+  direct connection, so `--resolve` together with an active proxy is a usage error rather than a
+  silent no-op.
+- **HTTP version pinning** — `--http1.1` or `--http2` forces the Hypertext Transfer Protocol (HTTP)
+  version instead of negotiating it, which settles "is it the protocol or the endpoint?" quickly.
+  Also available per request in the app's Transport tab.
+- **The real reason a connection failed** — a transport error now carries the underlying exception
+  chain and socket error code instead of collapsing to a single line. That chain is where the
+  SChannel status for a refused client certificate actually lives, and it was previously discarded.
+  `--debug` prints it, `--json` gains a structured `error` object (kind, message, detail), and the
+  app's Diagnostics panel renders it. Exit codes are unchanged.
+
+### Changed
+- **Compressed responses are decoded automatically** — the client now sends `Accept-Encoding` and
+  decompresses the response, matching every other HTTP client. This is a behavior change: if you
+  relied on receiving the raw compressed bytes — to relay them byte-for-byte, say — add
+  `--no-decompress` to get the previous behavior back.
+- **A proxied connection still reports no handshake detail** — driving the handshake by hand would
+  break proxy tunnelling, so the Transport Layer Security (TLS) version, the cipher, and whether your
+  client certificate was presented are all blank whenever a proxy is in play. That was already true;
+  what's new is the way out — `--no-proxy` bypasses the proxy *and* restores the full connection
+  diagnostics.
+
 ## [1.49.0] - 2026-07-18
 
 ### Added
@@ -643,7 +687,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.49.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.50.0...HEAD
+[1.50.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.49.0...v1.50.0
 [1.49.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.48.0...v1.49.0
 [1.48.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.2...v1.48.0
 [1.47.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.1...v1.47.2

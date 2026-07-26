@@ -20,6 +20,12 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
     /// <summary>The same loopback endpoint addressed as a WebSocket (wss://) rather than https://.</summary>
     public string WebSocketUrl => "wss://" + BaseUrl["https://".Length..];
 
+    /// <summary>The server name the last client asked for in the TLS handshake (SNI), or null when
+    /// it sent none. The handshake is the only place a server can observe it, and it is the only way
+    /// to tell an address pinned by --resolve from the hostname the request was really for.
+    /// Recorded by the echo endpoint.</summary>
+    public string? LastSniHost { get; private set; }
+
     private LoopbackMtlsServer(TcpListener listener, int port,
         Func<TcpClient, CancellationToken, Task> handleClient)
     {
@@ -46,6 +52,28 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         return Task.FromResult(server);
     }
 
+    /// <summary>A server that answers 200 with a fixed body plus whatever extra response headers the
+    /// test needs — the honest way for a test to stand up an upstream that sets a cookie or does its
+    /// own CORS, rather than smuggling headers through another field.</summary>
+    public static Task<LoopbackMtlsServer> StartWithHeadersAsync(
+        X509Certificate2 serverCertificate,
+        string expectedClientThumbprint,
+        IReadOnlyList<KeyValuePair<string, string>> extraHeaders,
+        string responseBody = "{\"ok\":true}",
+        string responseContentType = "application/json")
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleWithHeadersAsync(
+                client, serverCertificate, expectedClientThumbprint,
+                extraHeaders, responseBody, responseContentType, ct));
+
+        return Task.FromResult(server);
+    }
+
     /// <summary>A server that echoes the request line, headers, and body back in its 200 response —
     /// lets a test assert exactly what the client sent through.</summary>
     public static Task<LoopbackMtlsServer> StartEchoAsync(
@@ -54,9 +82,13 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var server = new LoopbackMtlsServer(listener, port,
-            (client, ct) => HandleEchoAsync(client, serverCertificate, expectedClientThumbprint, ct));
-        return Task.FromResult(server);
+        // The handler is built before the instance exists, so the observed SNI name is written back
+        // through the captured variable once it does.
+        LoopbackMtlsServer? started = null;
+        started = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleEchoAsync(client, serverCertificate, expectedClientThumbprint, ct,
+                sni => { if (started is not null) started.LastSniHost = sni; }));
+        return Task.FromResult(started);
     }
 
     /// <summary>A server that answers every request with a 302 to <paramref name="location"/>.</summary>
@@ -71,6 +103,93 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         return Task.FromResult(server);
     }
 
+    /// <summary>A server that redirects <paramref name="hops"/> times before answering 200 with a body
+    /// echoing "&lt;METHOD&gt; &lt;path&gt;|&lt;request body&gt;" — lets a test assert both the hop count and the
+    /// per-status method/body rules the client applied on the way.</summary>
+    public static Task<LoopbackMtlsServer> StartRedirectChainAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint,
+        int hops = 1, int statusCode = 302)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        // The port is known before the handler is built, so every hop can point at this same server.
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleRedirectChainAsync(
+                client, serverCertificate, expectedClientThumbprint, port, hops, statusCode, ct));
+        return Task.FromResult(server);
+    }
+
+    private static async Task HandleRedirectChainAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
+        int port, int hops, int statusCode, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
+
+        var buffer = new byte[8192];
+        var request = new StringBuilder();
+        int headerEnd = -1;
+        while (headerEnd < 0)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            headerEnd = request.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        }
+        // Drain the body the client actually sent: "the body was dropped" is only observable if a
+        // body that *was* sent would have been read back.
+        int contentLength = ParseContentLength(request.ToString());
+        int bodyHave = headerEnd >= 0 ? request.Length - (headerEnd + 4) : 0;
+        while (bodyHave < contentLength)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            bodyHave += n;
+        }
+
+        string text = request.ToString();
+        var requestLine = text.Split("\r\n")[0].Split(' ');
+        string method = requestLine.Length > 0 ? requestLine[0] : "";
+        string path = requestLine.Length > 1 ? requestLine[1] : "/";
+        string body = headerEnd >= 0 ? text[(headerEnd + 4)..] : "";
+
+        // "/" is hop 0; each redirect names the next one, so the path says how far along we are.
+        int reached = path.StartsWith("/hop", StringComparison.Ordinal) &&
+                      int.TryParse(path["/hop".Length..], out var parsed) ? parsed : 0;
+        if (reached < hops)
+        {
+            var redirect =
+                $"HTTP/1.1 {statusCode} {ReasonPhrase(statusCode)}\r\n" +
+                $"Location: https://127.0.0.1:{port}/hop{reached + 1}\r\n" +
+                "Content-Length: 0\r\n" +
+                "Connection: close\r\n\r\n";
+            await ssl.WriteAsync(Encoding.ASCII.GetBytes(redirect), ct);
+            await ssl.FlushAsync(ct);
+            return;
+        }
+
+        var bodyBytes = Encoding.UTF8.GetBytes($"{method} {path}|{body}");
+        var head =
+            "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: text/plain\r\n" +
+            $"Content-Length: {bodyBytes.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
+    }
+
+    private static string ReasonPhrase(int statusCode) => statusCode switch
+    {
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        307 => "Temporary Redirect",
+        308 => "Permanent Redirect",
+        _ => "Found"
+    };
+
     /// <summary>A server that sets a cookie (Set-Cookie: srv=ok) and echoes any Cookie header it
     /// received in the response body — lets a test prove a cookie jar carries cookies across calls.</summary>
     public static Task<LoopbackMtlsServer> StartCookieEchoAsync(
@@ -82,6 +201,56 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         var server = new LoopbackMtlsServer(listener, port,
             (client, ct) => HandleCookieEchoAsync(client, serverCertificate, expectedClientThumbprint, ct));
         return Task.FromResult(server);
+    }
+
+    /// <summary>A server that answers with a gzip-encoded body (Content-Encoding: gzip) — lets a test
+    /// prove automatic decompression is on by default and off under --no-decompress.</summary>
+    public static Task<LoopbackMtlsServer> StartGzipAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint,
+        string body = "{\"gzip\":\"ok\"}", string contentType = "application/json")
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleGzipAsync(
+                client, serverCertificate, expectedClientThumbprint, body, contentType, ct));
+        return Task.FromResult(server);
+    }
+
+    private static async Task HandleGzipAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
+        string body, string contentType, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
+
+        var buffer = new byte[4096];
+        var request = new StringBuilder();
+        while (!request.ToString().Contains("\r\n\r\n"))
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.ASCII.GetString(buffer, 0, n));
+        }
+
+        var compressed = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(
+            compressed, System.IO.Compression.CompressionMode.Compress, leaveOpen: true))
+        {
+            var raw = Encoding.UTF8.GetBytes(body);
+            await gzip.WriteAsync(raw, ct);
+        }
+        var bodyBytes = compressed.ToArray();
+
+        var head =
+            "HTTP/1.1 200 OK\r\n" +
+            $"Content-Type: {contentType}\r\n" +
+            "Content-Encoding: gzip\r\n" +
+            $"Content-Length: {bodyBytes.Length}\r\n" +
+            "Connection: close\r\n\r\n";
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
     }
 
     private static async Task HandleCookieEchoAsync(
@@ -135,7 +304,8 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
     /// <summary>Complete the server-side mTLS handshake, requiring a client cert whose thumbprint
     /// matches. A mismatch throws from AuthenticateAsServerAsync (swallowed by the accept loop).</summary>
     private static async Task<SslStream> AuthenticateServerAsync(
-        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint, CancellationToken ct)
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint, CancellationToken ct,
+        Action<string?>? onSni = null)
     {
         var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false,
             userCertificateValidationCallback: (_, cert, _, _) =>
@@ -143,10 +313,15 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
                 cert.GetCertHashString().Equals(expectedClientThumbprint, StringComparison.OrdinalIgnoreCase));
         var options = new SslServerAuthenticationOptions
         {
-            ServerCertificate = serverCert,
             ClientCertificateRequired = true,
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
         };
+        if (onSni is null)
+            options.ServerCertificate = serverCert;
+        else
+            // The selection callback's hostName argument is the SNI name the client sent; the same
+            // certificate is served either way.
+            options.ServerCertificateSelectionCallback = (_, hostName) => { onSni(hostName); return serverCert; };
         await ssl.AuthenticateAsServerAsync(options, ct);
         return ssl;
     }
@@ -325,9 +500,16 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
             request.Append(Encoding.ASCII.GetString(buffer, 0, n));
         }
         string? key = null;
+        string? subProtocol = null;
         foreach (var line in request.ToString().Split("\r\n"))
+        {
             if (line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))
                 key = line["Sec-WebSocket-Key:".Length..].Trim();
+            // A client that offers subprotocols must be told which one was chosen — ClientWebSocket
+            // fails the connection outright when a 101 confirms none — so the first is taken.
+            else if (line.StartsWith("Sec-WebSocket-Protocol:", StringComparison.OrdinalIgnoreCase))
+                subProtocol = line["Sec-WebSocket-Protocol:".Length..].Split(',')[0].Trim();
+        }
         if (key is null) return;
 
         string accept = Convert.ToBase64String(System.Security.Cryptography.SHA1.HashData(
@@ -336,7 +518,9 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
             "HTTP/1.1 101 Switching Protocols\r\n" +
             "Upgrade: websocket\r\n" +
             "Connection: Upgrade\r\n" +
-            $"Sec-WebSocket-Accept: {accept}\r\n\r\n";
+            $"Sec-WebSocket-Accept: {accept}\r\n" +
+            (string.IsNullOrEmpty(subProtocol) ? "" : $"Sec-WebSocket-Protocol: {subProtocol}\r\n") +
+            "\r\n";
         await ssl.WriteAsync(Encoding.ASCII.GetBytes(handshake), ct);
         await ssl.FlushAsync(ct);
 
@@ -452,10 +636,47 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         await ssl.FlushAsync(ct);
     }
 
-    private static async Task HandleEchoAsync(
-        TcpClient client, X509Certificate2 serverCertificate, string expectedClientThumbprint, CancellationToken ct)
+    private static async Task HandleWithHeadersAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
+        IReadOnlyList<KeyValuePair<string, string>> extraHeaders,
+        string body, string contentType, CancellationToken ct)
     {
-        await using var ssl = await AuthenticateServerAsync(client, serverCertificate, expectedClientThumbprint, ct);
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
+
+        // Read request headers (until blank line). Body of request is ignored.
+        var buffer = new byte[4096];
+        var request = new StringBuilder();
+        while (!request.ToString().Contains("\r\n\r\n"))
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.ASCII.GetString(buffer, 0, n));
+        }
+
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
+        var head = new StringBuilder()
+            .Append("HTTP/1.1 200 OK\r\n")
+            .Append($"Content-Type: {contentType}\r\n")
+            .Append($"Content-Length: {bodyBytes.Length}\r\n")
+            .Append("Connection: close\r\n");
+        // One line per extra header in the order given, repeated names included: a header that may
+        // legitimately appear twice — Set-Cookie above all — has to reach the client as two headers,
+        // because collapsing it would hide the very duplication a browser-facing test is checking.
+        foreach (var (name, value) in extraHeaders)
+            head.Append(name).Append(": ").Append(value).Append("\r\n");
+        head.Append("\r\n");
+
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
+    }
+
+    private static async Task HandleEchoAsync(
+        TcpClient client, X509Certificate2 serverCertificate, string expectedClientThumbprint, CancellationToken ct,
+        Action<string?>? onSni = null)
+    {
+        await using var ssl = await AuthenticateServerAsync(
+            client, serverCertificate, expectedClientThumbprint, ct, onSni);
 
         var buffer = new byte[8192];
         var request = new StringBuilder();

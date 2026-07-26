@@ -179,7 +179,7 @@ public partial class HelpWindow : Window
         NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window — or Mock server… beside it to start a standing local endpoint you can send real requests to (http, TLS, or mTLS)."));
 
     private UIElement RequestsAndTabs() => Section("Requests & tabs",
-        P("A request is built from the request line (method, URL, timeout) plus six tabs beneath it."),
+        P("A request is built from the request line (method, URL, timeout) plus seven tabs beneath it."),
         Sub("THE REQUEST TABS"),
         Bullets(
             "Params — a key/value grid for the query string. Type a ?query in the URL and it splits into the grid; the grid is recombined onto the URL, correctly encoded, when you send.",
@@ -187,7 +187,21 @@ public partial class HelpWindow : Window
             "Body — a request body with a content-type selector, or switch it to Form data (multipart) to add fields and upload files (tick File).",
             "Auth — Auto (use a captured token, the default), None, Bearer token, or Basic (username / password). The helper builds the Authorization header for you.",
             "Capture — save a value from the response into a {{variable}} for later requests (see Automatic tokens).",
-            "Tests — assert on the response so a suite can pass/fail (see Testing responses)."),
+            "Tests — assert on the response so a suite can pass/fail (see Testing responses).",
+            "Transport — how the request reaches the endpoint: proxy, redirects, decompression, and HTTP version (below)."),
+        Sub("THE TRANSPORT TAB"),
+        P("Transport settings belong to the request and are saved with it. Proxy: use the machine's " +
+          "configured proxy (the default), ignore it altogether, or give an explicit proxy URL with a " +
+          "username and password. Redirects: follow them or stop at the 3xx, with a limit on how many " +
+          "hops are allowed. You can also switch off automatic decompression — to keep the response " +
+          "bytes exactly as they arrived — and pin the HTTP version to 1.1 or 2 instead of letting it " +
+          "be negotiated."),
+        P("Each redirect that is followed shows up as its own row in the Network trace, so you can see " +
+          "where the request really ended up. A hop that crosses to another origin is flagged: that is " +
+          "where the Authorization header is dropped, and where your client certificate would be " +
+          "presented to a host you didn't choose. The Diagnostics view names the proxy that was used — " +
+          "and remember that behind any proxy the TLS version, cipher, and “client certificate " +
+          "presented” are blank, so turning the proxy off is also how you get those back."),
         Sub("WORKING IN TABS"),
         Bullets(
             "Keep several requests open at once — each tab has its own website, certificate, and response.",
@@ -343,6 +357,10 @@ public partial class HelpWindow : Window
             "certapi send <url> sends a one-off request; pick a client certificate with --cert <thumbprint or subject> (or --cert-file for a .pfx/.pem). The body goes to stdout, diagnostics to stderr. Upload files as multipart with -F \"field=value\" -F \"file=@path\".",
             "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
+            "send, run, and fuzz share the transport flags. --proxy <url> routes through a proxy you name (--proxy-user user:pass when it wants credentials); --no-proxy ignores the machine's configured proxy — which is also how you get the TLS version, cipher, and “certificate presented” back, since none of the handshake is visible through a proxy.",
+            "--no-redirect stops at the 3xx instead of following it, --max-redirs <n> changes the limit (20 by default), and --show-redirects prints every hop — flagging a hop that crosses to another origin, where the Authorization header is dropped and your client certificate would go to a host you didn't choose.",
+            "--no-decompress relays the response bytes exactly as they arrived instead of decoding them, and --http1.1 / --http2 pin the HTTP version instead of negotiating it.",
+            "--resolve host:port:ip connects to the address you name while the request still carries the original hostname — one node behind a load balancer, or a DNS cutover you want to check before it happens. Repeat it for more hosts; it needs a direct connection, so it can't be combined with a proxy. certapi send --all-ips does the sweep for you across every address the host resolves to and prints a per-address comparison.",
             "certapi send also supports GraphQL (--graphql \"<query>\" --gql-variables \"{...}\") — a JSON { query, variables } POST.",
             "certapi token fetches an OAuth 2.0 access token — --grant client_credentials (default), password, or refresh — and with --save --for <api-url> stores it so later sends attach it automatically.",
             "certapi ws <url> opens a WebSocket (ws/wss) — send messages with --message or piped stdin lines, print replies, and use --expect <n> for scripts. certapi sse <url> streams Server-Sent Events (--max-events, --json).",

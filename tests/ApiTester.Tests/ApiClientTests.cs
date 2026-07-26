@@ -53,10 +53,13 @@ public class ApiClientTests
         Assert.False(resp.IsSuccess);
         Assert.NotNull(resp.Error);
         // A missing client cert fails the mTLS handshake. Depending on the platform's TLS
-        // stack this surfaces either as an AuthenticationException (-> CertificateRefused) or
-        // a connection reset (-> Network); both are valid classifications of this failure.
-        Assert.True(resp.Error!.Kind is ApiErrorKind.CertificateRefused or ApiErrorKind.Network,
+        // stack this surfaces either as an AuthenticationException (-> CertificateRefused), a
+        // socket-level reset (-> ConnectionReset), or an otherwise unclassified transport failure
+        // (-> Network); all three are valid classifications of this failure.
+        Assert.True(
+            resp.Error!.Kind is ApiErrorKind.CertificateRefused or ApiErrorKind.Network or ApiErrorKind.ConnectionReset,
             $"Unexpected error kind: {resp.Error.Kind} ({resp.Error.Message})");
+        Assert.NotEmpty(resp.Error.Detail!);
     }
 
     [Fact]
@@ -65,7 +68,7 @@ public class ApiClientTests
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = "notaurl" },
             clientCertificate: null,
-            ignoreServerCertificateErrors: true);
+            transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
         Assert.False(resp.IsSuccess);
         Assert.NotNull(resp.Error);
@@ -73,14 +76,15 @@ public class ApiClientTests
     }
 
     [Fact]
-    public async Task Connection_refused_maps_to_network_error()
+    public async Task Connection_refused_maps_to_a_connection_refused_error()
     {
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = "https://127.0.0.1:1/" },
             clientCertificate: null,
-            ignoreServerCertificateErrors: true);
+            transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
-        Assert.Equal(ApiErrorKind.Network, resp.Error?.Kind);
+        Assert.Equal(ApiErrorKind.ConnectionRefused, resp.Error?.Kind);
+        Assert.NotEmpty(resp.Error!.Detail!);
     }
 
     [Fact]
@@ -100,16 +104,17 @@ public class ApiClientTests
                     Timeout = TimeSpan.FromMilliseconds(1200)   // generous: short timeouts flake under parallel test load
                 },
                 clientCertificate: null,
-                ignoreServerCertificateErrors: true);
+                transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
             // A server that accepts the socket but never responds surfaces as a transport failure.
             // Whether the timeout fires as a cancellation (Timeout) or the aborted handshake throws
-            // a socket error (Network) is timing-dependent on the CI runner — both are correct here;
-            // the point is the app doesn't hang and classifies it as an error, not a success.
+            // a socket error (ConnectionReset, or Network when the socket error is something else)
+            // is timing-dependent on the CI runner — all are correct here; the point is the app
+            // doesn't hang and classifies it as an error, not a success.
             var kind = resp.Error?.Kind;
             Assert.True(
-                kind is ApiErrorKind.Timeout or ApiErrorKind.Network,
-                $"expected Timeout or Network, got {kind}");
+                kind is ApiErrorKind.Timeout or ApiErrorKind.Network or ApiErrorKind.ConnectionReset,
+                $"expected Timeout, Network or ConnectionReset, got {kind}");
         }
         finally { listener.Stop(); }
     }
@@ -128,7 +133,7 @@ public class ApiClientTests
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = server.BaseUrl },
             clientCert,
-            ignoreServerCertificateErrors: false);
+            transport: new TransportOptions { IgnoreServerCertificateErrors = false });
 
         Assert.False(resp.IsSuccess);
         Assert.Equal(ApiErrorKind.ServerCertificateUntrusted, resp.Error?.Kind);
@@ -147,7 +152,7 @@ public class ApiClientTests
         var resp = await new ApiClient().SendAsync(
             new ApiRequest { Method = HttpMethod.Get, Url = server.BaseUrl },
             clientCert,
-            ignoreServerCertificateErrors: true);
+            transport: new TransportOptions { IgnoreServerCertificateErrors = true });
 
         Assert.True(resp.IsSuccess, resp.Error?.Message);
         Assert.Equal(200, resp.StatusCode);

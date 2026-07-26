@@ -37,6 +37,12 @@ public static class SendCommand
           --key-file <path>       Private-key file for a PEM cert whose key is in a separate file
           --insecure              Ignore server certificate errors
 
+
+        """ + TransportFlags.Help + """
+
+          --all-ips               Send once per address the host resolves to and compare the
+                                  results (one row each; not with --json/-o/--capture/--assert)
+
         Automatic tokens:
           A bearer token found in a response (access_token, id_token, token, accessToken, jwt,
           or an X-Auth-Token / X-Access-Token header) is captured and scoped to that host.
@@ -103,6 +109,9 @@ public static class SendCommand
           # A one-line CI smoke test: assert the status and a JSON field, exit 1 if either fails
           certapi send https://api.example.com/health --assert "status == 200" --assert "body status == ok"
 
+          # Through the corporate proxy, showing every redirect it takes on the way
+          certapi send https://api.example.com/health --proxy http://proxy.corp:8080 --show-redirects
+
           # Troubleshoot a failing endpoint with full diagnostics in a file
           certapi send https://api.example.com/broken --debug --log-file broken.log
 
@@ -147,6 +156,8 @@ public static class SendCommand
         bool windowsAuth = args.Flag("--windows-auth", "--ntlm", "--negotiate");
         string? winUser = args.Value("--windows-user");
         string? winPass = args.Value("--windows-password");
+        var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
+        bool allIps = args.Flag("--all-ips");
         // Resolve the certificate here (Windows store or a file) so its options are consumed
         // before Positionals() rejects anything option-shaped that's left over.
         var cert = CliCert.Resolve(args, store, services, stderr);
@@ -188,6 +199,12 @@ public static class SendCommand
             throw new CliUsageException("--graphql cannot be combined with -d/--data or -F/--form.");
         if (bearer is not null && basic is not null)
             throw new CliUsageException("--bearer and --basic are mutually exclusive.");
+        // --all-ips produces one response per address; every option below describes a single one,
+        // and there is no honest way to pick which response it should apply to.
+        if (allIps && (json || outFile is not null || captureRules.Count > 0 || assertRules.Count > 0))
+            throw new CliUsageException(
+                "--all-ips sends once per address, so it cannot be combined with --json, -o/--output, " +
+                "--capture, or --assert — each of those describes a single response.");
 
         // Multipart form parts: "name=value" (text) or "name=@path" (file, optionally ";type=<ct>").
         var parts = new List<MultipartPart>();
@@ -257,6 +274,14 @@ public static class SendCommand
             stderr.WriteLine($"warning: unresolved variables: {tokens}");
         }
 
+        // ---- transport ----
+        // Built once the URL is final, because whether a pinned address can be honoured depends on
+        // whether *this* URL goes through a proxy. An unusable combination is a usage error here,
+        // before any network contact, rather than a setting silently dropped on the floor.
+        var transport = transportOverrides.ApplyTo(new TransportOptions { IgnoreServerCertificateErrors = insecure });
+        if (ApiClient.ValidateTransport(transport, url) is { } transportProblem)
+            throw new CliUsageException(transportProblem);
+
         // ---- automatic session token ----
         if (!noAutoToken)
         {
@@ -295,11 +320,21 @@ public static class SendCommand
                 ? $"{h.Key}: {TokenService.MaskAuthorization(h.Value)}" : $"{h.Key}: {h.Value}"));
         services.Log.Debug(cert is null ? "certificate: none" : $"certificate: {cert.Subject} ({cert.Thumbprint})");
         services.Log.Debug($"timeout: {timeout} s · insecure: {insecure} · store: {store}");
+        services.Log.Debug($"transport: {DescribeTransport(transport)}");
+        foreach (var pin in transport.Resolve)
+            services.Log.Debug($"resolve: {pin.Host}:{pin.Port} -> {pin.Address}");
         // Attach any browser-captured session cookies for this origin (honors --no-auto-token
         // and the workspace's AutoCookies switch).
         var cookieJar = new System.Net.CookieContainer();
         if (!noAutoToken) CookieService.SeedContainer(state, url, cookieJar);
-        var response = services.Client.SendAsync(request, cert, insecure,
+
+        // --all-ips is a comparison run, not a single send: it owns stdout from here on, and the
+        // single-response output path below (capture, token capture, envelope) does not apply.
+        if (allIps)
+            return SendToEveryAddress(request, cert, transport, cookieJar, showRedirects, fail, stdout, stderr, services);
+
+        var response = services.Client.SendAsync(request, cert,
+            transport: transport,
             cookies: cookieJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug("result: " + (response.Error is null
             ? $"{response.StatusCode} {response.ReasonPhrase}".Trim()
@@ -307,7 +342,12 @@ public static class SendCommand
             + $" · {response.Elapsed.TotalMilliseconds:F0} ms · {response.Body.LongLength} bytes");
         if (response.Connection is { } conn)
             services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {(conn.ViaProxy ? "yes" : "no")} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")}");
+        LogErrorChain(response.Error, services);
 
+        // The hop chain goes to stderr even under --quiet: it was asked for explicitly, and the
+        // body owns stdout.
+        if (showRedirects && response.Redirects.Count > 0)
+            stderr.WriteLine(OutputText.RedirectLines(response.Redirects));
         if (!quiet) stderr.WriteLine(OutputText.MetaLine(response));
 
         bool stateDirty = false;
@@ -374,6 +414,82 @@ public static class SendCommand
         return ExitCodes.Ok;
     }
 
+    /// <summary>The transport configuration in one --debug line, so a support log says how the
+    /// request was actually routed rather than only where it was pointed.</summary>
+    private static string DescribeTransport(TransportOptions t) =>
+        $"proxy {(t.Proxy switch { ProxyMode.None => "off", ProxyMode.Explicit => t.ProxyUrl ?? "explicit", _ => "system" })}"
+        + $" · redirects {(t.FollowRedirects ? $"follow (max {t.MaxRedirects})" : "off")}"
+        + $" · decompress {(t.Decompress ? "on" : "off")}"
+        + $" · http {(t.Version switch { HttpVersionMode.Http11 => "1.1", HttpVersionMode.Http2 => "2", _ => "auto" })}";
+
+    /// <summary>The flattened InnerException chain on --debug. For a refused client certificate the
+    /// AuthenticationException and the SChannel status code are several links down and never in the
+    /// outermost message, so the chain is the whole diagnostic.</summary>
+    private static void LogErrorChain(ApiError? error, CliServices services)
+    {
+        if (error is null) return;
+        if (error.SocketErrorCode is { } socketError) services.Log.Debug($"socket error: {socketError}");
+        foreach (var d in error.Detail ?? Array.Empty<ErrorDetail>())
+            services.Log.Debug($"caused by: {d.ExceptionType}: {d.Message}"
+                + (d.NativeErrorCode is { } native ? $" (native error {native})" : ""));
+    }
+
+    /// <summary>--all-ips: the same request once per address the host resolves to, so the nodes
+    /// behind a load balancer can be compared. Built entirely from the --resolve primitive, so the
+    /// TLS server name and the Host header still carry the original hostname on every send.</summary>
+    private static int SendToEveryAddress(
+        ApiRequest request, System.Security.Cryptography.X509Certificates.X509Certificate2? cert,
+        TransportOptions transport, System.Net.CookieContainer cookies, bool showRedirects, bool fail,
+        TextWriter stdout, TextWriter stderr, CliServices services)
+    {
+        if (!Uri.TryCreate(request.Url, UriKind.Absolute, out var uri))
+            throw new CliUsageException($"--all-ips needs an absolute URL, got '{request.Url}'.");
+
+        // A host that is already an IP literal has nothing to pin: it is one address by definition.
+        bool literal = System.Net.IPAddress.TryParse(uri.Host.Trim('[', ']'), out _);
+        var addresses = literal ? new[] { uri.Host } : ResolveAll(uri.Host);
+        services.Log.Debug($"all-ips: {uri.Host} -> {string.Join(", ", addresses)}");
+
+        var rows = new List<(string Address, ApiResponse Response)>();
+        foreach (var address in addresses)
+        {
+            var pinned = literal
+                ? transport
+                : transport with { Resolve = new[] { new ResolveOverride(uri.Host, uri.Port, address) } };
+            var response = services.Client.SendAsync(request, cert, transport: pinned,
+                cookies: cookies, cancellationToken: services.Cancel).GetAwaiter().GetResult();
+            rows.Add((address, response));
+            LogErrorChain(response.Error, services);
+            if (showRedirects && response.Redirects.Count > 0)
+                stderr.WriteLine($"{address}:\n{OutputText.RedirectLines(response.Redirects)}");
+        }
+
+        int width = rows.Max(r => r.Address.Length);
+        foreach (var (address, r) in rows)
+            stdout.WriteLine(
+                $"{address.PadRight(width)}  {(r.Error is null ? r.StatusCode?.ToString() ?? "—" : "ERR"),4}  " +
+                $"{r.Elapsed.TotalMilliseconds,6:F0} ms  {OutputText.Size(r.Body.LongLength),9}" +
+                (r.Error is not null ? $"  ({r.Error.Message})" : ""));
+        int responded = rows.Count(r => r.Response.Error is null);
+        stdout.WriteLine($"----\n{rows.Count} address{(rows.Count == 1 ? "" : "es")} · " +
+                         $"{responded} responded · {rows.Count - responded} failed");
+
+        // A comparison run succeeds when any address answered; --fail keeps its own meaning on top.
+        if (responded == 0) return ExitCodes.Failure;
+        if (fail && rows.Any(r => r.Response.StatusCode is >= 400)) return ExitCodes.Failure;
+        return ExitCodes.Ok;
+    }
+
+    private static IReadOnlyList<string> ResolveAll(string host)
+    {
+        System.Net.IPAddress[] found;
+        try { found = System.Net.Dns.GetHostAddresses(host); }
+        catch (Exception ex) when (ex is System.Net.Sockets.SocketException or ArgumentException)
+        { throw new CliDataException($"Could not resolve {host}: {ex.Message}"); }
+        if (found.Length == 0) throw new CliDataException($"Could not resolve {host}: no addresses.");
+        return found.Select(a => a.ToString()).ToList();
+    }
+
     /// <summary>Like <see cref="CliWorkspace.Load"/>, but a missing explicit workspace file yields an
     /// empty workspace instead of an error — --capture is allowed to create the file on save. A
     /// corrupt *live* state (no --workspace given) is tolerated the same way the GUI tolerates it:
@@ -429,8 +545,32 @@ public static class SendCommand
                     g => g.Count() == 1 ? (object)g.First().Value : g.Select(h => h.Value).ToArray()),
             ["tlsProtocol"] = r.Connection?.TlsProtocol,
             ["clientCertPresented"] = r.Connection?.ClientCertificateSent ?? false,
-            ["error"] = r.Error is null ? null : new { kind = r.Error.Kind.ToString(), message = r.Error.Message }
+            // kind/message keep the shape existing consumers already parse; socketError and the
+            // flattened InnerException chain are additive, and null when the failure had neither.
+            ["error"] = r.Error is null ? null : new
+            {
+                kind = r.Error.Kind.ToString(),
+                message = r.Error.Message,
+                socketError = r.Error.SocketErrorCode?.ToString(),
+                detail = r.Error.Detail?.Select(d => new
+                {
+                    exceptionType = d.ExceptionType,
+                    message = d.Message,
+                    nativeErrorCode = d.NativeErrorCode
+                })
+            }
         };
+        // Only when something was actually followed: adding "redirects": [] to every envelope would
+        // churn the output of every existing user for nothing.
+        if (r.Redirects.Count > 0)
+            obj["redirects"] = r.Redirects.Select(h => new
+            {
+                status = h.StatusCode,
+                from = h.From,
+                to = h.To,
+                authorizationDropped = h.AuthorizationDropped,
+                schemeDowngrade = h.SchemeDowngrade
+            }).ToList();
         if (notes is { Count: > 0 }) obj["notes"] = notes;
         if (includeBody && r.Error is null)
         {

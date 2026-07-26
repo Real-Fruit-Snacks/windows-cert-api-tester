@@ -35,6 +35,13 @@ public static class FuzzCommand
           --env <name> / --var k=v Resolve {{variables}} in the base URL and paths
           --no-auto-token          Don't attach or capture session tokens
 
+
+        """ + TransportFlags.Help + """
+
+
+        Probes never follow redirects — a 3xx is itself a discovery signal — so the redirect
+        options above have no effect here.
+
         Discovery:
           --concurrency <n>        Parallel probes, 1–50 (default 8)
           --delay <ms>             Pause between probes (be polite; default 0)
@@ -99,6 +106,8 @@ public static class FuzzCommand
         string? saveCollection = args.Value("--save-collection");
         string? workspace = args.Value("--workspace");
         bool quiet = args.Flag("-q", "--quiet");
+        // --show-redirects is accepted and has nothing to report: probes never follow redirects.
+        var transportOverrides = TransportFlags.Parse(args, out _);
         // Resolve the certificate (store or file) before Positionals() rejects its options.
         var cert = CliCert.Resolve(args, store, services, stderr);
 
@@ -123,6 +132,14 @@ public static class FuzzCommand
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
         string R(string s) => VariableResolver.Resolve(s ?? "", vars).Result;   // (Result, Unresolved) tuple
         baseUrl = R(baseUrl);
+
+        // Probes never follow redirects — a 3xx is a discovery signal, not something to chase — so
+        // that is the baseline the flags apply over. Every probe shares this host, so one check
+        // against the base URL settles whether the combination is usable at all.
+        var transport = transportOverrides.ApplyTo(
+            new TransportOptions { FollowRedirects = false, IgnoreServerCertificateErrors = insecure });
+        if (ApiClient.ValidateTransport(transport, baseUrl) is { } transportProblem)
+            throw new CliUsageException(transportProblem);
 
         // ---- wordlist ----
         string listText;
@@ -163,7 +180,9 @@ public static class FuzzCommand
             var reqHeaders = request.Headers.ToList();
             if (!noAutoToken) { lock (captureLock) TokenService.AutoAttach(state, request.Url, reqHeaders, out _); }
             var probe = request with { Headers = reqHeaders, Timeout = TimeSpan.FromSeconds(timeout) };
-            var response = await services.Client.SendAsync(probe, cert, insecure, followRedirects: false, cancellationToken: ct);
+            var response = await services.Client.SendAsync(probe, cert,
+                transport: transport,
+                cancellationToken: ct);
             if (!noAutoToken && response.Error is null)
                 lock (captureLock) TokenService.Capture(state, request.Url, response.Body, response.ContentType, response.Headers);
             return response;

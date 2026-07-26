@@ -74,8 +74,12 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Find in response** — a search box over the response body finds and selects the next match (Enter for next, wrapping around) — handy for locating a value in a large JSON payload.
 - **Copy & export** — copy the response body, copy the request as code, and save any response (including binary) with a sensible file extension.
 - **Clear failure messages** — distinguishes "server refused the certificate," "the server's own certificate isn't trusted," a network/DNS error, and a timeout.
+- **The detail behind a failure** — a failed connection also carries the underlying exception chain and socket error code, which is where the SChannel status for a *refused client certificate* actually lives. `--debug` prints it, `--json` includes it as a structured error, and the app's **Diagnostics** panel shows it.
 - **Reach internal sites behind a private CA** — an explicit, off-by-default *Ignore server certificate errors* toggle (clearly labelled insecure).
-- **Honors your proxy** — follows the machine's configured proxy, including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options, authenticating with your Windows credentials when required.
+- **Honors your proxy — or overrides it** — by default it follows the machine's configured proxy, including "Automatically detect settings" (WPAD) and a "Use automatic configuration script" (PAC) from Internet Options, authenticating with your Windows credentials when required. Send through a different proxy with `--proxy` (plus `--proxy-user` when it authenticates), or skip the proxy entirely with `--no-proxy` — which also brings back the TLS version, cipher, and certificate-presented details, since none of those are visible through a proxy.
+- **Transport control per request** — override or bypass the proxy, follow redirects or stop at the 3xx (with your own hop limit), turn automatic decompression off, and pin the HTTP version. It's a **Transport** tab in the app's request editor, saved with the request, and the same switches headless on `send`, `run`, and `fuzz`: `--no-redirect` / `--max-redirs <n>`, `--no-decompress`, `--http1.1` / `--http2`.
+- **See every redirect** — redirects are followed by the tester itself and reported instead of happening invisibly: `--show-redirects` prints the hop chain (it's in `--json` too, and each hop is a row in the app's **Network** trace). A hop that crosses to another origin is flagged — that's where the `Authorization` header gets dropped, and where your client certificate would be presented to a host you never chose.
+- **Pin a hostname to an address** — `--resolve host:port:ip` connects to the address you name while the request still carries the original hostname, so you can test one node behind a load balancer, or verify a Domain Name System (DNS) cutover before it goes live. `certapi send --all-ips` does the whole sweep for you — one send per address the host resolves to, with a per-address comparison (status, time, size).
 - **Built-in self-test** — a *Run Self-Test* button stands up a local mutual-TLS server on your own machine and proves the whole certificate-authentication path end to end, **no real endpoint required.**
 - **Local test server** — a *Mock server…* button (and `certapi mock`) runs a standing server you can fire requests at: it echoes each request as JSON and serves `/status/<code>`, `/sse`, `/token`, `/windows-auth`, `/cookie-auth`, and a WebSocket echo, over plain HTTP, HTTPS, or mutual TLS (it generates and writes out the certs). Point the app at itself to try every feature without a real API.
 - **Built-in help** — a **?** in the title bar (or **F1**) opens a Help & Reference window that walks through every feature, lists the keyboard shortcuts, and shows an About panel. It's all embedded, so it works even with no web access.
@@ -183,6 +187,18 @@ certapi send https://api.internal.corp/orders
 
 # Windows Integrated Auth (Negotiate/NTLM) with your signed-in account
 certapi send https://intranet.corp/api/me --windows-auth
+
+# route through a corporate proxy (--proxy-user user:pass if it authenticates)
+certapi send https://internal.corp/api/orders --cert "CN=matt" --proxy http://proxy.corp:8080
+
+# bypass the proxy — this is also what brings the TLS/cipher/cert-presented diagnostics back
+certapi send https://internal.corp/api/orders --cert "CN=matt" --no-proxy
+
+# follow redirects and print every hop (flags a cross-origin hop and a dropped Authorization)
+certapi send https://internal.corp/login --show-redirects
+
+# pin a hostname to one address — a single node behind a load balancer, or a DNS cutover
+certapi send https://api.internal.corp/health --resolve api.internal.corp:443:10.4.7.21
 
 # stream a WebSocket (send messages, print replies) or Server-Sent Events
 certapi ws wss://internal.corp/socket --cert "CN=matt" -m '{"sub":"prices"}' --expect 3

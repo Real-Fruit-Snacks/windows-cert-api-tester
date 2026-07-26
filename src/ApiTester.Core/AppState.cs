@@ -139,6 +139,11 @@ public sealed class HistoryEntry
     public string? CertThumbprint { get; set; }
     public bool IgnoreServerCert { get; set; }
     public int TimeoutSeconds { get; set; } = 100;
+
+    /// <summary>The transport choices the request was sent with. Additive: its defaults are the
+    /// behavior that predates it, so a state.json written without this property loads unchanged.</summary>
+    public TransportSettings Transport { get; set; } = new();
+
     public int? StatusCode { get; set; }
     public ResponseSnapshot? Response { get; set; }
     public List<CaptureRule> Captures { get; set; } = new();

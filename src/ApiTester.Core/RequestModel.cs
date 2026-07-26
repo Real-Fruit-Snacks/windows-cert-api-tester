@@ -47,6 +47,10 @@ public sealed class RequestModel : INotifyPropertyChanged
     public ObservableCollection<CaptureRule> Captures { get; set; } = new();
     public ObservableCollection<AssertionRule> Assertions { get; set; } = new();
 
+    /// <summary>*How* this request reaches the server (proxy, redirects, compression, HTTP version).
+    /// A settable property, like the collections above, so System.Text.Json can round-trip it.</summary>
+    public TransportSettings Transport { get; set; } = new();
+
     private bool _isMultipart;
     /// <summary>When true, the body is sent as multipart/form-data built from <see cref="FormParts"/>.</summary>
     public bool IsMultipart { get => _isMultipart; set { _isMultipart = value; Raise(nameof(IsMultipart)); } }
@@ -89,6 +93,7 @@ public sealed class RequestModel : INotifyPropertyChanged
             CertThumbprint = CertThumbprint,
             IgnoreServerCert = IgnoreServerCert,
             TimeoutSeconds = TimeoutSeconds,
+            Transport = Transport.Clone(),
             StatusCode = statusCode,
             Response = snapshot
         };
@@ -137,6 +142,7 @@ public sealed class RequestModel : INotifyPropertyChanged
         CertThumbprint = e.CertThumbprint;
         IgnoreServerCert = e.IgnoreServerCert;
         TimeoutSeconds = e.TimeoutSeconds;
+        Transport.CopyFrom(e.Transport);   // in place, so the editor's bindings survive
         Headers.Clear();
         foreach (var h in e.Headers)
             Headers.Add(new HeaderRow { Enabled = h.Enabled, Name = h.Name, Value = h.Value });

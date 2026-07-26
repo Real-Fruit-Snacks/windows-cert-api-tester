@@ -31,6 +31,13 @@ public static class RunCommand
                                   on later requests (cookie-based sessions)
           --json                  JSON results instead of the table
 
+
+        """ + TransportFlags.Help + """
+
+
+        A saved request keeps its own transport settings; a flag here overrides only what it
+        names, for every request in the run.
+
         Requests whose Auth is "Auto" attach the captured token for their host; a token
         captured by one request (e.g. a login) is reused by the rest of the suite.
 
@@ -70,6 +77,7 @@ public static class RunCommand
         bool noAutoToken = args.Flag("--no-auto-token");
         string? dataFile = args.Value("--data");
         bool useCookies = args.Flag("--cookies");
+        var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
         var positionals = args.Positionals();
         if (positionals.Count > 1 || (positionals.Count == 0 && !all)) throw new CliUsageException(Help);
 
@@ -122,7 +130,8 @@ public static class RunCommand
             foreach (var (path, node) in targets)
             {
                 string id = label + path;
-                var (response, url) = Execute(id, node.Request!, state, noAutoToken, vars, strictVars, jar, stderr, services);
+                var (response, url) = Execute(id, node.Request!, state, noAutoToken, vars, strictVars, jar,
+                                              transportOverrides, showRedirects, stderr, services);
                 results.Add((id, node.Request!, response));
                 if (!noAutoToken && response.Error is null &&
                     TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
@@ -212,6 +221,7 @@ public static class RunCommand
     private static (ApiResponse Response, string Url) Execute(
         string path, RequestModel m, AppState state, bool noAutoToken,
         Dictionary<string, string> vars, bool strictVars, System.Net.CookieContainer? cookies,
+        TransportOverrides transportOverrides, bool showRedirects,
         TextWriter stderr, CliServices services)
     {
         var unresolved = new List<string>();
@@ -265,6 +275,13 @@ public static class RunCommand
                 return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"certificate {m.CertThumbprint} not found in the store") }, url);
         }
 
+        // The saved request's own transport settings are the baseline; a command-line flag overrides
+        // only what it names. An unusable combination fails this request the way a missing
+        // certificate does — one bad request must not abort the suite.
+        var transport = transportOverrides.ApplyTo(m.Transport.ToOptions(m.IgnoreServerCert));
+        if (ApiClient.ValidateTransport(transport, url) is { } transportProblem)
+            return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, transportProblem) }, url);
+
         var request = new ApiRequest
         {
             Method = new HttpMethod(m.Method),
@@ -282,11 +299,17 @@ public static class RunCommand
         // shared --cookies jar (honors --no-auto-token and the workspace's AutoCookies switch).
         var effectiveJar = cookies ?? new System.Net.CookieContainer();
         if (!noAutoToken) CookieService.SeedContainer(state, url, effectiveJar);
-        var response = services.Client.SendAsync(request, cert, m.IgnoreServerCert,
+        var response = services.Client.SendAsync(request, cert,
+            transport: transport,
             cookies: effectiveJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug($"{path}: " + (response.Error is null
             ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
             : $"[{response.Error.Kind}] {response.Error.Message}"));
+        // Each hop line already starts with two spaces, so the request path prefixes it the way the
+        // other per-request notes on stderr do.
+        if (showRedirects && response.Redirects.Count > 0)
+            foreach (var line in OutputText.RedirectLines(response.Redirects).Split('\n'))
+                stderr.WriteLine($"{path}:{line}");
         return (response, url);
     }
 }

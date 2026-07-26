@@ -169,7 +169,9 @@ public partial class FuzzWindow : Window
             var headers = request.Headers.ToList();
             lock (captureLock) TokenService.AutoAttach(_state, request.Url, headers, out _);
             var probe = request with { Headers = headers, Timeout = System.TimeSpan.FromSeconds(_timeout) };
-            var response = await _client.SendAsync(probe, cert, _insecure, followRedirects: false, cancellationToken: ct);
+            var response = await _client.SendAsync(probe, cert,
+                transport: new TransportOptions { IgnoreServerCertificateErrors = _insecure, FollowRedirects = false },
+                cancellationToken: ct);
             if (response.Error is null) lock (captureLock) TokenService.Capture(_state, request.Url, response.Body, response.ContentType, response.Headers);
             return response;
         }

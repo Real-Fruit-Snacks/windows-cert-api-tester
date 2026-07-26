@@ -502,6 +502,75 @@
                         </ScrollViewer>
                     </DockPanel>
                 </TabItem>
+                <TabItem Header="Transport">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="PROXY" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                            <ComboBox x:Name="TransportProxyCombo" Width="330" SelectedIndex="0"
+                                      SelectionChanged="TransportProxyCombo_SelectionChanged">
+                                <ComboBoxItem>System proxy (Internet Options / PAC)</ComboBoxItem>
+                                <ComboBoxItem>No proxy (direct)</ComboBoxItem>
+                                <ComboBoxItem>Specific proxy…</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,8"
+                                   Text="Going direct also restores the Diagnostics panel: a proxy tunnels the handshake, so behind one the TLS version, cipher suite, and “client certificate presented” lines cannot be reported."/>
+                        <StackPanel x:Name="TransportProxyPanel" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="URL" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                <TextBox x:Name="TransportProxyUrlBox" Width="320" Height="26" Padding="7,0"
+                                         VerticalContentAlignment="Center" Tag="http://proxy.corp.example:8080"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="USER" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                <TextBox x:Name="TransportProxyUserBox" Width="200" Height="26" Padding="7,0"
+                                         VerticalContentAlignment="Center" Tag="optional"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="PASS" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                <TextBox x:Name="TransportProxyPassBox" Width="200" Height="26" Padding="7,0"
+                                         VerticalContentAlignment="Center" Tag="optional"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,12,0,0">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="REDIRECTS" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                    <CheckBox x:Name="TransportFollowRedirectsCheck" Content="Follow redirects" IsChecked="True"
+                                              VerticalAlignment="Center"
+                                              Checked="TransportFollowRedirects_Changed" Unchecked="TransportFollowRedirects_Changed"/>
+                                    <StackPanel x:Name="TransportMaxRedirsPanel" Orientation="Horizontal" Margin="16,0,0,0">
+                                        <TextBlock Text="MAX HOPS" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TransportMaxRedirsBox" Width="56" Height="26" Padding="7,0" Margin="6,0,0,0"
+                                                 Text="20" VerticalContentAlignment="Center"
+                                                 ToolTip="Give up after this many hops"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,12"
+                                           Text="Every hop is listed in the Network trace and in Diagnostics, including the two facts a browser hides: a cross-origin hop drops the Authorization header, and a hop to another host presents your client certificate somewhere you did not name."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="ENCODING" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                    <CheckBox x:Name="TransportDecompressCheck" Content="Decode gzip / deflate / brotli responses"
+                                              IsChecked="True" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,12"
+                                           Text="Turn it off to see exactly the bytes the server sent."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="VERSION" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                    <ComboBox x:Name="TransportVersionCombo" Width="160" SelectedIndex="0">
+                                        <ComboBoxItem>Automatic</ComboBoxItem>
+                                        <ComboBoxItem>HTTP/1.1</ComboBoxItem>
+                                        <ComboBoxItem>HTTP/2</ComboBoxItem>
+                                    </ComboBox>
+                                </StackPanel>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,0"
+                                           Text="Pin a version when a gateway behaves differently on HTTP/1.1 and HTTP/2."/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
                 <TabItem Header="Tests">
                     <DockPanel Margin="2">
                         <TextBlock DockPanel.Dock="Top" Margin="8,8,8,4" Foreground="{DynamicResource Text.Faint}"

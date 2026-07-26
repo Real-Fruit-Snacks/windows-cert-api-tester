@@ -108,7 +108,9 @@ public static class McpCommand
                 ContentType = body is not null ? (contentType ?? "application/json") : null,
                 Timeout = TimeSpan.FromSeconds(timeout)
             };
-            var response = services.Client.SendAsync(request, cert, insecure, followRedirects: false, cancellationToken: services.Cancel)
+            var response = services.Client.SendAsync(request, cert,
+                    transport: new TransportOptions { IgnoreServerCertificateErrors = insecure, FollowRedirects = false },
+                    cancellationToken: services.Cancel)
                 .GetAwaiter().GetResult();
 
             if (!noAutoToken && response.Error is null &&
