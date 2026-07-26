@@ -37,6 +37,29 @@ public sealed class Args
         return null;
     }
 
+    /// <summary>Consume an option whose value is optional: "--cors" alone, or "--cors a,b". Returns
+    /// false when the option is absent; true when present, with <paramref name="value"/> set to the
+    /// following token when there is one that is not itself option-shaped.</summary>
+    public bool OptionalValue(out string? value, params string[] names)
+    {
+        value = null;
+        for (int i = 0; i < _tokens.Length; i++)
+        {
+            if (_tokens[i] is not { } t || !names.Contains(t, StringComparer.OrdinalIgnoreCase)) continue;
+            _tokens[i] = null;
+            // The next token belongs to this option only when it could not be an option itself —
+            // the same shape rule Positionals() uses — so "--cors --insecure" leaves --insecure be.
+            if (i + 1 < _tokens.Length && _tokens[i + 1] is { } next &&
+                !(next.StartsWith('-') && next.Length > 1 && !char.IsDigit(next[1])))
+            {
+                value = next;
+                _tokens[i + 1] = null;
+            }
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>Consume every occurrence of a repeatable option, in order.</summary>
     public List<string> Values(params string[] names)
     {

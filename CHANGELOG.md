@@ -6,6 +6,46 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-07-25
+
+### Added
+- **Several upstreams behind one gateway port** — `--upstream /api=https://api.internal` mounts a host
+  at a path prefix and repeats as often as you need, so a single `certapi serve` can stand in for a
+  whole backend: `GET /api/orders` reaches `https://api.internal/orders`, with the prefix stripped
+  before the request is forwarded. The longest matching prefix wins, a path under no prefix is a 404
+  that contacts nothing, and two upstreams mounted on the same prefix is a usage error rather than a
+  silent last-one-wins. The positional `certapi serve <upstream>` form still works — it is the same
+  thing written `/=<url>`.
+- **A gateway a browser can call — `certapi serve --browser`** — until now the gateway was usable only
+  from an application whose base URL you control, because a faithful relay hands a browser exactly the
+  headers that make it refuse the response. `--browser` turns on the whole bundle below at once, and
+  every part of it also works on its own. None of it is on by default: without these flags the
+  gateway is the same byte-faithful relay it has always been, adding and rewriting nothing.
+  - `--cors` answers Cross-Origin Resource Sharing (CORS) preflights at the gateway instead of
+    forwarding them upstream, and adds the response headers a browser insists on before it will let a
+    script read the reply. With no value it echoes the caller's own `Origin`; given a comma-separated
+    list it allows only those origins and refuses the rest with 403. Every `Access-Control-*` header
+    the upstream sent is stripped before the gateway adds its own, because two allow-origin values
+    are a hard browser failure rather than something it warns about.
+  - `--rewrite-cookies` re-emits each `Set-Cookie` without `Domain=` and without `Secure`, and turns
+    `SameSite=None` into `Lax`, so the browser will actually store the cookie against the gateway.
+    `HttpOnly`, `Path`, `Max-Age`, and `Expires` pass through untouched.
+  - `--rewrite-location` points a 3xx `Location` aimed at the upstream back at the gateway, so the
+    browser stays on the local origin. One aimed anywhere else is relayed exactly as written and
+    logged as a warning: that hop leaves the gateway, and your client certificate with it.
+  - `--allow-upgrade` relays WebSocket connections through to the upstream with your client
+    certificate attached, passing `Sec-WebSocket-Protocol` on so subprotocol negotiation still works.
+- **Known limitation of `--rewrite-cookies`** — a cookie named `__Host-…` or `__Secure-…` requires the
+  `Secure` attribute by specification, and no browser accepts `Secure` on a plaintext
+  `http://127.0.0.1` origin, so such a cookie cannot be made to work through the gateway however it is
+  rewritten. It is still passed on to the browser and named in a warning rather than dropped behind
+  your back. Serving the gateway over HTTPS — a future `serve --tls` — is the real fix, and it does
+  not exist yet.
+- **Transport control on the gateway** — `certapi serve` now takes the transport flags the other
+  commands gained in 1.50.0. `--proxy` / `--proxy-user` / `--no-proxy` and `--resolve` change how the
+  gateway reaches an upstream; the redirect, decompression, and HTTP-version flags are accepted but do
+  not apply, because the gateway always hands back the 3xx and the exact bytes the upstream sent.
+
 ## [1.50.0] - 2026-07-25
 
 ### Added
@@ -687,7 +727,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.50.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.51.0...HEAD
+[1.51.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.50.0...v1.51.0
 [1.50.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.49.0...v1.50.0
 [1.49.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.48.0...v1.49.0
 [1.48.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.47.2...v1.48.0

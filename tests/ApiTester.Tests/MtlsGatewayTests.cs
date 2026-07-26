@@ -155,4 +155,102 @@ public class MtlsGatewayTests
             using (resp.Lifetime) Assert.Equal(200, resp.StatusCode);
         }
     }
+
+    [Fact]
+    public async Task Request_matching_no_route_is_refused_without_contacting_an_upstream()
+    {
+        // The only route points at a dead port, so any attempt to forward would surface as a
+        // connection failure instead — the route miss has to be decided before that.
+        var routes = new GatewayRoutes(new[] { new GatewayRoute("/api", new Uri("https://127.0.0.1:1/")) });
+        using var gw = new MtlsGateway(routes, clientCertificate: null,
+                                       ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(2));
+
+        await Assert.ThrowsAsync<GatewayRouteNotFoundException>(async () =>
+            await gw.ForwardAsync(
+                new GatewayRequest("GET", "/static/app.js", Array.Empty<KeyValuePair<string, string>>(), null, null),
+                default));
+    }
+
+    [Fact]
+    public async Task Each_mounted_prefix_reaches_its_own_upstream_with_the_prefix_stripped()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            // Two echo servers on their own ports: each replays the request line and headers it
+            // received, so the Host header says which one was reached and the request line says
+            // what path arrived there.
+            await using var alpha = await LoopbackMtlsServer.StartEchoAsync(server, client.Thumbprint!);
+            await using var beta = await LoopbackMtlsServer.StartEchoAsync(server, client.Thumbprint!);
+            var routes = new GatewayRoutes(new[]
+            {
+                new GatewayRoute("/alpha", new Uri(alpha.BaseUrl)),
+                new GatewayRoute("/beta", new Uri(beta.BaseUrl))
+            });
+            using var gw = new MtlsGateway(routes, client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30));
+
+            string toAlpha = await ReadBody(await gw.ForwardAsync(
+                new GatewayRequest("GET", "/alpha/orders?x=1", Array.Empty<KeyValuePair<string, string>>(), null, null),
+                default));
+            string toBeta = await ReadBody(await gw.ForwardAsync(
+                new GatewayRequest("GET", "/beta/items", Array.Empty<KeyValuePair<string, string>>(), null, null),
+                default));
+
+            Assert.Contains("GET /orders?x=1", toAlpha);
+            Assert.Contains($"Host: 127.0.0.1:{new Uri(alpha.BaseUrl).Port}", toAlpha);
+            Assert.Contains("GET /items", toBeta);
+            Assert.Contains($"Host: 127.0.0.1:{new Uri(beta.BaseUrl).Port}", toBeta);
+        }
+    }
+
+    [Fact]
+    public async Task Off_host_targets_under_a_mounted_prefix_are_refused()
+    {
+        const string target = "/api//evil.com/steal";
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            // Stripping the mount point must not turn an off-host target into an accepted one: the
+            // authority check is re-applied against the matched route's own upstream.
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            var routes = new GatewayRoutes(new[] { new GatewayRoute("/api", new Uri(upstream.BaseUrl)) });
+            using var gw = new MtlsGateway(routes, client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30));
+
+            await Assert.ThrowsAsync<GatewayTargetException>(async () =>
+                await gw.ForwardAsync(
+                    new GatewayRequest("GET", target, Array.Empty<KeyValuePair<string, string>>(), null, null),
+                    default));
+        }
+    }
+
+    [Fact]
+    public async Task Resolve_override_dials_the_pinned_address_while_the_upstream_keeps_its_hostname()
+    {
+        // A .invalid name can never resolve (RFC 2606), so reaching the upstream at all proves the
+        // override supplied the address; the certificate is issued for that same name, so the
+        // handshake only completes if the TLS server name carried the original hostname too.
+        const string hostname = "certapi-gateway-resolve.invalid";
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate(
+            hostname, ca, true, false, new[] { hostname });
+        using var clientCert = SelfSignedCertificateFactory.CreateSignedCertificate("Client", ca, false, true);
+
+        await using var upstream = await LoopbackMtlsServer.StartEchoAsync(serverCert, clientCert.Thumbprint!);
+        int port = new Uri(upstream.BaseUrl).Port;
+
+        var routes = new GatewayRoutes(new[] { new GatewayRoute("/", new Uri($"https://{hostname}:{port}/")) });
+        using var gw = new MtlsGateway(routes, clientCert, ignoreServerCertificateErrors: true,
+                                       TimeSpan.FromSeconds(30),
+                                       new TransportOptions
+                                       {
+                                           Resolve = new[] { new ResolveOverride(hostname, port, "127.0.0.1") }
+                                       });
+
+        string echoed = await ReadBody(await gw.ForwardAsync(
+            new GatewayRequest("GET", "/orders", Array.Empty<KeyValuePair<string, string>>(), null, null), default));
+
+        Assert.Contains("GET /orders", echoed);
+        Assert.Contains($"Host: {hostname}:{port}", echoed);
+        Assert.Equal(hostname, upstream.LastSniHost);
+    }
 }

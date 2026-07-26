@@ -38,7 +38,7 @@ public class ServeCommandTests
                 }
             },
             // Ignore the requested upstream URL; always forward to the test loopback server.
-            GatewayFactory = (_, cert, _, timeout) =>
+            GatewayFactory = (_, cert, _, timeout, _) =>
                 new MtlsGateway(new Uri(upstream.BaseUrl), cert, ignoreServerCertificateErrors: true, timeout)
         };
 

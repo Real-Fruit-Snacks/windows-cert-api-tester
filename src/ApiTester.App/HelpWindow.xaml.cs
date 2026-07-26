@@ -366,10 +366,31 @@ public partial class HelpWindow : Window
             "certapi ws <url> opens a WebSocket (ws/wss) — send messages with --message or piped stdin lines, print replies, and use --expect <n> for scripts. certapi sse <url> streams Server-Sent Events (--max-events, --json).",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
             "certapi mock runs a standing local test server to fire requests at — it echoes each request and serves /status/<code>, /sse, /token, /windows-auth, /cookie-auth, and a WebSocket echo, over http, --tls, or --mtls (generating the certs). Point the app at it to try every feature without a real API.",
-            "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app.",
+            "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app. Mount several upstreams behind the one port with --upstream /api=https://api.internal, and add --browser when the caller is a web page (below).",
             "certapi mcp runs a Model Context Protocol server so an AI agent can make mTLS calls with a certificate you pin at launch, bounded by a host allowlist — send_request, list_certificates, list_saved, run_saved, and self_test tools over stdio.",
             "certapi import / export move cURL commands, OpenAPI documents, and whole workspaces in and out.",
             "Exit codes are script-friendly: 0 success, 1 failure, 2 usage error, 3 data error. Run certapi help <command> for all options."),
+        Sub("THE GATEWAY, FROM A BROWSER"),
+        P("One certapi serve can front several upstreams: --upstream /api=https://api.internal mounts " +
+          "a host at a path prefix and repeats as often as you like, so GET /api/orders reaches " +
+          "https://api.internal/orders with the prefix stripped before it is forwarded. The longest " +
+          "matching prefix wins, and a path under no prefix is a 404 that contacts nothing."),
+        P("A plain relay hands a browser exactly the headers that make it refuse the response, so " +
+          "--browser turns on the four accommodations that fix that — each also usable on its own. " +
+          "--cors answers Cross-Origin Resource Sharing (CORS) preflights at the gateway and adds the " +
+          "headers a script needs to read the reply (give it a comma-separated list to allow only " +
+          "those origins and refuse the rest with 403). --rewrite-cookies drops Domain= and Secure " +
+          "from each Set-Cookie and turns SameSite=None into Lax, so the browser stores the cookie " +
+          "against the gateway. --rewrite-location points a 3xx Location aimed at the upstream back " +
+          "at the gateway; one aimed anywhere else is left exactly as the upstream wrote it and " +
+          "logged, because that hop leaves the gateway and your client certificate with it. " +
+          "--allow-upgrade relays WebSocket connections to the upstream through your certificate. " +
+          "Without these flags nothing changes: the gateway stays a byte-faithful relay."),
+        NoteBox("One thing the gateway cannot fix: a cookie named __Host-… or __Secure-… requires the " +
+                "Secure attribute, and no browser accepts that over a plaintext http://127.0.0.1 " +
+                "origin. Such cookies are relayed and named in a warning rather than dropped behind " +
+                "your back — serving the gateway over HTTPS would be the real fix, and it doesn't do " +
+                "that today."),
         NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."));
 
     private UIElement Rendered() => Section("Rendered website",

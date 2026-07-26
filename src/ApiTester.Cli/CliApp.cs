@@ -22,8 +22,8 @@ public sealed class CliServices
     public Func<string, System.Security.Cryptography.X509Certificates.X509Certificate2?> FindCertificate { get; init; } =
         thumbprint => new CertificateStoreService().FindByThumbprint(thumbprint, includeLocalMachine: true);
 
-    public Func<Uri, System.Security.Cryptography.X509Certificates.X509Certificate2?, bool, TimeSpan, ApiTester.Core.MtlsGateway> GatewayFactory
-    { get; init; } = (upstream, cert, insecure, timeout) => new ApiTester.Core.MtlsGateway(upstream, cert, insecure, timeout);
+    public Func<GatewayRoutes, System.Security.Cryptography.X509Certificates.X509Certificate2?, bool, TimeSpan, TransportOptions?, ApiTester.Core.MtlsGateway> GatewayFactory
+    { get; init; } = (routes, cert, insecure, timeout, transport) => new ApiTester.Core.MtlsGateway(routes, cert, insecure, timeout, transport);
 
     /// <summary>Diagnostic sink for --debug / --log-file; set per invocation by CliApp.</summary>
     public CliLog Log { get; set; } = CliLog.None;
