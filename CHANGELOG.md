@@ -6,6 +6,51 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.53.0] - 2026-07-26
+
+### Added
+- **HAR → OpenAPI** — `certapi export openapi --from-har session.har -o api.json` turns a captured
+  HTTP Archive (HAR) session into an OpenAPI 3.0 document, the payoff for mapping an undocumented
+  internal API: `fuzz` finds the paths, a HAR capture records what a real client actually sent, and
+  this turns the recording into a specification. Repeated calls to the same endpoint collapse into
+  one operation — headers common to every instance are kept (varying ones dropped), the first
+  non-empty request body becomes the body example, and query keys seen across instances become query
+  parameters. Path templating is deliberately conservative — a wrong `{param}` is worse than a
+  literal path — so a segment becomes `{id}` only when it is all digits, a Universally Unique
+  Identifier (UUID), or a hexadecimal string 16 characters or longer, *and* it actually varies between
+  calls; one that happens to carry the same value in every entry stays literal. Responses of 400 and
+  above are skipped, and a header whose value is exactly `[redacted]` (as `--har`'s default redaction
+  writes it) is never exported — the existing OpenAPI-export rule still applies too: auth becomes a
+  security scheme only, never the secret value. `--host <h>` keeps only one host's entries, and
+  `--no-template-ids` keeps identifier-looking segments literal. In the app, Import ▾ → **Export
+  OpenAPI from HAR file…** does the same from an `.har` file picker.
+- **Mock from HAR** — `certapi mock --har session.har` serves a captured session back as a fake
+  backend instead of the built-in echo routes, so an application, a test suite, or a teammate's client
+  can develop against a recorded API offline. Matching precedence is exact method + path + query
+  first, then method + path, then `--no-match-status` (default 404) for anything that matches
+  neither; repeated calls to one route replay in recorded order and then repeat the last one.
+  Hop-by-hop and framing headers (`Transfer-Encoding`, `Connection`, `Content-Length`) are never
+  replayed, and a recorded `Set-Cookie` replays exactly as captured — a redacted capture replays
+  `[redacted]`, which is correct and visible rather than silently wrong. The built-in `/`,
+  `/status/<code>`, `/sse`, `/token`, `/windows-auth`, and `/cookie-auth` routes are not served while
+  replaying. In the app, the Mock server window's **From HAR…** button starts the mock in replay mode
+  the same way.
+- **`serve --tls`** — closes the limitation the 1.51.0 gateway shipped with. `--tls` serves the
+  gateway itself over HTTPS on `127.0.0.1`, using a generated `CN=127.0.0.1` certificate (a Subject
+  Alternative Name (SAN) covering `127.0.0.1` and `localhost`, cached under
+  `%AppData%\CertApiTester\gateway-tls\` and reused across runs) bound to the port through the
+  Windows HTTP Server API — the same mechanism `netsh http add sslcert` configures. Binding is
+  machine state, so nothing happens silently: the first bind needs an elevated (Run as administrator)
+  prompt, and without one `serve --tls` exits 2 printing the exact `netsh` command to run; a port
+  already bound to someone else's certificate is left alone and reported by its thumbprint rather
+  than clobbered. `--tls-trust` additionally installs the certificate into `CurrentUser\Root` so the
+  browser accepts it silently — explicit, logged, and reversible with `--tls-untrust`. Without
+  `--tls-trust` the browser just warns once, and the startup banner says which situation applies.
+  With `--tls` on, the `--browser` cookie rewriter stops stripping `Secure` from `Set-Cookie`, stops
+  downgrading `SameSite=None` to `Lax`, and emits no `__Host-`/`__Secure-` warning — the known
+  limitation recorded in the 1.51.0 section below, that those cookies could never survive a plaintext
+  `http://127.0.0.1` origin, is now closed.
+
 ## [1.52.0] - 2026-07-26
 
 ### Added
@@ -758,7 +803,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.52.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.53.0...HEAD
+[1.53.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.51.0...v1.52.0
 [1.51.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.50.0...v1.51.0
 [1.50.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.49.0...v1.50.0

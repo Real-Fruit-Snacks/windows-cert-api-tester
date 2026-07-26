@@ -7,10 +7,17 @@ public static class ExportCommand
 {
     public const string Help = """
         Usage: certapi export openapi [<folder>] -o <file> [--workspace <file>]
+               certapi export openapi --from-har <file.har> -o <file> [--host <h>] [--no-template-ids]
                certapi export workspace -o <file> [--workspace <file>]
 
         openapi: writes collections (optionally one root folder) as an OpenAPI 3.0
         document — auth is exported as a security scheme only, never the secrets.
+        --from-har turns a captured HTTP Archive (HAR) session into an OpenAPI document instead of
+        reading saved collections: repeated calls to the same endpoint collapse into one operation,
+        identifier-looking path segments become {id}, responses of 400 and above are skipped, and
+        redacted header values are never written.
+          --host <h>          keep only entries for this host (case-insensitive)
+          --no-template-ids   keep identifier-looking path segments literal instead of {id}
         workspace: writes the whole workspace as a portable JSON file (window geometry
         stripped). Note: workspace files include request auth values and history.
 
@@ -18,19 +25,35 @@ public static class ExportCommand
 
         Examples:
           certapi export openapi -o api.json
+          certapi export openapi --from-har session.har -o api.json
           certapi export workspace -o workspace.json
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
+        string? fromHar = args.Value("--from-har");
+        string? host = args.Value("--host");
+        bool noTemplateIds = args.Flag("--no-template-ids");
         string? workspace = args.Value("--workspace");
         string? outFile = args.Value("-o", "--output");
         var positionals = args.Positionals();
         if (positionals.Count is < 1 or > 2 || outFile is null) throw new CliUsageException(Help);
+        string kind = positionals[0].ToLowerInvariant();
+
+        if (fromHar is not null)
+        {
+            if (kind != "openapi")
+                throw new CliUsageException("--from-har only applies to 'export openapi'.");
+            if (positionals.Count != 1)
+                throw new CliUsageException("--from-har exports the archive itself, so it takes no folder name.");
+            return ExportOpenApiFromHar(fromHar, outFile, host, templateIds: !noTemplateIds, stderr);
+        }
+        if (host is not null || noTemplateIds)
+            throw new CliUsageException("--host and --no-template-ids only apply together with --from-har.");
 
         var state = CliWorkspace.Load(workspace, services.LiveStatePath);
 
-        switch (positionals[0].ToLowerInvariant())
+        switch (kind)
         {
             case "openapi":
             {
@@ -66,4 +89,36 @@ public static class ExportCommand
             default: throw new CliUsageException(Help);
         }
     }
+
+    private static int ExportOpenApiFromHar(string harFile, string outFile, string? host, bool templateIds, TextWriter stderr)
+    {
+        if (!File.Exists(harFile)) throw new CliDataException($"No such file: {harFile}");
+
+        Har har;
+        try
+        {
+            har = HarReader.Parse(File.ReadAllText(harFile));
+        }
+        catch (HarFormatException ex)
+        {
+            throw new CliDataException(ex.Message);
+        }
+
+        var pc = HarToCollection.Group(har, new HarGroupOptions { Host = host, TemplateIds = templateIds });
+        int count = CountRequests(pc);
+        if (count == 0)
+        {
+            string reason = host is not null
+                ? $"the --host '{host}' filter matched nothing, and/or every matching entry had a response status of 400 or above (those are skipped)."
+                : "every entry had a response status of 400 or above (those are skipped).";
+            throw new CliDataException($"Nothing to export from {Path.GetFileName(harFile)} — {reason}");
+        }
+
+        File.WriteAllText(outFile, OpenApiExporter.ToJson(pc));
+        stderr.WriteLine($"Exported {count} operation(s) from {Path.GetFileName(harFile)} to {outFile}.");
+        return ExitCodes.Ok;
+    }
+
+    private static int CountRequests(ParsedCollection pc) =>
+        pc.Requests.Count + pc.Folders.Sum(CountRequests);
 }

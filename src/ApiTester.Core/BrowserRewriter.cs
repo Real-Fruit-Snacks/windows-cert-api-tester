@@ -13,7 +13,13 @@ public sealed record BrowserOptions(
     bool RewriteCookies,
     bool RewriteLocation,
     bool AllowUpgrade,
-    Uri LocalOrigin);
+    Uri LocalOrigin)
+{
+    /// <summary>The gateway's own origin is https (serve --tls), so a cookie's Secure attribute and
+    /// SameSite=None are valid as the upstream sent them and a __Host-/__Secure- prefix works.
+    /// False — today's plaintext loopback behavior — unless the caller asks for it.</summary>
+    public bool SecureOrigin { get; init; }
+}
 
 /// <summary>The policy seam that makes an upstream usable from a browser through the gateway:
 /// CORS, cookie attributes and redirect targets. Pure functions over header lists with no sockets,
@@ -85,7 +91,7 @@ public static class BrowserRewriter
             {
                 // Rewritten in place, so several Set-Cookie headers stay several headers in the
                 // order the upstream set them.
-                result.Add(new(h.Key, RewriteSetCookie(h.Value, notes)));
+                result.Add(new(h.Key, RewriteSetCookie(h.Value, options, notes)));
                 continue;
             }
             if (options.RewriteLocation && h.Key.Equals("Location", StringComparison.OrdinalIgnoreCase))
@@ -157,9 +163,11 @@ public static class BrowserRewriter
         return options.LocalOrigin.GetLeftPart(UriPartial.Authority) + prefix + target.PathAndQuery;
     }
 
-    /// <summary>One Set-Cookie value as the browser can actually store it when the origin is a
-    /// plaintext loopback address rather than the upstream's own host.</summary>
-    private static string RewriteSetCookie(string setCookie, List<string> notes)
+    /// <summary>One Set-Cookie value as the browser can actually store it. Over the default
+    /// plaintext loopback origin, Secure and SameSite=None cannot survive as the upstream wrote
+    /// them; over the gateway's own https origin (<see cref="BrowserOptions.SecureOrigin"/>, set by
+    /// `serve --tls`) they are exactly what the upstream sent, so they are kept.</summary>
+    private static string RewriteSetCookie(string setCookie, BrowserOptions options, List<string> notes)
     {
         // Attributes are separated by ';' and no attribute value may contain one — an Expires date
         // carries a comma, not a semicolon — so this split is safe.
@@ -180,29 +188,40 @@ public static class BrowserRewriter
             string attributeValue = eq < 0 ? "" : attribute[(eq + 1)..].Trim();
 
             // Domain= scopes the cookie to the upstream host, which is not the host the browser is
-            // talking to; without it the cookie scopes to the gateway itself.
+            // talking to; without it the cookie scopes to the gateway itself. True regardless of
+            // scheme — the browser is still talking to a different host than the upstream.
             if (attributeName.Equals("Domain", StringComparison.OrdinalIgnoreCase)) continue;
-            // Secure over http://127.0.0.1 means the browser stores nothing at all.
-            if (attributeName.Equals("Secure", StringComparison.OrdinalIgnoreCase)) continue;
-            // SameSite=None is only legal alongside Secure, which has just gone, so the browser
-            // would reject the cookie entirely. Lax is the nearest thing that still works.
+            if (attributeName.Equals("Secure", StringComparison.OrdinalIgnoreCase))
+            {
+                // Secure over http://127.0.0.1 means the browser stores nothing at all, so it is
+                // dropped there; over the gateway's own https origin (serve --tls) it is exactly
+                // what the upstream sent, so it survives.
+                if (options.SecureOrigin) kept.Add(attribute);
+                continue;
+            }
             if (attributeName.Equals("SameSite", StringComparison.OrdinalIgnoreCase) &&
                 attributeValue.Equals("None", StringComparison.OrdinalIgnoreCase))
             {
-                kept.Add("SameSite=Lax");
+                // SameSite=None is only legal alongside Secure. Over a plaintext origin Secure has
+                // just gone above, so the browser would reject the cookie entirely and Lax is the
+                // nearest thing that still works; over an https origin Secure survived above, so
+                // None is kept exactly as the upstream wrote it.
+                kept.Add(options.SecureOrigin ? "SameSite=None" : "SameSite=Lax");
                 continue;
             }
             kept.Add(attribute);
         }
 
-        // A __Host-/__Secure- cookie requires the Secure attribute by specification, so it cannot
-        // work over a plaintext loopback origin however it is rewritten. It is still emitted and
-        // said out loud rather than dropped behind the operator's back — the honest answer is a
-        // future `serve --tls`, which is what the warning is really pointing at. The prefixes are
-        // case-sensitive, per the cookie prefix specification.
+        // A __Host-/__Secure- cookie requires the Secure attribute by specification, so over a
+        // plaintext loopback origin it cannot work however it is rewritten — it is still emitted and
+        // said out loud rather than dropped behind the operator's back, and `serve --tls` is the
+        // honest fix. Over the gateway's own https origin Secure survived above, so the prefix works
+        // and there is nothing to warn about. The prefixes are case-sensitive, per the cookie prefix
+        // specification.
         string name = NameOf(pair);
-        if (name.StartsWith("__Host-", StringComparison.Ordinal) ||
-            name.StartsWith("__Secure-", StringComparison.Ordinal))
+        if (!options.SecureOrigin &&
+            (name.StartsWith("__Host-", StringComparison.Ordinal) ||
+             name.StartsWith("__Secure-", StringComparison.Ordinal)))
             notes.Add($"Cookie '{name}' uses a prefix that requires the Secure attribute, so the " +
                       "browser will reject it over the gateway's plaintext loopback origin.");
 

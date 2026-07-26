@@ -12,8 +12,10 @@ public class BrowserRewriterTests
         bool rewriteCookies = false,
         bool rewriteLocation = false,
         bool allowUpgrade = false,
-        string localOrigin = Local) =>
-        new(cors, allowedOrigins, rewriteCookies, rewriteLocation, allowUpgrade, new Uri(localOrigin));
+        string localOrigin = Local,
+        bool secureOrigin = false) =>
+        new(cors, allowedOrigins, rewriteCookies, rewriteLocation, allowUpgrade, new Uri(localOrigin))
+        { SecureOrigin = secureOrigin };
 
     private static GatewayRequest Request(string method, params (string Name, string Value)[] headers) =>
         new(method, "/orders",
@@ -421,6 +423,53 @@ public class BrowserRewriterTests
             Options(rewriteLocation: false), out var warnings);
 
         Assert.Equal(upstream, result);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void Over_a_secure_origin_a_prefixed_cookie_keeps_secure_and_samesite_none_and_loses_only_domain()
+    {
+        var result = BrowserRewriter.RewriteResponseHeaders(
+            Headers(("Set-Cookie",
+                "__Host-sid=abc; Path=/; Secure; HttpOnly; SameSite=None; Domain=api.internal")),
+            null, Route(), Options(rewriteCookies: true, secureOrigin: true), out var warnings);
+
+        Assert.Equal("__Host-sid=abc; Path=/; Secure; HttpOnly; SameSite=None", Value(result, "Set-Cookie"));
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void Over_a_plaintext_origin_the_same_prefixed_cookie_is_still_warned_about()
+    {
+        BrowserRewriter.RewriteResponseHeaders(
+            Headers(("Set-Cookie",
+                "__Host-sid=abc; Path=/; Secure; HttpOnly; SameSite=None; Domain=api.internal")),
+            null, Route(), Options(rewriteCookies: true, secureOrigin: false), out var warnings);
+
+        Assert.Contains(warnings, w => w.Contains("__Host-sid"));
+    }
+
+    [Fact]
+    public void Over_a_secure_origin_an_ordinary_cookie_keeps_secure()
+    {
+        var result = BrowserRewriter.RewriteResponseHeaders(
+            Headers(("Set-Cookie", "sid=1; Secure")), null, Route(),
+            Options(rewriteCookies: true, secureOrigin: true), out var warnings);
+
+        Assert.Equal("sid=1; Secure", Value(result, "Set-Cookie"));
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void Over_a_secure_origin_a_rewritten_redirect_targets_the_https_local_origin()
+    {
+        var result = BrowserRewriter.RewriteResponseHeaders(
+            Headers(("Location", "https://api.internal/orders/7?view=full")), null,
+            Route("/api", "https://api.internal/"),
+            Options(rewriteLocation: true, localOrigin: "https://127.0.0.1:8443", secureOrigin: true),
+            out var warnings);
+
+        Assert.Equal("https://127.0.0.1:8443/api/orders/7?view=full", Value(result, "Location"));
         Assert.Empty(warnings);
     }
 

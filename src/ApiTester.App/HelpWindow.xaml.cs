@@ -176,7 +176,7 @@ public partial class HelpWindow : Window
         P("The pop-out button above the response (next to Copy body) opens either the selected view or the whole response panel — tabs and all — in its own window. Detach the entire panel to give the request editor the full main window, or pop a single view to watch, say, the Network trace beside the Pretty body. Everything stays live, and closing a popped-out window puts its content back in place."),
         P("“Copy as ▾” turns the current request into a ready-to-run snippet — cURL, PowerShell (Invoke-RestMethod), Python (requests), or C# (HttpClient) — with {{variables}} resolved and headers and body included."),
         P("The title bar carries the environment picker, a sun/moon button that toggles between the light and dark themes (your choice is remembered and applies to every window), the ? Help button (F1), and the window controls."),
-        NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window — or Mock server… beside it to start a standing local endpoint you can send real requests to (http, TLS, or mTLS)."));
+        NoteBox("No client certificates on this machine? You can still test any endpoint that doesn't require one. To prove the certificate path end-to-end with no real server, click Run Self-Test at the bottom of the window — or Mock server… beside it to start a standing local endpoint you can send real requests to (http, TLS, or mTLS), or replay a captured HAR file with its From HAR… button."));
 
     private UIElement RequestsAndTabs() => Section("Requests & tabs",
         P("A request is built from the request line (method, URL, timeout) plus seven tabs beneath it."),
@@ -371,6 +371,13 @@ public partial class HelpWindow : Window
         NoteBox("A HAR run never writes live state — no known-good markers, no captured tokens. A " +
                 "malformed HAR file is a one-line data error; a well-formed one with no entries to " +
                 "replay is a data error too, since there is nothing to run."),
+        P("Import ▾ → “Export OpenAPI from HAR file…” turns a captured archive into an OpenAPI " +
+          "document instead of a collection: repeated calls to the same endpoint collapse into one " +
+          "operation, and identifier-looking path segments become {id} — conservatively, only " +
+          "digits, a Universally Unique Identifier (UUID), or a long hexadecimal string, and only " +
+          "when the value actually varies between calls. Responses of 400 and above are skipped, " +
+          "and redacted header values are never written. Headless, the same thing is " +
+          "certapi export openapi --from-har session.har -o api.json."),
         Sub("SAVE / LOAD A WORKSPACE"),
         P("“Export workspace…” in the Import ▾ menu saves everything — open tabs, collections (with their known-good results), environments, saved websites, and history — to a single JSON file. “Import workspace…” loads one back, either merging into what you have or replacing it. Use it to move between machines, keep named snapshots of a project, or hand a teammate a ready-to-use setup."),
         NoteBox("A workspace file includes request auth values, environment variables (including captured tokens), and response history — treat it as a private file."),
@@ -392,8 +399,8 @@ public partial class HelpWindow : Window
             "certapi token fetches an OAuth 2.0 access token — --grant client_credentials (default), password, or refresh — and with --save --for <api-url> stores it so later sends attach it automatically.",
             "certapi ws <url> opens a WebSocket (ws/wss) — send messages with --message or piped stdin lines, print replies, and use --expect <n> for scripts. certapi sse <url> streams Server-Sent Events (--max-events, --json).",
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
-            "certapi mock runs a standing local test server to fire requests at — it echoes each request and serves /status/<code>, /sse, /token, /windows-auth, /cookie-auth, and a WebSocket echo, over http, --tls, or --mtls (generating the certs). Point the app at it to try every feature without a real API.",
-            "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app. Mount several upstreams behind the one port with --upstream /api=https://api.internal, and add --browser when the caller is a web page (below).",
+            "certapi mock runs a standing local test server to fire requests at — it echoes each request and serves /status/<code>, /sse, /token, /windows-auth, /cookie-auth, and a WebSocket echo, over http, --tls, or --mtls (generating the certs). Point the app at it to try every feature without a real API. --har <file> replays a captured session instead — the built-in routes aren't served while replaying, and --no-match-status (default 404) sets what a request matching nothing gets back.",
+            "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app. Mount several upstreams behind the one port with --upstream /api=https://api.internal, add --browser when the caller is a web page (below), and add --tls to serve the gateway itself over HTTPS.",
             "certapi mcp runs a Model Context Protocol server so an AI agent can make mTLS calls with a certificate you pin at launch, bounded by a host allowlist — send_request, list_certificates, list_saved, run_saved, and self_test tools over stdio.",
             "certapi import / export move cURL commands, OpenAPI documents, and whole workspaces in and out.",
             "Exit codes are script-friendly: 0 success, 1 failure, 2 usage error, 3 data error. Run certapi help <command> for all options."),
@@ -413,11 +420,14 @@ public partial class HelpWindow : Window
           "logged, because that hop leaves the gateway and your client certificate with it. " +
           "--allow-upgrade relays WebSocket connections to the upstream through your certificate. " +
           "Without these flags nothing changes: the gateway stays a byte-faithful relay."),
-        NoteBox("One thing the gateway cannot fix: a cookie named __Host-… or __Secure-… requires the " +
-                "Secure attribute, and no browser accepts that over a plaintext http://127.0.0.1 " +
-                "origin. Such cookies are relayed and named in a warning rather than dropped behind " +
-                "your back — serving the gateway over HTTPS would be the real fix, and it doesn't do " +
-                "that today."),
+        NoteBox("Over the default plaintext loopback origin, a cookie named __Host-… or __Secure-… " +
+                "still cannot work — it requires the Secure attribute, which no browser accepts over " +
+                "plaintext http://127.0.0.1 — so it is relayed and named in a warning rather than " +
+                "dropped behind your back. --tls is the fix: it serves the gateway itself over HTTPS " +
+                "with a generated certificate, so Secure, SameSite=None, and __Host-/__Secure- cookies " +
+                "all work. The first bind needs an elevated prompt (the exact netsh command is " +
+                "printed when one isn't available), and --tls-trust installs the certificate so the " +
+                "browser stops warning about it — reversible with --tls-untrust."),
         NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."));
 
     private UIElement Rendered() => Section("Rendered website",

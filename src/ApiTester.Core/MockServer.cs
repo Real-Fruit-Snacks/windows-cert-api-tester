@@ -49,7 +49,11 @@ public static class MockCertificates
 }
 
 /// <summary>A one-line record of a handled request, for the console log.</summary>
-public sealed record MockRequestLog(string Method, string Path, int Status, string? ClientCertSubject);
+public sealed record MockRequestLog(string Method, string Path, int Status, string? ClientCertSubject)
+{
+    /// <summary>In replay mode: "exact", "path", or "miss"; null when not replaying.</summary>
+    public string? Replay { get; init; }
+}
 
 /// <summary>
 /// A small standing local test server you can fire requests at — the persistent counterpart to the
@@ -79,27 +83,30 @@ public sealed class MockServer : IAsyncDisposable
     private readonly MockTlsMode _tls;
     private readonly X509Certificate2? _serverCert;
     private readonly Action<MockRequestLog>? _onRequest;
+    private readonly HarReplaySource? _replay;
     private bool _disposed;
 
     public string BaseUrl { get; }
     public int Port { get; }
 
     private MockServer(TcpListener listener, int port, MockTlsMode tls,
-        X509Certificate2? serverCert, Action<MockRequestLog>? onRequest)
+        X509Certificate2? serverCert, Action<MockRequestLog>? onRequest, HarReplaySource? replay)
     {
         _listener = listener;
         Port = port;
         _tls = tls;
         _serverCert = serverCert;
         _onRequest = onRequest;
+        _replay = replay;
         BaseUrl = $"{(tls == MockTlsMode.Http ? "http" : "https")}://127.0.0.1:{port}/";
         _acceptLoop = AcceptLoopAsync();
     }
 
     /// <summary>Start listening. <paramref name="port"/> 0 picks a free port (see <see cref="Port"/>).
-    /// A server certificate is required for HTTPS/mTLS.</summary>
+    /// A server certificate is required for HTTPS/mTLS. When <paramref name="replay"/> is supplied,
+    /// every request is answered from the recorded HAR session instead of the built-in routes.</summary>
     public static MockServer Start(int port, MockTlsMode tls,
-        X509Certificate2? serverCert = null, Action<MockRequestLog>? onRequest = null)
+        X509Certificate2? serverCert = null, Action<MockRequestLog>? onRequest = null, HarReplaySource? replay = null)
     {
         if (tls != MockTlsMode.Http && serverCert is null)
             throw new ArgumentException("A server certificate is required for HTTPS/mTLS.", nameof(serverCert));
@@ -107,7 +114,7 @@ public sealed class MockServer : IAsyncDisposable
         var listener = new TcpListener(IPAddress.Loopback, port);
         listener.Start();
         int actualPort = ((IPEndPoint)listener.LocalEndpoint).Port;
-        return new MockServer(listener, actualPort, tls, serverCert, onRequest);
+        return new MockServer(listener, actualPort, tls, serverCert, onRequest, replay);
     }
 
     private async Task AcceptLoopAsync()
@@ -168,6 +175,30 @@ public sealed class MockServer : IAsyncDisposable
             {
                 await HandleWebSocketAsync(stream, headers, ct);
                 _onRequest?.Invoke(new(method, path, 101, clientCertSubject));
+                return;
+            }
+
+            // Replay mode: the recorded HAR session is the whole surface — a miss answers
+            // NoMatchStatus rather than falling through to the built-in routes below.
+            if (_replay is not null)
+            {
+                var recorded = _replay.Match(method, target, out var kind);
+                int replayStatus;
+                if (recorded is not null)
+                {
+                    await WriteRecordedAsync(stream, recorded, ct);
+                    replayStatus = recorded.Status;
+                }
+                else
+                {
+                    replayStatus = _replay.Options.NoMatchStatus;
+                    await WriteResponseAsync(stream, replayStatus, "application/json",
+                        "{\"server\":\"certapi mock\",\"replay\":\"no match\"}", ct);
+                }
+                _onRequest?.Invoke(new MockRequestLog(method, path, replayStatus, clientCertSubject)
+                {
+                    Replay = kind switch { ReplayMatch.Exact => "exact", ReplayMatch.Path => "path", _ => "miss" }
+                });
                 return;
             }
 
@@ -261,6 +292,29 @@ public sealed class MockServer : IAsyncDisposable
         await stream.WriteAsync(bytes, ct);
         await stream.FlushAsync(ct);
     }
+
+    /// <summary>Writes a recorded HAR response verbatim: its own status/headers/body, framed with a
+    /// fresh Content-Length and Connection: close (MockServer frames its own responses — the indexer
+    /// already dropped any recorded framing headers).</summary>
+    private static async Task WriteRecordedAsync(Stream stream, RecordedResponse recorded, CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.Append("HTTP/1.1 ").Append(recorded.Status).Append(' ')
+          .Append(recorded.StatusText ?? ReasonPhrase(recorded.Status)).Append("\r\n");
+        foreach (var h in recorded.Headers)
+        {
+            if (ContainsCrLf(h.Key) || ContainsCrLf(h.Value)) continue;   // defensive: never let a recorded header inject a response
+            sb.Append(h.Key).Append(": ").Append(h.Value).Append("\r\n");
+        }
+        sb.Append("Content-Length: ").Append(recorded.Body.Length).Append("\r\n");
+        sb.Append("Connection: close\r\n\r\n");
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(sb.ToString()), ct);
+        await stream.WriteAsync(recorded.Body, ct);
+        await stream.FlushAsync(ct);
+    }
+
+    private static bool ContainsCrLf(string s) => s.Contains('\r') || s.Contains('\n');
 
     // Emulates a Windows-auth-protected endpoint: challenges with 401 WWW-Authenticate: NTLM until
     // the client presents an Authorization header, then accepts it (short-circuiting the handshake).

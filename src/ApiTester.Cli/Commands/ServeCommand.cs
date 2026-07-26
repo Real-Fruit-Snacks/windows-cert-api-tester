@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.WebSockets;
+using System.Security.Cryptography.X509Certificates;
 using ApiTester.Core;
 
 namespace ApiTester.Cli.Commands;
@@ -31,6 +32,13 @@ public static class ServeCommand
           --timeout <seconds>     Per-request upstream timeout (default 100)
           --workspace <file>      Resolve a saved-website <upstream> from a workspace file
           -q, --quiet             No startup banner or per-request log
+          --tls                   Serve over HTTPS on 127.0.0.1 with a generated gateway certificate,
+                                  so Secure and __Host-/__Secure- cookies work. Binding the port needs
+                                  an elevated prompt the first time; the exact netsh command is printed
+                                  if it isn't available
+          --tls-trust             Also install that certificate into CurrentUser\Root so the browser
+                                  accepts it silently (explicit, logged, and reversible)
+          --tls-untrust           Remove a previously trusted gateway certificate and exit
 
         Browser (so a page on another origin can call the upstream through the gateway):
           --browser               The bundle: turns on all four accommodations below at once
@@ -45,10 +53,9 @@ public static class ServeCommand
           --allow-upgrade         Relay WebSocket connections to the upstream as well
 
           Without these the gateway stays a byte-faithful relay: nothing is added or rewritten.
-          A cookie named __Host-… or __Secure-… cannot be made to work here — those names
-          require the Secure attribute, which no browser accepts on a plaintext
-          http://127.0.0.1 origin. Such cookies are relayed and logged as a warning; the fix is
-          a future `serve --tls`, which does not exist yet.
+          A cookie named __Host-… or __Secure-… needs the Secure attribute, which a plaintext
+          http://127.0.0.1 origin cannot carry, so run with --tls and it works; without --tls
+          such cookies are relayed and logged as a warning.
 
 
         """ + TransportFlags.Help + """
@@ -69,6 +76,9 @@ public static class ServeCommand
 
           # Just CORS, and only for the page you are developing
           certapi serve https://internal-api.example.com --port 8443 --cert "CN=My Client" --cors http://localhost:3000
+
+          # HTTPS on the gateway itself, so Secure and __Host-/__Secure- cookies survive
+          certapi serve https://internal-api.example.com --port 8443 --cert "CN=My Client" --browser --tls --tls-trust
 
         Loopback only; stop with Ctrl+C. Exit 0 clean shutdown, 2 usage, 3 data error.
         """;
@@ -91,7 +101,25 @@ public static class ServeCommand
         bool rewriteLocation = args.Flag("--rewrite-location") || browserBundle;
         bool allowUpgrade = args.Flag("--allow-upgrade") || browserBundle;
         var transportOverrides = TransportFlags.Parse(args, out _);
-        // Resolve the certificate before Positionals() rejects its options (store or a file).
+
+        bool tls = args.Flag("--tls");
+        bool tlsTrust = args.Flag("--tls-trust");
+        bool tlsUntrust = args.Flag("--tls-untrust");
+
+        if (tlsUntrust)
+        {
+            // A standalone maintenance action: it removes a certificate this tool installed and has
+            // nothing to do with starting a listener.
+            if (tls || tlsTrust)
+                throw new CliUsageException("--tls-untrust is a standalone action; run 'certapi serve --tls-untrust' on its own.");
+            return UntrustGatewayCertificate(stderr);
+        }
+        if (tlsTrust && !tls)
+            throw new CliUsageException("--tls-trust only applies together with --tls.");
+
+        // Resolve the certificate before Positionals() rejects its options (store or a file). The
+        // standalone --tls-untrust path above returns before this, so it never touches the store to
+        // resolve a client certificate it will never use.
         var cert = CliCert.Resolve(args, store, services, stderr);
 
         var positionals = args.Positionals();
@@ -131,11 +159,16 @@ public static class ServeCommand
             if (ApiClient.ValidateTransport(transport, route.Upstream.ToString()) is { } transportProblem)
                 throw new CliUsageException(transportProblem);
 
+        var logLock = new object();
+        void Log(string line) { if (!quiet) lock (logLock) stderr.WriteLine(line); }
+
         // The origin the browser is actually talking to, which is what a rewritten Location and an
-        // allow-origin decision are measured against.
+        // allow-origin decision are measured against. https when --tls is on, so Location rewriting
+        // targets the right scheme and Secure/SameSite=None survive as the upstream sent them.
+        string scheme = tls ? "https" : "http";
         var browser = new BrowserOptions(
             cors, ParseOrigins(corsOrigins), rewriteCookies, rewriteLocation, allowUpgrade,
-            LocalOrigin: new Uri($"http://127.0.0.1:{port}"));
+            LocalOrigin: new Uri($"{scheme}://127.0.0.1:{port}")) { SecureOrigin = tls };
 
         using var gateway = services.GatewayFactory(
             routes, cert, insecure, TimeSpan.FromSeconds(timeoutSeconds), transport);
@@ -143,15 +176,58 @@ public static class ServeCommand
         // gets its own relay, built only when upgrades are actually allowed.
         var relay = allowUpgrade ? new GatewayWebSocketRelay(cert, insecure) : null;
 
+        X509Certificate2? gatewayCert = null;
+        string? gatewayThumb = null;
+        if (tls)
+        {
+            gatewayCert = GatewayCertificate.LoadOrCreate();
+            gatewayThumb = LoopbackTlsBinding.NormalizeThumbprint(gatewayCert.Thumbprint!);
+
+            if (tlsTrust)
+            {
+                // Explicit, logged, and reversible — never done silently.
+                try { GatewayCertificate.Trust(gatewayCert); }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        "Could not install the gateway certificate into CurrentUser\\Root.", ex);
+                }
+                Log($"trusted the gateway certificate {gatewayThumb} in CurrentUser\\Root (undo with certapi serve --tls-untrust).");
+            }
+
+            var bound = LoopbackTlsBinding.Describe(port);
+            if (bound is null)
+            {
+                if (!LoopbackTlsBinding.IsElevated())
+                    throw new CliUsageException(LoopbackTlsBinding.NotElevatedMessage(port, gatewayThumb));
+                var result = LoopbackTlsBinding.Bind(port, gatewayCert);
+                Log($"bound the gateway certificate {result.Thumbprint} to 127.0.0.1:{port}");
+                Log($"  {result.Command}");
+            }
+            else if (!bound.Thumbprint.Equals(gatewayThumb, StringComparison.OrdinalIgnoreCase))
+            {
+                // Someone else's binding: report it and stop, never replace it.
+                throw new CliUsageException(LoopbackTlsBinding.AlreadyBoundMessage(port, bound));
+            }
+            else
+            {
+                Log($"reusing the certificate already bound to 127.0.0.1:{port} ({bound.Thumbprint}).");
+            }
+        }
+
         var listener = new HttpListener();
-        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Prefixes.Add($"{scheme}://127.0.0.1:{port}/");
         try { listener.Start(); }
         catch (HttpListenerException ex) { throw new CliDataException($"Could not listen on port {port}: {ex.Message}"); }
 
-        var logLock = new object();
-        void Log(string line) { if (!quiet) lock (logLock) stderr.WriteLine(line); }
-
-        Log($"listening on http://127.0.0.1:{port}   (cert: {cert?.Subject ?? "none"})");
+        Log($"listening on {scheme}://127.0.0.1:{port}   (cert: {cert?.Subject ?? "none"})");
+        if (tls)
+        {
+            Log(tlsTrust || GatewayCertificate.IsTrusted(gatewayThumb!)
+                ? "the gateway certificate is trusted in CurrentUser\\Root, so the browser accepts it silently."
+                : "the gateway certificate is self-signed; the browser will warn once. Run with " +
+                  "--tls-trust to install it into CurrentUser\\Root (reversible with --tls-untrust).");
+        }
         foreach (var route in routes.All) Log($"  {route.PathPrefix}  ->  {route.Upstream}");
 
         var ct = services.Cancel;
@@ -177,9 +253,30 @@ public static class ServeCommand
             try { Task.WhenAny(Task.WhenAll(inFlight.Keys), Task.Delay(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult(); }
             catch { }
             try { listener.Close(); } catch { }
+            gatewayCert?.Dispose();
         }
 
         Log("stopped.");
+        return ExitCodes.Ok;
+    }
+
+    /// <summary>`serve --tls-untrust`: remove a previously trusted gateway certificate and exit. A
+    /// standalone maintenance action — it never generates a certificate or binds a port, so it reads
+    /// only the cached one on disk, if any.</summary>
+    private static int UntrustGatewayCertificate(TextWriter stderr)
+    {
+        using var cert = GatewayCertificate.TryLoadCached();
+        if (cert is null)
+        {
+            stderr.WriteLine("no gateway certificate is cached, so there is nothing to untrust.");
+            return ExitCodes.Ok;
+        }
+
+        string thumb = LoopbackTlsBinding.NormalizeThumbprint(cert.Thumbprint!);
+        if (GatewayCertificate.Untrust(thumb))
+            stderr.WriteLine($"removed the gateway certificate {thumb} from CurrentUser\\Root.");
+        else
+            stderr.WriteLine($"the gateway certificate {thumb} was not in CurrentUser\\Root; nothing to remove.");
         return ExitCodes.Ok;
     }
 

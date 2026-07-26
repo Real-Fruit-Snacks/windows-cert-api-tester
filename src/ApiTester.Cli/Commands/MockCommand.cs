@@ -27,9 +27,18 @@ public static class MockCommand
           --mtls            HTTPS that also requires a client certificate (any cert is accepted)
           --cert-dir <dir>  Where to write generated certificates (default ./certapi-mock-certs)
           -q, --quiet       Don't log each request
+          --har <file>      Replay a captured HTTP Archive (HAR) instead of the built-in routes:
+                            each request is answered with the recorded response for that method
+                            and path (query included when it disambiguates), in recorded order
+          --no-match-status <code>
+                            Status for a request that matches nothing in the archive (default 404)
 
         With --tls / --mtls the server certificate (and, for --mtls, a ready-to-use client .pfx) are
         written to the cert dir so you can trust/present them. Runs until Ctrl+C.
+
+        With --har, replay mode turns a captured session into an offline fake backend: point your
+        app, a test suite, or a teammate's client at the mock and it answers with the recorded
+        responses instead of live traffic. The built-in echo routes are not served while replaying.
 
         Examples:
           certapi mock
@@ -37,6 +46,8 @@ public static class MockCommand
 
           certapi mock --mtls --port 9443
           certapi send https://localhost:9443/orders --cert-file .\certapi-mock-certs\mock-client.pfx --insecure
+
+          certapi mock --har session.har --port 8770
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
@@ -52,7 +63,32 @@ public static class MockCommand
         var mode = mtls ? MockTlsMode.Mtls : tls ? MockTlsMode.Https : MockTlsMode.Http;
         string certDir = args.Value("--cert-dir") ?? Path.Combine(Directory.GetCurrentDirectory(), "certapi-mock-certs");
         bool quiet = args.Flag("-q", "--quiet");
+
+        string? harFile = args.Value("--har");
+        string? noMatchRaw = args.Value("--no-match-status");
+        if (noMatchRaw is not null && harFile is null)
+            throw new CliUsageException("--no-match-status only applies together with --har.");
+        int noMatchStatus = 404;
+        if (noMatchRaw is not null && (!int.TryParse(noMatchRaw, out noMatchStatus) || noMatchStatus is < 100 or > 599))
+            throw new CliUsageException($"--no-match-status expects an HTTP status 100-599, got '{noMatchRaw}'.");
+
         if (args.Positionals().Count > 0) throw new CliUsageException(Help);
+
+        HarReplaySource? replay = null;
+        if (harFile is not null)
+        {
+            if (!File.Exists(harFile)) throw new CliDataException($"No such file: {harFile}");
+            Har har;
+            try
+            {
+                har = HarReader.Parse(File.ReadAllText(harFile));
+            }
+            catch (HarFormatException ex)
+            {
+                throw new CliDataException(ex.Message);
+            }
+            replay = new HarReplaySource(har, new HarReplayOptions { NoMatchStatus = noMatchStatus });
+        }
 
         X509Certificate2? serverCert = null;
         if (mode != MockTlsMode.Http)
@@ -62,7 +98,7 @@ public static class MockCommand
         MockServer server;
         try
         {
-            server = MockServer.Start(port, mode, serverCert, onRequest);
+            server = MockServer.Start(port, mode, serverCert, onRequest, replay);
         }
         catch (System.Net.Sockets.SocketException ex)
         {
@@ -72,7 +108,15 @@ public static class MockCommand
         }
 
         stderr.WriteLine($"certapi mock listening on {server.BaseUrl}  ({mode})");
-        stderr.WriteLine("routes: /  /status/<code>  /sse  /token  /windows-auth  /cookie-auth  (WebSocket on any path)");
+        if (replay is not null)
+        {
+            stderr.WriteLine($"replaying {replay.Count} recorded responses from {harFile}");
+            stderr.WriteLine($"built-in routes are not served in replay mode; a request matching nothing answers {noMatchStatus}");
+        }
+        else
+        {
+            stderr.WriteLine("routes: /  /status/<code>  /sse  /token  /windows-auth  /cookie-auth  (WebSocket on any path)");
+        }
         if (mode != MockTlsMode.Http)
         {
             stderr.WriteLine($"certificates in {certDir}");
@@ -92,7 +136,8 @@ public static class MockCommand
         void Log(MockRequestLog r)
         {
             string who = r.ClientCertSubject is { } s ? $"  ({s})" : "";
-            lock (stderr) stderr.WriteLine($"  {DateTime.Now:HH:mm:ss}  {r.Method,-6} {r.Path} → {r.Status}{who}");
+            string matched = r.Replay switch { "exact" => "  exact-match", "path" => "  path-match", "miss" => "  miss", _ => "" };
+            lock (stderr) stderr.WriteLine($"  {DateTime.Now:HH:mm:ss}  {r.Method,-6} {r.Path} → {r.Status}{who}{matched}");
         }
     }
 }

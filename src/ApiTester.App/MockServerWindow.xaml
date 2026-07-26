@@ -47,6 +47,8 @@
                 <TextBlock Text="PORT" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="14,0,7,0" DockPanel.Dock="Left"/>
                 <TextBox x:Name="PortBox" Width="72" DockPanel.Dock="Left" VerticalContentAlignment="Center"
                          Padding="8,6" Text="8770" ToolTip="Port to listen on (0 picks a free port)"/>
+                <Button x:Name="HarButton" DockPanel.Dock="Left" Content="From HAR…" Width="104" Margin="14,0,0,0"
+                        Click="Har_Click" ToolTip="Replay a captured HTTP Archive (HAR) instead of the built-in routes"/>
                 <Button x:Name="StartButton" DockPanel.Dock="Right" Content="Start" Width="90" Margin="8,0,0,0"
                         Style="{StaticResource PrimaryButton}" Click="Start_Click"/>
                 <Button x:Name="StopButton" DockPanel.Dock="Right" Content="Stop" Width="90" Margin="8,0,0,0"

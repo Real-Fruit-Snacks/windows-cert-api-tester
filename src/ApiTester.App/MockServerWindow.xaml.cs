@@ -18,6 +18,8 @@ public partial class MockServerWindow : Window
     private MockServer? _server;
     private X509Certificate2? _serverCert;
     private string? _certDir;
+    private HarReplaySource? _replay;
+    private string? _replayFile;
 
     public MockServerWindow()
     {
@@ -71,7 +73,7 @@ public partial class MockServerWindow : Window
                 _serverCert = generated.ServerCertificate;
             }
 
-            _server = MockServer.Start(port, mode, _serverCert, OnRequest);
+            _server = MockServer.Start(port, mode, _serverCert, OnRequest, _replay);
         }
         catch (Exception ex)
         {
@@ -88,6 +90,7 @@ public partial class MockServerWindow : Window
         StopButton.IsEnabled = true;
         ModeCombo.IsEnabled = false;
         PortBox.IsEnabled = false;
+        HarButton.IsEnabled = false;
 
         if (mode != MockTlsMode.Http)
         {
@@ -118,6 +121,7 @@ public partial class MockServerWindow : Window
         StopButton.IsEnabled = false;
         ModeCombo.IsEnabled = true;
         PortBox.IsEnabled = true;
+        HarButton.IsEnabled = true;
         AppendLine("— stopped");
     }
 
@@ -137,12 +141,36 @@ public partial class MockServerWindow : Window
             catch { /* best effort */ }
     }
 
+    private void Har_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Replay a HAR file",
+            Filter = "HAR file (*.har)|*.har|All files|*.*"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var har = HarReader.Parse(File.ReadAllText(dialog.FileName));
+            _replay = new HarReplaySource(har);
+            _replayFile = Path.GetFileName(dialog.FileName);
+            RoutesText.Text = $"replaying {_replay.Count} recorded responses from {_replayFile}";
+            AppendLine($"— replaying {_replay.Count} recorded responses from {_replayFile}");
+        }
+        catch (Exception ex)
+        {
+            AppendLine("! could not read that HAR: " + ex.Message);
+        }
+    }
+
     // MockServer invokes this on a background thread; marshal to the UI to append.
     private void OnRequest(MockRequestLog r) =>
         Dispatcher.BeginInvoke(() =>
         {
             string who = r.ClientCertSubject is { } s ? $"  ({s})" : "";
-            AppendLine($"{DateTime.Now:HH:mm:ss}  {r.Method,-6} {r.Path} → {r.Status}{who}");
+            string matched = r.Replay switch { "exact" => "  exact-match", "path" => "  path-match", "miss" => "  miss", _ => "" };
+            AppendLine($"{DateTime.Now:HH:mm:ss}  {r.Method,-6} {r.Path} → {r.Status}{who}{matched}");
         });
 
     private void AppendLine(string text)

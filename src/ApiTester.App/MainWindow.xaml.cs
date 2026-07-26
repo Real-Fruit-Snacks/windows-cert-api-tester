@@ -1045,6 +1045,47 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ExportOpenApiFromHar_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Export OpenAPI from HAR file",
+            Filter = "HAR file (*.har)|*.har|All files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var har = HarReader.Parse(File.ReadAllText(dlg.FileName));
+            var pc = HarToCollection.Group(har);
+            int count = CountRequests(pc);
+            if (count == 0)
+            {
+                StatusText.Text = "Nothing to export — every entry in that HAR was filtered out (responses of 400 and above are skipped).";
+                return;
+            }
+
+            var saveDlg = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName) + ".openapi.json",
+                DefaultExt = ".json",
+                Filter = "OpenAPI JSON (*.json)|*.json|All files (*.*)|*.*"
+            };
+            if (saveDlg.ShowDialog(this) != true) return;
+
+            File.WriteAllText(saveDlg.FileName, OpenApiExporter.ToJson(pc));
+            StatusText.Text = $"Exported {count} operation{(count == 1 ? "" : "s")} to {System.IO.Path.GetFileName(saveDlg.FileName)}.";
+        }
+        catch (HarFormatException ex)
+        {
+            StatusText.Text = "Couldn't read that HAR: " + ex.Message;
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Export failed: " + ex.Message;
+        }
+    }
+
     private void ManageTrustedCerts_Click(object sender, RoutedEventArgs e)
     {
         new TrustedCertsWindow(_state) { Owner = this }.ShowDialog();

@@ -70,6 +70,9 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Network trace** — a **Network** tab, like a browser's network panel: every HTTP call is logged — the request you sent *and* every resource the Rendered view fetches — with method, status, type, size, timing, and a marker when it used your client certificate. Filter by text, status class (2xx–5xx, errors), or cert-only; click a row for a resizable details pane with its headers; right-click to copy the URL or a matching curl command.
 - **HTTP Archive (HAR) capture & replay** — `--har trace.har` on `certapi send`, `run`, and `fuzz` records every request (redirect hops included) into a well-formed HAR file, with secret values redacted by default (`--har-include-secrets` to keep them). `certapi import har session.har` turns a captured archive into a collection, and `certapi run session.har` replays its entries as a suite — with your client certificate attached, which is the one thing a browser's own HAR export can never do. In the app, Import ▾ → **Export Network trace as HAR…** and **HAR file…** do the same capture and replay.
 - **Per-site server-certificate trust** — pin one server certificate's thumbprint to one host with `certapi trust add <host> --thumbprint <t>` (or `--from-url <https-url>` to capture and pin it in one step) — narrower than the blanket *ignore server cert errors* toggle. `certapi trust list` / `trust remove <host>` manage the pins, and `send`/`run` honor them automatically. In the app, a **Trust & retry** action appears on a certificate-untrusted response, alongside a Trusted-certificates manager (Import ▾ → **Trusted certificates…**).
+- **HAR → OpenAPI** — `certapi export openapi --from-har session.har -o api.json` turns a captured session into an OpenAPI 3.0 document: repeated calls to the same endpoint collapse into one operation, identifier-looking path segments become `{id}` (conservatively — only digits, a Universally Unique Identifier (UUID), or a long hexadecimal string, and only when the value actually varies between calls), responses of 400 and above are skipped, and redacted (`[redacted]`) header values are never written. In the app, Import ▾ → **Export OpenAPI from HAR file…** does the same.
+- **Mock from HAR** — `certapi mock --har session.har` serves a captured session back as a fake backend instead of the built-in routes: exact method + path + query wins, then method + path, then `--no-match-status` (default 404); repeated calls to a route replay in recorded order and then repeat the last one. In the app, the Mock server window's **From HAR…** button starts a replay the same way.
+- **`serve --tls`** — serve the gateway itself over HTTPS on `127.0.0.1` with a generated, cached certificate, so `Secure`, `SameSite=None`, and `__Host-`/`__Secure-` cookies all work through it. The first bind needs an elevated prompt (the exact `netsh` command is printed when one isn't available); `--tls-trust` installs the certificate so the browser stops warning, reversibly, with `--tls-untrust`.
 - **Pop-out response views** — open a single response view *or the whole response panel (tabs and all)* in its own window: detach the panel to give the request editor the full main window, or pop just the Network trace or a Rendered page beside your work. Everything stays live — the trace keeps streaming, a Rendered page stays interactive — and closing a popped-out window puts its content back.
 - **Saved websites** — save a base URL (e.g. `https://internal.corp`) and the URL box becomes just the path after it, so you can fire off `/api/thing`, `/api/other` without retyping the host.
 - **Request history** — a sidebar of recent requests, labelled by path (with the host beneath). Click one to reload the *entire* request — website, certificate, headers, auth, timeout, and body — **and** the response it returned. The app also remembers your window, last certificate, and settings between runs.
@@ -217,10 +220,16 @@ certapi export workspace -o team-setup.json
 certapi mock --port 8770
 certapi send http://127.0.0.1:8770/anything -X POST -d '{"hi":1}'
 
+# serve a captured HAR back as a fake backend — no live traffic needed
+certapi mock --har session.har --port 8770
+
 # capture a session as a HAR file, then replay it later through mutual TLS
 certapi send https://api.internal/health --cert "CN=matt" --har trace.har
 certapi import har .\session.har --into imported
 certapi run session.har --cert "CN=matt"
+
+# turn a captured HAR session into an OpenAPI document
+certapi export openapi --from-har session.har -o api.json
 
 # pin the server certificate a specific host must present, instead of ignoring errors wholesale
 certapi trust add internal.corp --from-url https://internal.corp
@@ -241,16 +250,22 @@ certapi serve --port 8819 --cert "CN=matt" --upstream /api=https://api.internal 
 
 # everything a single-page application in the browser needs (CORS, cookies, redirects, WebSockets)
 certapi serve https://internal.corp --port 8819 --cert "CN=matt" --browser
+
+# serve the gateway itself over HTTPS, so Secure/__Host-/__Secure- cookies survive too
+certapi serve https://internal.corp --port 8819 --cert "CN=matt" --browser --tls --tls-trust
 ```
 
 Loopback only; add `--token <value>` to require a shared secret.
 
 `--browser` is a bundle over `--cors`, `--rewrite-cookies`, `--rewrite-location`, and
 `--allow-upgrade`, each of which also works on its own; with none of them the gateway behaves exactly
-as it always has — a byte-faithful relay for callers that never wanted a browser. One thing it can't
-fix: a cookie named `__Host-…` or `__Secure-…` requires the `Secure` attribute, which no browser
-accepts on a plaintext `http://127.0.0.1` origin, so those cookies are relayed and named in a warning
-rather than silently dropped.
+as it always has — a byte-faithful relay for callers that never wanted a browser. Over the default
+plaintext `http://127.0.0.1` origin, a cookie named `__Host-…` or `__Secure-…` still can't work — it
+requires the `Secure` attribute, which no browser accepts on plaintext loopback — so it's relayed and
+named in a warning rather than silently dropped. `--tls` is the fix: it serves the gateway itself over
+HTTPS with a generated certificate, so `Secure`, `SameSite=None`, and those cookie prefixes all work.
+The first bind needs an elevated (Run as administrator) prompt; `--tls-trust` optionally installs the
+certificate so the browser stops warning about it.
 
 ### MCP server (for AI agents)
 Give an AI agent controlled use of your certificate over the Model Context Protocol. Configure your MCP host:
@@ -363,6 +378,9 @@ dotnet build                                       # compile
 dotnet test --filter "Category!=StoreRoundTrip"    # unit + mTLS integration tests
 dotnet run --project src/ApiTester.App             # launch the app
 ```
+
+The `TlsBinding` category is opt-in too, and does nothing unless the environment variable
+`CERTAPI_TLS_BINDING_TESTS=1` is set — the suite must never touch the machine's certificate bindings.
 
 Produce the portable single-file executable:
 

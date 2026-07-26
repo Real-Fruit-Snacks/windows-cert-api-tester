@@ -63,4 +63,40 @@ public static class SelfSignedCertificateFactory
             withKey.Export(X509ContentType.Pfx), (string?)null,
             X509KeyStorageFlags.Exportable);
     }
+
+    /// <summary>A self-signed TLS server certificate for a local gateway: subject
+    /// CN=<paramref name="commonName"/>, server-authentication extended key usage, and a Subject
+    /// Alternative Name (SAN) covering the given DNS names and IP addresses. Self-signed rather than
+    /// issued by a generated certificate authority so that installing this one certificate into a
+    /// trust store is enough for a browser to accept it — a leaf chaining to an untrusted authority
+    /// would still warn.</summary>
+    public static X509Certificate2 CreateSelfSignedServerCertificate(
+        string commonName,
+        IEnumerable<string>? dnsNames = null,
+        IEnumerable<System.Net.IPAddress>? ipAddresses = null)
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest($"CN={commonName}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        req.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+        req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+        req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
+
+        var san = new SubjectAlternativeNameBuilder();
+        if (dnsNames is not null)
+            foreach (var d in dnsNames) san.AddDnsName(d);
+        if (ipAddresses is not null)
+            foreach (var ip in ipAddresses) san.AddIpAddress(ip);
+        req.CertificateExtensions.Add(san.Build());
+
+        using var cert = req.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        // SChannel/SslStream cannot access ephemeral keys; use Exportable-only to create a temporary
+        // non-persisted container that SChannel can use, auto-deleted on Dispose.
+        return X509CertificateLoader.LoadPkcs12(
+            cert.Export(X509ContentType.Pfx), (string?)null,
+            X509KeyStorageFlags.Exportable);
+    }
 }
