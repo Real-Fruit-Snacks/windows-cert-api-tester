@@ -68,6 +68,11 @@ Build one in the app: switch the sidebar to **CHAINS** (beside HISTORY and COLLE
 set each step's *stop the chain if this step fails* (on by default). A chain can also name the
 environment its captures are written into — it is created on first use.
 
+Run it in the app: click **▶ Run chain**. A window opens with one row per step, showing PASS, FAIL, or
+SKIP as it completes; click a row to see that step's actual response, its notes, and any failing
+assertions. The run is asynchronous, so the window stays responsive, and **Stop** (or closing the
+window) cancels a run in progress.
+
 Run it from the command line:
 
 ```powershell
@@ -82,10 +87,14 @@ FAIL, and any failed step exits 1. When a failing step is set to stop the chain,
 ran are reported as **SKIP** rather than quietly disappearing. An explicit `--env` wins over the
 environment the chain names.
 
-Chains are **created in the app and run with `certapi run --chain`** — the sidebar's **Copy run
-command** button puts the exact line on your clipboard. This release does not run them inside the
-window. They are included in an exported workspace, and merged or replaced on import like everything
-else. See the [CLI Reference](21-CLI-Reference.md#run) for the flag's full rules.
+One deliberate difference between the two: when a chain names no capture environment, `certapi run
+--chain` resolves `{{variables}}` against none, while the app resolves them against whichever
+environment is selected in its picker, since that picker is the user's stated choice there.
+
+Both ways run through the same engine — the sidebar's **Copy run command** button puts the exact
+`certapi run --chain "<name>"` line on your clipboard for scripting the same chain headless. Chains
+are included in an exported workspace, and merged or replaced on import like everything else. See the
+[CLI Reference](21-CLI-Reference.md#run) for the flag's full rules.
 
 ## Session cookies
 

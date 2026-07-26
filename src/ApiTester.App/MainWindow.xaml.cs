@@ -617,7 +617,40 @@ public partial class MainWindow : Window
         ChainsList.Items.Refresh();
         StatusText.Text = chain.Steps.Count == 0
             ? $"Chain “{chain.Name}” has no steps yet."
-            : $"Chain “{chain.Name}”: {chain.Steps.Count} step(s). Run it with certapi run --chain \"{chain.Name}\".";
+            : $"Chain “{chain.Name}”: {chain.Steps.Count} step(s). Run it with the Run chain button, or certapi run --chain \"{chain.Name}\".";
+    }
+
+    /// <summary>Run the selected chain in a window of its own, through the same Core runner
+    /// <c>certapi run --chain</c> uses — there is one execution path, not an app copy of one.</summary>
+    private void RunChainButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChainsList.SelectedItem is not RequestChain chain) { StatusText.Text = "Select a chain to run."; return; }
+        if (chain.Steps.Count == 0) { StatusText.Text = $"Chain “{chain.Name}” has no steps yet."; return; }
+        if (ActiveRequest is { } m) CaptureControlsInto(m);
+
+        // The runner resolves steps out of _state.Collections and writes captures into
+        // _state.Environments, so sync the live sidebar into state first (as Discover does) —
+        // otherwise requests or environments edited this session would not be seen.
+        _state.Collections = _collections.ToList();
+        _state.Chains = _chains.ToList();
+        _state.Environments = _environments.ToList();
+
+        // ShowDialog (modal) is deliberate: the runner mutates _state from a background thread, and
+        // modality bounds that the same way the existing Discover window does.
+        var win = new ChainRunWindow(_state, _apiClient, _trustPredicates, chain,
+                                     thumbprint => _certService.FindByThumbprint(thumbprint, includeLocalMachine: true))
+                  { Owner = this };
+        win.ShowDialog();
+
+        // A capture can lazily create an environment on the persisted list; fold it into the
+        // UI-bound collection BEFORE the combo refreshes, or it silently vanishes from the picker.
+        foreach (var env in _state.Environments)
+            if (_environments.All(x => x.Id != env.Id)) _environments.Add(env);
+        RefreshEnvCombo();
+        // Known-good markers were recorded on the same CollectionNode instances the tree holds, but
+        // those properties raise no change notification, so the dots need a nudge.
+        CollectionsTree.Items.Refresh();
+        if (win.Summary is { } summary) StatusText.Text = summary;
     }
 
     private void CopyChainCommandButton_Click(object sender, RoutedEventArgs e)

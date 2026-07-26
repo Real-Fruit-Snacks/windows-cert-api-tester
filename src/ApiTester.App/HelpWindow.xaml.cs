@@ -277,10 +277,11 @@ public partial class HelpWindow : Window
           "to step two as a {{variable}}. Each step reports PASS or FAIL; when a failing step is set " +
           "to stop the chain, the steps that never ran are listed as SKIP rather than quietly " +
           "disappearing. Chains are included in an exported workspace."),
-        NoteBox("Chains are created here and run from the command line: certapi run --chain \"<name>\" " +
-                "runs one and exits non-zero if any step failed. “Copy run command” puts that exact " +
-                "line on your clipboard. The app builds and saves chains; this release does not run " +
-                "them in the window."),
+        NoteBox("A “▶ Run chain” button opens a window with one row per step — PASS, FAIL, or SKIP as " +
+                "it completes — and selecting a row shows that step's actual response, its notes, and " +
+                "any failing assertions; Stop (or closing the window) cancels a run in progress. The " +
+                "same chain still runs headless with certapi run --chain \"<name>\", exiting non-zero " +
+                "if any step failed; “Copy run command” puts that exact line on your clipboard."),
         Sub("HISTORY"),
         P("History lists your recent requests, labelled by path with the host beneath. Click one to reload the entire request — website, certificate, headers, auth, timeout, and body — and the response it returned. The app also remembers your window, last certificate, and settings between runs."));
 

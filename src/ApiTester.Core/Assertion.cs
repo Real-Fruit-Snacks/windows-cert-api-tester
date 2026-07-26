@@ -56,6 +56,13 @@ public static class AssertionEvaluator
     public static bool AllPass(IEnumerable<AssertionRule> rules, ApiResponse response) =>
         Evaluate(rules, response).All(r => r.Passed);
 
+    /// <summary>A request passes when its enabled assertions all pass; with no assertions it falls
+    /// back to the historical "a 2xx response is a pass" behaviour. One rule, in one place, because
+    /// the command line's suite reports, its chain reports, and the desktop application's chain
+    /// runner all have to agree on what "passed" means.</summary>
+    public static bool RequestPassed(RequestModel model, ApiResponse response) =>
+        model.Assertions.Any(a => a.Enabled) ? AllPass(model.Assertions, response) : response.IsSuccess;
+
     private static AssertionResult EvaluateOne(AssertionRule rule, ApiResponse response)
     {
         string? actual = ActualValue(rule, response);

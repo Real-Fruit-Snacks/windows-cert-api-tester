@@ -171,13 +171,16 @@
                                 <Button x:Name="DeleteChainButton" Content="Delete" Height="26" FontSize="11" Padding="9,0"
                                         Margin="6,0,0,0" Click="DeleteChainButton_Click"/>
                             </StackPanel>
+                            <Button x:Name="RunChainButton" Content="&#x25B6; Run chain" Height="26" FontSize="11"
+                                    Margin="0,6,0,0" Click="RunChainButton_Click"
+                                    ToolTip="Run this chain's steps in order, here in the app."/>
                             <Button x:Name="CopyChainCommandButton" Content="Copy run command" Height="26" FontSize="11"
                                     Margin="0,6,0,0" Click="CopyChainCommandButton_Click"
                                     ToolTip="Copy the certapi command that runs this chain."/>
                         </StackPanel>
                         <TextBlock x:Name="ChainsEmptyHint" DockPanel.Dock="Top" Margin="14,14,14,0"
                                    Foreground="{DynamicResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
-                                   Text="No chains yet. A chain runs saved requests in order, so a token captured by the first is usable by the next. Create one, then run it with certapi run --chain."/>
+                                   Text="No chains yet. A chain runs saved requests in order, so a token captured by the first is usable by the next. Create one, then run it here or with certapi run --chain."/>
                         <ListBox x:Name="ChainsList" ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  MouseDoubleClick="ChainsList_MouseDoubleClick">
                             <ListBox.ItemTemplate>

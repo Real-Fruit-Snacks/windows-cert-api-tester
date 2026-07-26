@@ -34,9 +34,5 @@ public static class OutputText
 
     /// <summary>The redirect chain for --show-redirects, one line per hop, with the two facts that
     /// matter for a client certificate called out. Empty when nothing was followed.</summary>
-    public static string RedirectLines(IReadOnlyList<RedirectHop> hops) =>
-        string.Join("\n", hops.Select(h =>
-            $"  {h.StatusCode} {h.From} -> {h.To}"
-            + (h.AuthorizationDropped ? "  (authorization dropped)" : "")
-            + (h.SchemeDowngrade ? "  (scheme downgrade)" : "")));
+    public static string RedirectLines(IReadOnlyList<RedirectHop> hops) => RedirectReport.Lines(hops);
 }

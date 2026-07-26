@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using ApiTester.Core;
 
@@ -216,25 +215,17 @@ public static class RunCommand
         // A chain resolves every step up front — a chain naming a request that no longer exists must
         // fail before it makes a network call, not half-way through with a login already sent.
         RequestChain? chain = null;
-        var chainSteps = new List<(string Label, CollectionNode Node, ChainStep Step)>();
+        IReadOnlyList<ResolvedChainStep> chainSteps = Array.Empty<ResolvedChainStep>();
         if (chainName is not null)
         {
-            chain = state.Chains.FirstOrDefault(c => c.Name.Equals(chainName, StringComparison.OrdinalIgnoreCase))
-                ?? throw new CliDataException(
-                    $"No chain named '{chainName}'. Available: " +
-                    (state.Chains.Count == 0 ? "(none)" : string.Join(", ", state.Chains.Select(c => c.Name))) + ".");
-            if (chain.Steps.Count == 0)
-                throw new CliDataException($"Chain '{chain.Name}' has no steps to run.");
-            for (int i = 0; i < chain.Steps.Count; i++)
+            try
             {
-                var step = chain.Steps[i];
-                var node = FindRequest(state.Collections, step.RequestId)
-                    ?? throw new CliDataException(
-                        $"Chain '{chain.Name}' step {i + 1} references a request that no longer exists (id {step.RequestId}).");
-                // The step number is what the user can act on; the node name alone would be ambiguous
-                // in a chain that runs the same request twice.
-                chainSteps.Add(($"{chain.Name}/{i + 1}. {node.Name}", node, step));
+                chain = ChainRunner.Find(state, chainName);
+                chainSteps = ChainRunner.Resolve(state, chain);
             }
+            // The runner is UI-free, so it raises its own resolution failure; naming it a data error
+            // is this front end's judgement, and is what makes it exit 3.
+            catch (ChainRunException ex) { throw new CliDataException(ex.Message); }
         }
 
         var targets = chain is null
@@ -267,18 +258,7 @@ public static class RunCommand
         // A chain names the environment its captures write into, created on first use, so a token
         // captured by step 1 has somewhere step 2 can read it from. A typed --env is the more specific
         // instruction, so it wins; with neither, the chain gets no opinion it was not given.
-        if (envName is null && chain?.EnvironmentName is { } chainEnvName)
-        {
-            var chainEnv = state.Environments.FirstOrDefault(
-                e => e.Name.Equals(chainEnvName, StringComparison.OrdinalIgnoreCase));
-            if (chainEnv is null)
-            {
-                chainEnv = new ApiEnvironment { Name = chainEnvName };
-                state.Environments.Add(chainEnv);
-            }
-            state.ActiveEnvironmentId = chainEnv.Id;
-            envName = chainEnvName;   // BuildIterVars reads it back out for the next step
-        }
+        if (envName is null && chain is not null) envName = ChainRunner.PrepareCaptureEnvironment(state, chain);
 
         bool record = !noRecord && (workspace is null || recordFlag);
         if (record && workspace is null && services.IsGuiRunning())
@@ -299,22 +279,42 @@ public static class RunCommand
         // output that just stops leaves the reader guessing whether the rest passed.
         var skippedSteps = new List<string>();
         var clock = Stopwatch.StartNew();
-        var flags = new RunFlags(noAutoToken, strictVars, record, showRedirects, harIncludeSecrets,
-                                 jar, transportOverrides, harEntries, predicates);
+        var runContext = new RequestRunContext
+        {
+            State = state,
+            Client = services.Client,
+            Predicates = predicates,
+            FindCertificate = thumbprint => services.FindCertificate(thumbprint),
+            NoAutoToken = noAutoToken,
+            StrictVars = strictVars,
+            Record = record,
+            ShowRedirects = showRedirects,
+            HarIncludeSecrets = harIncludeSecrets,
+            Cookies = jar,
+            TransportOverride = options => transportOverrides.ApplyTo(options),
+            HarEntries = harEntries,
+            Note = line => stderr.WriteLine(line),
+            Debug = line => services.Log.Debug(line)
+        };
+
+        void Collect(RequestOutcome outcome)
+        {
+            results.Add((outcome.Label, outcome.Request, outcome.Url, outcome.Response));
+            capturedAny |= outcome.CapturedValues;
+            tokensCaptured |= outcome.CapturedTokens;
+        }
+
         if (chain is not null)
         {
-            var vars = BuildIterVars(null);
-            for (int i = 0; i < chainSteps.Count; i++)
-            {
-                var (label, node, step) = chainSteps[i];
-                var response = RunOne(label, node, state, flags, ref vars, () => BuildIterVars(null),
-                                      results, ref capturedAny, ref tokensCaptured, stderr, services);
-                if (Passed(node.Request!, response) || !step.StopOnFailure) continue;
-                stderr.WriteLine($"{label}: step failed — stopping the chain (the later steps would only " +
-                                 "report the consequences).");
-                for (int j = i + 1; j < chainSteps.Count; j++) skippedSteps.Add(chainSteps[j].Label);
-                break;
-            }
+            var vars = new RunVariables(() => BuildIterVars(null));
+            // No progress sink: this front end renders after the run, and System.Progress<T> would
+            // hand each report to the thread pool, which is exactly wrong for a list read back
+            // synchronously three lines later.
+            var chainResult = ChainRunner
+                .RunAsync(chainSteps, runContext, vars, progress: null, services.Cancel)
+                .GetAwaiter().GetResult();
+            foreach (var outcome in chainResult.Steps) Collect(outcome);
+            skippedSteps.AddRange(chainResult.SkippedLabels);
         }
         else
         {
@@ -322,11 +322,11 @@ public static class RunCommand
             foreach (var row in rows)
             {
                 rowIndex++;
-                var vars = BuildIterVars(row);
+                var vars = new RunVariables(() => BuildIterVars(row));
                 string label = dataFile is null ? "" : $"[row {rowIndex}] ";
                 foreach (var (path, node) in targets)
-                    RunOne(label + path, node, state, flags, ref vars, () => BuildIterVars(row),
-                           results, ref capturedAny, ref tokensCaptured, stderr, services);
+                    Collect(RequestRunner.RunAsync(label + path, node, runContext, vars, services.Cancel)
+                                         .GetAwaiter().GetResult());
             }
         }
         clock.Stop();
@@ -404,191 +404,9 @@ public static class RunCommand
         return failed == 0 ? ExitCodes.Ok : ExitCodes.Failure;
     }
 
-    /// <summary>The run-wide choices one request needs: the flags that change how it is sent and
-    /// recorded, plus the two sinks shared by the whole run (the cookie jar and the HAR log). Bundled
-    /// so the per-request path can be shared without a twenty-argument signature.</summary>
-    private sealed record RunFlags(
-        bool NoAutoToken, bool StrictVars, bool Record, bool ShowRedirects, bool HarIncludeSecrets,
-        System.Net.CookieContainer? Jar, TransportOverrides TransportOverrides, List<HarEntry>? HarEntries,
-        TrustPredicates Predicates);
-
-    /// <summary>One request of a run: send it, capture what it yields, record the result, and report its
-    /// assertions. Shared by a collection run and a chain so a step cannot drift from a suite entry —
-    /// the whole point of a chain is that it runs the same way, in a stated order.
-    /// <para><paramref name="vars"/> is by reference because a successful capture rebuilds it from the
-    /// environment it just wrote into: that reassignment is what makes a token captured here visible to
-    /// the next request, and it is the mechanism the whole chain feature rests on.</para></summary>
-    private static ApiResponse RunOne(
-        string id, CollectionNode node, AppState state, RunFlags flags,
-        ref Dictionary<string, string> vars, Func<Dictionary<string, string>> rebuildVars,
-        List<(string Path, RequestModel Model, string Url, ApiResponse Response)> results,
-        ref bool capturedAny, ref bool tokensCaptured, TextWriter stderr, CliServices services)
-    {
-        var (response, url) = Execute(id, node.Request!, state, flags.NoAutoToken, vars, flags.StrictVars, flags.Jar,
-                                      flags.TransportOverrides, flags.ShowRedirects, stderr, services,
-                                      flags.HarEntries, flags.HarIncludeSecrets, flags.Predicates);
-        results.Add((id, node.Request!, url, response));
-        if (!flags.NoAutoToken && response.Error is null &&
-            TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
-        {
-            stderr.WriteLine($"{id}: captured bearer token for {TokenService.HostOf(url)} ({captured.Source})");
-            tokensCaptured = true;
-        }
-        if (flags.Record) node.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow,
-                                            KnownGoodSnapshot(response));
-        if (node.Request!.Assertions.Any(a => a.Enabled))
-            foreach (var ar in AssertionEvaluator.Evaluate(node.Request!.Assertions, response).Where(a => !a.Passed))
-                stderr.WriteLine($"{id}: assertion failed — {ar.Description} (got {ar.Actual ?? "∅"})");
-        if (response.Error is null && node.Request!.Captures.Count > 0)
-        {
-            var outcome = CaptureApplier.Apply(state, node.Request!.Captures, response.Body, response.ContentType, response.Headers);
-            if (outcome.Count > 0)
-            {
-                capturedAny = true;
-                var okVars = outcome.Where(o => o.Ok).Select(o => o.Variable).ToList();
-                if (okVars.Count > 0) stderr.WriteLine($"{id}: captured " + string.Join(", ", okVars));
-                foreach (var b in outcome.Where(o => !o.Ok)) stderr.WriteLine($"{id}: capture '{b.Variable}' failed: {b.Error}");
-                vars = rebuildVars();
-            }
-        }
-        return response;
-    }
-
-    /// <summary>The saved request a chain step names, searched depth-first through the collections
-    /// tree. A folder or an empty node is not runnable, so neither answers here — a step whose id
-    /// resolves to one of those is as broken as a step whose id resolves to nothing.</summary>
-    private static CollectionNode? FindRequest(IEnumerable<CollectionNode> nodes, string id)
-    {
-        foreach (var n in nodes)
-        {
-            // Ids are Guid hex, written "N" by the collections tree and "n" by a chain, so the two
-            // spellings of the same id must still find each other.
-            if (!n.IsFolder && n.Request is not null && string.Equals(n.Id, id, StringComparison.OrdinalIgnoreCase))
-                return n;
-            if (FindRequest(n.Children, id) is { } found) return found;
-        }
-        return null;
-    }
-
-    /// <summary>The snapshot to keep as this request's known-good baseline, or null when the body is too
-    /// large to belong in state.json — a settings file is not a blob store, and a baseline nobody can
-    /// load is worse than no baseline. <see cref="CollectionNode.RecordResult"/> already refuses
-    /// anything that isn't a 2xx, so that check is not repeated here.</summary>
-    private static ResponseSnapshot? KnownGoodSnapshot(ApiResponse response) =>
-        response.Error is not null || response.Body.LongLength > MaxKnownGoodBody
-            ? null
-            : ResponseSnapshot.From(response);
-
-    private const long MaxKnownGoodBody = 1024 * 1024;   // 1 MiB
-
     /// <summary>A request passes when its enabled assertions all pass; with no assertions it falls
     /// back to the historical "a 2xx response is a pass" behaviour.</summary>
-    private static bool Passed(RequestModel m, ApiResponse r) =>
-        m.Assertions.Any(a => a.Enabled) ? AssertionEvaluator.AllPass(m.Assertions, r) : r.IsSuccess;
-
-    private static (ApiResponse Response, string Url) Execute(
-        string path, RequestModel m, AppState state, bool noAutoToken,
-        Dictionary<string, string> vars, bool strictVars, System.Net.CookieContainer? cookies,
-        TransportOverrides transportOverrides, bool showRedirects,
-        TextWriter stderr, CliServices services, List<HarEntry>? harEntries, bool harIncludeSecrets,
-        TrustPredicates predicates)
-    {
-        var unresolved = new List<string>();
-        string R(string s)
-        {
-            var (resolved, missing) = VariableResolver.Resolve(s ?? "", vars);
-            foreach (var x in missing) if (!unresolved.Contains(x)) unresolved.Add(x);
-            return resolved;
-        }
-
-        var headers = new List<KeyValuePair<string, string>>();
-        foreach (var h in m.Headers)
-            if (h.Enabled && !string.IsNullOrWhiteSpace(h.Name))
-                headers.Add(new(R(h.Name.Trim()), R(h.Value ?? "")));
-        switch (m.AuthType)
-        {
-            case "Bearer" when !string.IsNullOrWhiteSpace(m.AuthSecret):
-                headers.Add(new("Authorization", "Bearer " + R(m.AuthSecret!.Trim())));
-                break;
-            case "Basic":
-                headers.Add(new("Authorization", "Basic " +
-                    Convert.ToBase64String(Encoding.UTF8.GetBytes($"{R(m.AuthUser ?? "")}:{R(m.AuthSecret ?? "")}"))));
-                break;
-        }
-        var winAuth = m.AuthType == "Windows"
-            ? WindowsAuthOptions.FromCredentials(R(m.AuthUser ?? ""), R(m.AuthSecret ?? ""))
-            : null;
-        string url = m.EffectiveUrl(R);
-        string host = TokenService.HostOf(url);
-        string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
-
-        if (!noAutoToken && m.AuthType == "Auto" &&
-            TokenService.AutoAttach(state, url, headers, out _) is { } used)
-        {
-            stderr.WriteLine($"{path}: using captured token for {TokenService.HostOf(url)}");
-            services.Log.Debug($"{path}: auto token attached for {used.Origin} ({used.Source})");
-        }
-
-        if (unresolved.Count > 0)
-        {
-            var tokens = string.Join(", ", unresolved.Select(u => "{{" + u + "}}"));
-            if (strictVars)
-                return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"unresolved variables: {tokens}") }, url);
-            stderr.WriteLine($"warning: unresolved variables: {tokens}");
-        }
-
-        System.Security.Cryptography.X509Certificates.X509Certificate2? cert = null;
-        if (!string.IsNullOrEmpty(m.CertThumbprint))
-        {
-            cert = services.FindCertificate(m.CertThumbprint!);
-            if (cert is null)
-                return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, $"certificate {m.CertThumbprint} not found in the store") }, url);
-        }
-
-        // The saved request's own transport settings are the baseline; a command-line flag overrides
-        // only what it names. An unusable combination fails this request the way a missing
-        // certificate does — one bad request must not abort the suite.
-        var transport = transportOverrides.ApplyTo(m.Transport.ToOptions(m.IgnoreServerCert));
-        if (ApiClient.ValidateTransport(transport, url) is { } transportProblem)
-            return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, transportProblem) }, url);
-
-        var request = new ApiRequest
-        {
-            Method = new HttpMethod(m.Method),
-            Url = url,
-            Headers = headers,
-            Body = m.IsMultipart ? null : body,
-            Parts = m.IsMultipart
-                ? m.EnabledParts().Select(p => p with { Name = R(p.Name), Value = p.Value is null ? null : R(p.Value) }).ToList()
-                : null,
-            ContentType = !m.IsMultipart && body is not null && m.ContentType != "(none)" ? m.ContentType : null,
-            WindowsAuth = winAuth,
-            Timeout = TimeSpan.FromSeconds(m.TimeoutSeconds)
-        };
-        // Attach any browser-captured session cookies for this origin, on top of the optional
-        // shared --cookies jar (honors --no-auto-token and the workspace's AutoCookies switch).
-        var effectiveJar = cookies ?? new System.Net.CookieContainer();
-        if (!noAutoToken) CookieService.SeedContainer(state, url, effectiveJar);
-        // A pinned thumbprint for this host lets the request through even without the request's
-        // own IgnoreServerCert bypass (which trusts anything and is untouched above).
-        var response = services.Client.SendAsync(request, cert,
-            transport: transport,
-            trustServerCertificate: predicates.For(host),
-            cookies: effectiveJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
-        services.Log.Debug($"{path}: " + (response.Error is null
-            ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
-            : $"[{response.Error.Kind}] {response.Error.Message}"));
-        if (response.Error is null && response.Connection?.ServerCertificateThumbprint is { } thumb &&
-            TrustService.IsTrusted(state, host, thumb))
-            stderr.WriteLine($"{path}: trusting pinned certificate for {host}");
-        harEntries?.AddRange(HarWriter.FromExchangeWithRedirects(request, response, harIncludeSecrets));
-        // Each hop line already starts with two spaces, so the request path prefixes it the way the
-        // other per-request notes on stderr do.
-        if (showRedirects && response.Redirects.Count > 0)
-            foreach (var line in OutputText.RedirectLines(response.Redirects).Split('\n'))
-                stderr.WriteLine($"{path}:{line}");
-        return (response, url);
-    }
+    private static bool Passed(RequestModel m, ApiResponse r) => AssertionEvaluator.RequestPassed(m, r);
 
     /// <summary>Replay a captured HAR's entries, in file order, as an ordered suite — WITH the
     /// selected client certificate attached, which is the entire point: a session captured in a

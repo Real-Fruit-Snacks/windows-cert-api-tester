@@ -1,0 +1,109 @@
+<Window x:Class="ApiTester.App.ChainRunWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Run chain" Width="900" Height="640" MinWidth="720" MinHeight="440"
+        WindowStyle="None" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
+        FontFamily="{StaticResource Mono}" FontSize="12.5"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
+                      GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Height="40" Background="{DynamicResource Bg.Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="&#x276F;" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Accent}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock x:Name="HeaderText" Text="RUN CHAIN" FontWeight="Bold" FontSize="12" Margin="9,0,0,0"
+                                   Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="560"/>
+                    </StackPanel>
+                    <Button Content="&#xE8BB;" HorizontalAlignment="Right" Style="{StaticResource CaptionClose}"
+                            Height="40" Click="Close_Click"/>
+                </Grid>
+            </Border>
+
+            <Grid Margin="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- read-only: this window runs the chain, it does not edit it -->
+                <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                    <TextBlock Text="CAPTURE ENVIRONMENT" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="EnvironmentText" FontSize="11" Margin="8,0,0,0"
+                               Foreground="{DynamicResource Text.Faint}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="1.35*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- one row per chain step, in run order -->
+                    <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock DockPanel.Dock="Top" Text="STEPS, IN RUN ORDER" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Normal}" Margin="0,0,0,6"/>
+                        <DataGrid x:Name="ResultsGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                  Background="{DynamicResource Bg.Panel}"
+                                  SelectionChanged="ResultsGrid_SelectionChanged">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="34"/>
+                                <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="60">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{Binding VerdictColor}"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="60"/>
+                                <DataGridTextColumn Header="ms" Binding="{Binding Ms}" Width="50"/>
+                                <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="70"/>
+                                <DataGridTextColumn Header="Step" Binding="{Binding Label}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+
+                    <!-- the selected step's actual response — a chain that fails at step 3 is useless
+                         if you cannot see what step 3 returned -->
+                    <DockPanel Grid.Column="1">
+                        <TextBlock DockPanel.Dock="Top" Text="SELECTED STEP" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Normal}" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="MetaText" DockPanel.Dock="Top" FontSize="11" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource Text.Soft}" TextWrapping="Wrap"/>
+                        <TextBox x:Name="NotesBox" DockPanel.Dock="Bottom" Height="120" IsReadOnly="True"
+                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas" Padding="7,5"/>
+                        <TextBlock DockPanel.Dock="Bottom" Text="NOTES &amp; ASSERTIONS" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Muted}" Margin="0,10,0,4"/>
+                        <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6">
+                            <RichTextBox x:Name="BodyRich" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto" Background="{DynamicResource Bg.Panel}"
+                                         BorderThickness="0"/>
+                        </Border>
+                    </DockPanel>
+                </Grid>
+
+                <DockPanel Grid.Row="2" Margin="0,10,0,0">
+                    <TextBlock x:Name="StatusText" DockPanel.Dock="Left" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Text.Soft}" Text="Ready."/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="StopButton" Content="Stop" Width="80" Margin="0,0,8,0" Click="Stop_Click" IsEnabled="False"/>
+                        <Button x:Name="RunButton" Content="&#x25B6; Run" Width="100" Click="Run_Click"/>
+                    </StackPanel>
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

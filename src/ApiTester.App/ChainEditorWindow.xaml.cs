@@ -9,9 +9,10 @@ using ApiTester.Core;
 
 namespace ApiTester.App;
 
-/// <summary>Builds one chain's ordered steps by picking saved requests, left to right. Running the
-/// chain stays a command-line concern (<c>certapi run --chain</c>) so the app doesn't grow a second
-/// copy of the runner's send / capture / rebuild-variables path.
+/// <summary>Builds one chain's ordered steps by picking saved requests, left to right. This window
+/// edits the chain's steps; <see cref="ChainRunWindow"/> runs it — both against the same saved chain.
+/// Running goes through the shared <c>ChainRunner</c> in <c>ApiTester.Core</c>, so there is one
+/// execution path rather than a second copy.
 /// <para>There is deliberately no OK/Cancel: the chain instance handed in is the one the sidebar holds,
 /// so every edit is already applied, which is how the rest of this app's editors behave. A Cancel would
 /// have to unwind reorderings — a new mechanism for no gain.</para></summary>

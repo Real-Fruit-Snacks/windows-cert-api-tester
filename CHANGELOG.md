@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.59.0] - 2026-07-26
+
+### Added
+- **Chains now run in the app, through a "▶ Run chain" button in the CHAINS sidebar**, closing a gap
+  that had been there since chains first shipped: you built the thing in the window, then
+  switched to a terminal to use it. A characterization suite was written first, not after —
+  `tests/ApiTester.Tests/Cli/ChainCharacterizationTests.cs`, 25 tests pinning `certapi run --chain`'s
+  observable behavior (the per-step PASS/FAIL line shape, the SKIP line, the footer, the verbatim
+  stop-on-failure message on stderr, every exit code — 0 all passed, 1 any step failed, 3 for an
+  unknown chain listing the ones that exist, 3 for an empty chain, 3 for a step naming a deleted
+  request before anything is sent — the exact property set of the `--json` envelope, known-good
+  recording per step, captures landing in the chain's environment, and stop-on-failure in both
+  directions) before a single line of the runner moved. That file was left unedited through the whole
+  refactor that followed and is still green today — it is the evidence, not an assertion, that the
+  command line did not change underneath this release.
+- **Chain execution was extracted out of the command line into `ApiTester.Core`**, because the
+  alternative — copying the send / capture / rebuild-variables path into the app so it could have its
+  own "run" button — was rejected outright: two copies of that logic drift the moment either one is
+  touched, and a chain that passes in one front end and fails in the other is exactly the defect a
+  shared engine exists to rule out. The new public Core surface is `RequestRunner.RunAsync` for the
+  per-request path (resolve variables, attach auth, find the certificate, apply transport, send,
+  capture tokens, record known-good, evaluate assertions, apply capture rules, rebuild variables),
+  `RequestRunContext` and `RunVariables` for the run-wide choices and the front end's own seams,
+  `ChainRunner` (`Find` / `Resolve` / `PrepareCaptureEnvironment` / `RunAsync`) for the chain itself,
+  `AssertionEvaluator.RequestPassed` as the single definition of "this request passed", and
+  `RedirectReport.Lines` for the shared redirect-hop text. The runner reports progress through
+  `IProgress<ChainRunProgress>` and honors a `CancellationToken` — it has no WPF and no `Console`
+  reference, so `ApiTester.Core` still carries zero NuGet package references, and `certapi run
+  --chain` became a thin caller of it: `RunCommand.cs` lost 228 lines and gained 46, with byte-identical
+  behavior proved by the characterization suite above.
+- **The app's run window shows a per-step verdict as the chain executes**, not just a final result:
+  `ChainRunWindow` lists one row per step in run order, each turning PASS, FAIL, or SKIP with its
+  status, time, and size as that step completes, so you can watch a five-step chain land instead of
+  waiting on it blind. Selecting a row shows that step's actual response — pretty-printed with the
+  same formatter and syntax highlighter the main response panel uses — alongside its notes and any
+  failing assertions, so "what did step 3 actually get back" is a click, not a re-run with `--debug`.
+  The run is asynchronous, so the window stays responsive while it works, and a Stop button (or
+  closing the window) cancels a run in progress.
+- **Captures and known-good behave in the app exactly as they do headless**, because both paths are
+  now the same code: the chain's capture environment is created on first use and made active, a
+  value captured by step one is visible to step two as a `{{variable}}`, a newly created environment
+  is folded into the environment picker rather than silently vanishing, and known-good markers are
+  recorded per step onto the saved requests the sidebar already holds. The run window never writes
+  `state.json` itself — the app persists on close exactly as it always has, so nothing is lost or
+  double-written by adding a second place that runs a chain.
+- **One deliberate difference between the two front ends, stated here because a user will hit it and
+  can't be expected to guess it:** when a chain names no capture environment, `certapi run --chain`
+  resolves `{{variables}}` against nothing, while the app resolves them against whichever environment
+  is selected in its own picker — because in the app that picker is the user's stated choice, and
+  every other send in the window already honors it.
+
 ## [1.58.0] - 2026-07-26
 
 ### Added
@@ -1191,7 +1242,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.58.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.59.0...HEAD
+[1.59.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.58.0...v1.59.0
 [1.58.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.56.0...v1.57.0
 [1.56.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.1...v1.56.0

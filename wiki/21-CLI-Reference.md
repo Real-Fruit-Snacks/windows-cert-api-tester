@@ -179,7 +179,8 @@ The interactive **authorization-code** grant is app-only (see [Authentication](0
   [Capturing Values](12-Capturing-Values.md)). Steps report PASS / FAIL; a failing step stops the
   chain unless it is marked to carry on, and the steps that never ran are listed as SKIP. Any failed
   step exits 1. Captures write into the environment the chain names (created on first use); an
-  explicit `--env` wins over it.
+  explicit `--env` wins over it. The same chain can also be run from the desktop app's CHAINS sidebar
+  (see [Capturing Values](12-Capturing-Values.md)).
 - `--diff-har <file.har>` — replay a HAR archive and compare each response against the one it
   recorded, which turns a captured session into a regression test. An entry passes only when its
   diff is identical (the status is part of the diff), and any difference exits 1 — there is no
