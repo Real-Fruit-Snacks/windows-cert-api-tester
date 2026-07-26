@@ -390,7 +390,22 @@ public class ApiClientRetryTests
 
         // The first attempt fails fast and a ten-second wait begins; cancelling into that wait has to
         // end the call, which it only can if the wait is awaited rather than slept through.
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        //
+        // Cancellation waits for the server to have served the first attempt rather than running off
+        // a fixed timer, because a fixed timer raced the TLS handshake on a loaded machine and
+        // cancelled before any response existed, leaving StatusCode null. RequestCount marks receipt
+        // by the server, so a short settle follows to let the response reach the client and the
+        // backoff begin. The margin is deliberately lopsided: the settle is milliseconds against a
+        // ten-second wait, so the cancel lands inside the backoff with seconds to spare on any machine.
+        using var cts = new CancellationTokenSource();
+        using var giveUp = new CancellationTokenSource(TimeSpan.FromSeconds(30));   // fail rather than hang
+        _ = Task.Run(async () =>
+        {
+            while (server.RequestCount < 1 && !giveUp.Token.IsCancellationRequested)
+                await Task.Delay(10);
+            await Task.Delay(400);
+            cts.Cancel();
+        });
 
         var clock = Stopwatch.StartNew();
         var resp = await new ApiClient().SendAsync(
@@ -405,7 +420,10 @@ public class ApiClientRetryTests
             cancellationToken: cts.Token);
         clock.Stop();
 
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3),
+        // Half the backoff: enough to prove the ten-second wait was cut short rather than slept
+        // through, without failing on a loaded runner where the handshake and the settle above
+        // already account for the best part of a second.
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5),
             $"The backoff wait ignored cancellation: took {clock.Elapsed}.");
         // The failed response the client had in hand is what comes back, with the attempts it took.
         Assert.Equal(503, resp.StatusCode);
