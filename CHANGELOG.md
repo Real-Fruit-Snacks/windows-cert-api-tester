@@ -6,6 +6,55 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.58.0] - 2026-07-26
+
+### Added
+- **`--protoset <file>` on both `certapi grpc list` and `certapi grpc call`**, so a service that does
+  not implement server reflection — common in production, where it is often turned off deliberately —
+  is no longer a hard wall. The file is a compiled `FileDescriptorSet`: the binary output of
+  `protoc --descriptor_set_out=<file> --include_imports <proto>`. `--include_imports` is not optional
+  — without it the set carries the root file but not the types it imports, including the well-known
+  types — and the flag itself is named to match `grpcurl -protoset`, which consumes the identical
+  interchange format, so the knowledge transfers directly. A descriptor set wins over server
+  reflection whenever both are possible; the two are never merged, not even to fill in something the
+  set happens to lack. Proved by test: against a reflection-enabled server — one that, by definition,
+  advertises `grpc.reflection.v1alpha.ServerReflection` as one of its own services — a `--protoset`
+  listing never includes that service, because the supplied set does not declare it. `certapi grpc
+  list --protoset <file>` works entirely offline: the address argument is optional in that one
+  combination, and one supplied alongside `--protoset` anyway is accepted and ignored rather than
+  dialed. Proved by a test in which no listener is started anywhere in the process. The headline case
+  is pinned directly: one in-process gRPC server started with reflection disabled — `certapi grpc
+  call` against it fails with the reflection-unavailable error, and the identical call with
+  `--protoset` succeeds. Every descriptor-set problem is exit 3 with a plain message, never a stack
+  trace: a missing file, an unreadable file, a file that is not a parseable `FileDescriptorSet`,
+  forgetting `--include_imports` (the message names the specific missing file and tells you to
+  re-run `protoc` with the flag), passing the `.proto` source by mistake (detected and named: "looks
+  like a .proto source file, not a compiled descriptor set", with the `protoc` command to compile
+  it), and a `Service/Method` the set does not declare (naming the services the set does declare).
+  The well-known Protocol Buffers (Protobuf) types — `Timestamp`, `Duration`, the wrapper types,
+  `Struct`/`Value`/`ListValue`, `FieldMask`, `Empty`, and `Any` — render and are accepted in their
+  canonical JSON forms identically through this path, because that handling keys off the descriptor's
+  full type name, not off where the descriptor came from; a test round-trips a `Timestamp` and a
+  `Duration` through `--protoset` against a reflection-disabled server to pin exactly that.
+
+### Changed
+- **The reflection-unavailable error was corrected, because this release made the old wording false.**
+  It used to end "supplying a compiled descriptor set instead is not available in this version"; it
+  now reads, verbatim: "The server does not implement gRPC server reflection
+  (grpc.reflection.v1alpha.ServerReflection), so certapi grpc cannot learn the service's request and
+  response message types by asking it. Supply a compiled descriptor set instead: --protoset <file>,
+  produced by protoc --descriptor_set_out=<file> --include_imports <proto>."
+- **The desktop application's Help window gRPC note was corrected to match**: it used to say "there's
+  no way to supply a compiled descriptor set instead" for a server with reflection turned off; it now
+  says that server can still be reached by supplying a compiled descriptor set with `--protoset`.
+- **The documented gRPC limits were rewritten, not merely trimmed.** "Server reflection is required
+  (there's no descriptor-set input in this version)" is no longer true and is gone from `README.md`,
+  `docs/index.html`, and `wiki/21-CLI-Reference.md`; what remains stated as a limit is what is still
+  actually true — client-streaming and bidirectional methods are still out of scope, `certapi serve`
+  still does not proxy gRPC (`HttpListener` is HTTP/1.1-only), and `--protoset` still requires you to
+  already have, or be able to produce, the descriptor set yourself — certapi does not compile `.proto`
+  sources.
+
 ## [1.57.0] - 2026-07-26
 
 ### Changed
@@ -1142,7 +1191,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.57.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.58.0...HEAD
+[1.58.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.56.0...v1.57.0
 [1.56.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.1...v1.56.0
 [1.55.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.0...v1.55.1

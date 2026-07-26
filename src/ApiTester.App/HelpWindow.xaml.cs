@@ -503,12 +503,13 @@ public partial class HelpWindow : Window
                 "printed when one isn't available), and --tls-trust installs the certificate so the " +
                 "browser stops warning about it — reversible with --tls-untrust."),
         NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."),
-        NoteBox("certapi grpc is command-line only — there is no window for it. It needs the server to " +
-                "offer server reflection; there's no way to supply a compiled descriptor set instead. " +
-                "Client-streaming and bidirectional methods are out of scope. And certapi serve does not " +
-                "proxy gRPC, because HttpListener (what the gateway is built on) is HTTP/1.1-only — " +
-                "certapi grpc reaches the service directly with your certificate instead of going " +
-                "through the gateway."));
+        NoteBox("certapi grpc is command-line only — there is no window for it. It normally learns a " +
+                "service's methods from server reflection, but a server with reflection turned off can " +
+                "still be reached by supplying a compiled descriptor set with --protoset (produced by " +
+                "protoc --descriptor_set_out=... --include_imports). Client-streaming and bidirectional " +
+                "methods are out of scope. And certapi serve does not proxy gRPC, because HttpListener " +
+                "(what the gateway is built on) is HTTP/1.1-only — certapi grpc reaches the service " +
+                "directly with your certificate instead of going through the gateway."));
 
     private UIElement Rendered() => Section("Rendered website",
         P("The Rendered response tab opens the current request's URL as a web page instead of raw text — useful when the target is a site rather than an API."),

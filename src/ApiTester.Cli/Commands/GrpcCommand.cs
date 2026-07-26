@@ -10,7 +10,9 @@ namespace ApiTester.Cli.Commands;
 /// <summary>The CLI surface over <see cref="GrpcCaller"/>: <c>certapi grpc list</c> discovers the
 /// services and methods a server advertises via reflection, and <c>certapi grpc call</c> invokes
 /// one of them (unary or server-streaming), using the same Windows-store certificate handling as
-/// every other command. Every gRPC/Protobuf type stays inside ApiTester.Grpc — this class only
+/// every other command. Either subcommand can take its services and methods from a compiled
+/// descriptor set (--protoset) instead of a live server, for a server that does not implement
+/// reflection at all. Every gRPC/Protobuf type stays inside ApiTester.Grpc — this class only
 /// ever sees the plain records ApiTester.Grpc exposes.</summary>
 public static class GrpcCommand
 {
@@ -18,19 +20,21 @@ public static class GrpcCommand
 
     public const string Help = """
         Usage: certapi grpc list <address> [options]
+               certapi grpc list --protoset <file> [options]
                certapi grpc call <address> <Service/Method> [options]
 
         Calls a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-
         store certificate handling as the rest of certapi. list shows the services and methods a
-        server advertises via server reflection; call invokes one of them — unary, or server-
-        streaming (messages print as they arrive).
+        server advertises via server reflection (or a compiled descriptor set — see --protoset
+        below); call invokes one of them — unary, or server-streaming (messages print as they
+        arrive).
 
-        Server reflection (grpc.reflection.v1alpha.ServerReflection) is required: a server that
-        does not implement it cannot be listed or called, and this version has no way to supply a
-        compiled descriptor set instead. Client-streaming and bidirectional methods are out of
-        scope for this version. certapi serve does not proxy gRPC — HttpListener is HTTP/1.1-only —
-        so certapi grpc reaches the service directly with your certificate rather than going
-        through the gateway.
+        Descriptors come from server reflection (grpc.reflection.v1alpha.ServerReflection) by
+        default. A server that does not implement reflection — often deliberately, in production —
+        can still be listed and called by supplying a compiled descriptor set with --protoset.
+        Client-streaming and bidirectional methods are out of scope for this version. certapi serve
+        does not proxy gRPC — HttpListener is HTTP/1.1-only — so certapi grpc reaches the service
+        directly with your certificate rather than going through the gateway.
 
         Request:
           -d, --data <json>       The request message as JSON (default {}, an empty message)
@@ -38,6 +42,17 @@ public static class GrpcCommand
           -H, --header "k: v"     Request metadata (repeatable)
           --max-messages <n>      Stop a server-streaming call after n messages
           --timeout <seconds>     Default 100
+
+        Descriptors (for a server that does not implement reflection):
+          --protoset <file>       Read the service definitions from a compiled descriptor set — a
+                                    FileDescriptorSet — instead of asking the server. Produce one
+                                    with:
+                                      protoc --descriptor_set_out=<file> --include_imports <proto>
+                                    (--include_imports is not optional: without it the set is
+                                    missing the types it imports.) A descriptor set wins over
+                                    server reflection when both are available. grpc list --protoset
+                                    needs no address and opens no connection at all; an address
+                                    given there is ignored.
 
         TLS / certificates:
         """ + "\n" + CliCert.HelpLines + """
@@ -75,14 +90,17 @@ public static class GrpcCommand
           certapi grpc call https://api.example.com:5001 my.pkg.Greeter/SayHello -d '{"name":"Ada"}'
           certapi grpc call https://api.example.com:5001 Greeter/SayHello --json
           certapi grpc call https://api.example.com:5001 my.pkg.Feed/Watch --max-messages 5
+          certapi grpc list --protoset api.protoset
+          certapi grpc call https://api.example.com:5001 my.pkg.Greeter/SayHello --protoset api.protoset
 
         list prints services to stdout, one per line, indented with their methods (stream marks a
         streaming request or response); call prints the response — or, for a server-streaming
         method, one compact JSON object per line as each message arrives — to stdout. Everything
         else goes to stderr. Exit 0 on success (including a stream stopped early by
         --max-messages), 1 when the gRPC status is not OK, 2 on a bad command line (including an
-        unsupported method kind), 3 on a data problem (reflection unavailable, or an unknown
-        service/method/field).
+        unsupported method kind), 3 on a data problem (reflection unavailable, an unknown
+        service/method/field, or a descriptor set that is missing, unreadable, not a compiled
+        FileDescriptorSet, or missing part of its dependency closure).
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
@@ -103,6 +121,7 @@ public static class GrpcCommand
         bool noAutoToken = args.Flag("--no-auto-token");
         bool json = args.Flag("--json");
         bool quiet = args.Flag("-q", "--quiet");
+        string? protoset = args.Value("--protoset");
         var cert = CliCert.Resolve(args, store, services, stderr);
 
         if (data is not null && dataFile is not null)
@@ -138,12 +157,17 @@ public static class GrpcCommand
         if (positionals.Count == 0) throw new CliUsageException(Help);
         string sub = positionals[0].ToLowerInvariant();
 
-        string addressRaw;
+        string addressRaw = "";
         string? serviceMethodRaw = null;
         switch (sub)
         {
             case "list" when positionals.Count == 2:
                 addressRaw = positionals[1];
+                break;
+            // Ruling 3: listing what a descriptor set declares needs no server at all, so the
+            // address is optional in this one combination — and when one is supplied anyway it is
+            // simply ignored, because there is nothing to ask it.
+            case "list" when positionals.Count == 1 && protoset is not null:
                 break;
             case "call" when positionals.Count == 3:
                 addressRaw = positionals[1];
@@ -151,6 +175,20 @@ public static class GrpcCommand
                 break;
             default:
                 throw new CliUsageException(Help);
+        }
+
+        // A descriptor-set listing must not open a socket at all (ruling 3), so this returns before
+        // the address is even parsed and before any channel exists — an address supplied alongside
+        // --protoset (see the case above) is accepted and ignored rather than dialed. This is also
+        // why an unreachable or malformed address is not an error in this one combination: it is
+        // never looked at.
+        if (sub == "list" && protoset is not null)
+        {
+            services.Log.Debug($"grpc list from descriptor set {protoset}");
+            var loadStopwatch = Stopwatch.StartNew();
+            var set = LoadDescriptorSet(protoset);
+            loadStopwatch.Stop();
+            return RunList(set.Services, loadStopwatch.Elapsed, stdout, stderr, json, quiet);
         }
 
         // D4: an address whose scheme is not http/https is a usage error — checked here so the
@@ -208,6 +246,7 @@ public static class GrpcCommand
         };
 
         services.Log.Debug($"grpc {sub} {address}");
+        if (protoset is not null) services.Log.Debug($"descriptors: from {protoset} (reflection not consulted)");
         services.Log.Debug(cert is null ? "certificate: none" : $"certificate: {cert.Subject} ({cert.Thumbprint})");
         services.Log.Debug($"timeout: {timeout} s · insecure: {insecure} · store: {store}");
         foreach (var h in metadata)
@@ -221,7 +260,14 @@ public static class GrpcCommand
 
         async Task<int> RunAsync()
         {
-            await using var caller = new GrpcCaller(address, cert, transport, trustCert);
+            // Loaded before the channel is built so a bad descriptor set is exit 3 with a message
+            // about the file, rather than a connection failure against a server that was never the
+            // problem. From here on, list and call are identical whichever source the descriptors
+            // came from: caller.DiscoverAsync already returns the descriptor set's services without
+            // a reflection round trip when one was supplied (ruling 2), so RunList/RunCallAsync below
+            // never need to know whether --protoset was given at all — that is why this slice is small.
+            var descriptorSet = protoset is null ? null : LoadDescriptorSet(protoset);
+            await using var caller = new GrpcCaller(address, cert, transport, trustCert, descriptorSet);
 
             IReadOnlyList<GrpcServiceInfo> discovered;
             var discoverStopwatch = Stopwatch.StartNew();
@@ -231,8 +277,8 @@ public static class GrpcCommand
             }
             catch (GrpcReflectionUnavailableException ex)
             {
-                // The library's message already tells the user reflection is unavailable and why
-                // there's no descriptor-set fallback in this version — pass it through as-is.
+                // The library's message already names both the problem and the --protoset fix —
+                // pass it through as-is rather than rewording it.
                 throw new CliDataException(ex.Message);
             }
             catch (GrpcStatusException ex)
@@ -247,16 +293,38 @@ public static class GrpcCommand
             if (sub == "list")
                 return RunList(discovered, discoverStopwatch.Elapsed, stdout, stderr, json, quiet);
 
+            // Ruling 2 wording: with --protoset, no server advertised anything — the descriptor set
+            // declared it — so "not found" messages must say so rather than implying a server was
+            // asked and answered.
+            string sourceLabel = protoset is null ? "the server advertises" : "the descriptor set declares";
+
             try
             {
-                return await RunCallAsync(caller, discovered, serviceMethodRaw!, body, metadata, maxMessages,
-                    stdout, stderr, json, quiet, services, cts.Token);
+                return await RunCallAsync(caller, discovered, serviceMethodRaw!, sourceLabel, body, metadata,
+                    maxMessages, stdout, stderr, json, quiet, services, cts.Token);
             }
             catch (GrpcMethodNotFoundException ex) { throw new CliDataException(ex.Message); }
             catch (GrpcJsonException ex) { throw new CliDataException(ex.Message); }
             catch (GrpcUnsupportedMethodException ex) { throw new CliUsageException(ex.Message); }
             catch (ArgumentException ex) { throw new CliUsageException(ex.Message); }
+            // Belt-and-braces: the CLI normally resolves the service against the discovered list
+            // first (ResolveServiceName, above RunCallAsync's dispatch), so in practice a descriptor
+            // set that lacks the requested service is already caught there. This catch exists for a
+            // descriptor-set lookup that still fails inside GrpcCaller itself (e.g. a method resolved
+            // against the wrong service internally) — exit 3 either way, never a stack trace.
+            catch (GrpcDescriptorSetException ex) { throw new CliDataException(ex.Message); }
         }
+    }
+
+    /// <summary>The single translation point from ApiTester.Grpc's descriptor-set errors to the
+    /// CLI's exit 3: a missing file, an unreadable one, one that is not a compiled
+    /// FileDescriptorSet (including the classic mistake of passing the .proto source), and one
+    /// missing part of its dependency closure all arrive here already carrying a message written
+    /// for the user, so this adds nothing and hides nothing.</summary>
+    private static GrpcDescriptorSet LoadDescriptorSet(string path)
+    {
+        try { return GrpcDescriptorSet.Load(path); }
+        catch (GrpcDescriptorSetException ex) { throw new CliDataException(ex.Message); }
     }
 
     /// <summary>Prints the discovered services/methods (plain or --json) to stdout, and the
@@ -310,7 +378,7 @@ public static class GrpcCommand
     /// server-streaming path. A client-streaming (or bidirectional) method is out of scope for
     /// this version — a usage error, since the user asked for something the tool does not do.</summary>
     private static async Task<int> RunCallAsync(
-        GrpcCaller caller, IReadOnlyList<GrpcServiceInfo> discovered, string serviceMethodRaw,
+        GrpcCaller caller, IReadOnlyList<GrpcServiceInfo> discovered, string serviceMethodRaw, string sourceLabel,
         string body, IReadOnlyList<KeyValuePair<string, string>> metadata, int? maxMessages,
         TextWriter stdout, TextWriter stderr, bool json, bool quiet, CliServices services, CancellationToken ct)
     {
@@ -321,7 +389,7 @@ public static class GrpcCommand
 
         string given = serviceMethodRaw[..slash];
         string methodName = serviceMethodRaw[(slash + 1)..];
-        string service = ResolveServiceName(discovered, given);
+        string service = ResolveServiceName(discovered, given, sourceLabel);
         var serviceInfo = discovered.First(s => s.Name == service);
         var methodInfo = serviceInfo.Methods.FirstOrDefault(m => m.Name == methodName);
         if (methodInfo is null)
@@ -344,11 +412,13 @@ public static class GrpcCommand
             : await RunUnaryAsync(caller, service, methodName, body, metadata, stdout, stderr, json, quiet, services, ct);
     }
 
-    /// <summary>Resolves a possibly-short service name against what reflection discovered: an exact
-    /// match wins; otherwise exactly one discovered name ending with "." + given wins (so
-    /// "Echo/Unary" finds "certapi.test.Echo"); several matches or none is a data error naming
-    /// the candidates or the services the server actually advertises.</summary>
-    private static string ResolveServiceName(IReadOnlyList<GrpcServiceInfo> discovered, string given)
+    /// <summary>Resolves a possibly-short service name against what was discovered — reflection, or
+    /// a descriptor set when --protoset was given: an exact match wins; otherwise exactly one
+    /// discovered name ending with "." + given wins (so "Echo/Unary" finds "certapi.test.Echo");
+    /// several matches or none is a data error naming the candidates or the services actually
+    /// available, worded via <paramref name="sourceLabel"/> so the message stays honest about where
+    /// that list came from ("the server advertises" vs. "the descriptor set declares").</summary>
+    private static string ResolveServiceName(IReadOnlyList<GrpcServiceInfo> discovered, string given, string sourceLabel)
     {
         var exact = discovered.FirstOrDefault(s => s.Name == given);
         if (exact is not null) return exact.Name;
@@ -360,7 +430,7 @@ public static class GrpcCommand
                 $"'{given}' matches more than one service: {string.Join(", ", suffixMatches.Select(s => s.Name))}.");
 
         string knownServices = discovered.Count == 0 ? "(none)" : string.Join(", ", discovered.Select(s => s.Name));
-        throw new CliDataException($"Service '{given}' was not found. Services the server advertises: {knownServices}.");
+        throw new CliDataException($"Service '{given}' was not found. Services {sourceLabel}: {knownServices}.");
     }
 
     private static async Task<int> RunUnaryAsync(

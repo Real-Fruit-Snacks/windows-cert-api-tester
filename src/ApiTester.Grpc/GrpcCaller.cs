@@ -22,6 +22,11 @@ public sealed class GrpcCaller : IAsyncDisposable
     private readonly ReflectionClient _reflection;
     private readonly DescriptorPool _descriptors;
 
+    // Non-null exactly when the caller supplied a compiled descriptor set at construction. Kept
+    // around (rather than only consulted once, to build _descriptors) because DiscoverAsync also
+    // needs to know whether to skip reflection's ListServicesAsync entirely — see ruling 2.
+    private readonly GrpcDescriptorSet? _protoset;
+
     // A pass-through marshaller: every call's request is already encoded, and its response is
     // decoded by ProtoJsonReader afterwards, so nothing here needs Grpc.Core to know about Protobuf
     // at all. Request and response share the same byte[]-to-byte[] shape, so one marshaller instance
@@ -31,17 +36,27 @@ public sealed class GrpcCaller : IAsyncDisposable
     /// <param name="trustServerCertificate">Consulted when the server's certificate fails ordinary
     /// validation, so a host pinned with `certapi trust add` is reachable without --insecure — the
     /// same seam ApiClient already uses.</param>
+    /// <param name="descriptors">When supplied, this compiled descriptor set is the sole source of
+    /// descriptors for this caller: server reflection is never consulted, not even to fill in
+    /// something the set happens to be missing. Explicit input beats discovery (ruling 2) — the two
+    /// are never merged — which is also what makes a server that does not implement reflection at
+    /// all callable, as long as its contracts were compiled with
+    /// `protoc --descriptor_set_out=&lt;file&gt; --include_imports`.</param>
     public GrpcCaller(Uri address, X509Certificate2? clientCertificate, TransportOptions transport,
-                       Func<X509Certificate2?, bool>? trustServerCertificate = null)
+                       Func<X509Certificate2?, bool>? trustServerCertificate = null,
+                       GrpcDescriptorSet? descriptors = null)
     {
         // Eager: a bad address (wrong scheme, unreachable channel construction) should fail fast,
         // before the caller has invested in a discovery or invoke call.
         _channel = GrpcChannelFactory.Create(address, clientCertificate, transport, trustServerCertificate);
         _reflection = new ReflectionClient(_channel);
-        _descriptors = new DescriptorPool(_reflection);
+        _protoset = descriptors;
+        _descriptors = descriptors is null ? new DescriptorPool(_reflection) : descriptors.Pool;
     }
 
-    /// <summary>The services the server advertises via reflection, in the order it listed them, each
+    /// <summary>When a descriptor set was supplied at construction, exactly the services it declares
+    /// — nothing more, nothing less, and never merged with what a server would have advertised.
+    /// Otherwise, the services the server advertises via reflection, in the order it listed them, each
     /// with its methods. If one service's descriptors cannot be resolved, that service is returned
     /// with an empty method list rather than failing the whole listing — one uncooperative service
     /// should not hide the rest, and an empty list is visible instead of silent. Throws
@@ -49,6 +64,17 @@ public sealed class GrpcCaller : IAsyncDisposable
     /// all, or <see cref="GrpcStatusException"/> for any other failure listing services.</summary>
     public async Task<IReadOnlyList<GrpcServiceInfo>> DiscoverAsync(CancellationToken ct)
     {
+        // Ruling 2 in force: a descriptor set is an explicit statement of what the caller wants to
+        // call, so it wins over whatever the server would have advertised, and the two are never
+        // merged — not even to fill in something the set happens to lack. No reflection round trip
+        // happens here in protoset mode; a bare await never runs, so this returns synchronously in
+        // practice despite the async signature. One visible consequence, pinned by
+        // GrpcProtosetCallerTests: a reflection-enabled server also advertises
+        // grpc.reflection.v1alpha.ServerReflection (the reflection service) as one of its own
+        // services, but a descriptor-set listing never includes it, because the set itself does not
+        // declare it.
+        if (_protoset is not null) return _protoset.Services;
+
         var names = await _reflection.ListServicesAsync(ct);
         var services = new List<GrpcServiceInfo>(names.Count);
         foreach (var name in names)
@@ -57,8 +83,13 @@ public sealed class GrpcCaller : IAsyncDisposable
             try
             {
                 var service = await _descriptors.FindServiceAsync(name, ct);
-                methods = service.Methods.Select(m => new GrpcMethodInfo(
-                    m.Name, m.IsClientStreaming, m.IsServerStreaming, m.InputType.FullName, m.OutputType.FullName)).ToList();
+                // Shares DescriptorPool.Describe's projection with the descriptor-set listing rather
+                // than re-deriving GrpcMethodInfo from the descriptor a second way — but deliberately
+                // keeps constructing GrpcServiceInfo below with `name` (what reflection was asked
+                // for), not `service.FullName` (what Describe would use): the two are the same string
+                // in every case this codebase has seen, but nothing here guarantees it, and the
+                // reflection path has always reported the name it asked for.
+                methods = DescriptorPool.Describe(service).Methods;
             }
             catch (GrpcMethodNotFoundException)
             {

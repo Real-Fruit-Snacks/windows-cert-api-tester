@@ -136,9 +136,10 @@ internal sealed class ReflectionClient(GrpcChannel channel)
     };
 
     private static GrpcReflectionUnavailableException ReflectionUnavailable() => new(
-        "The server does not implement gRPC server reflection (grpc.reflection.v1alpha.ServerReflection). " +
-        "certapi grpc needs reflection to learn the service's request and response message types; supplying " +
-        "a compiled descriptor set instead is not available in this version.");
+        "The server does not implement gRPC server reflection (grpc.reflection.v1alpha.ServerReflection), " +
+        "so certapi grpc cannot learn the service's request and response message types by asking it. " +
+        "Supply a compiled descriptor set instead: --protoset <file>, produced by " +
+        "protoc --descriptor_set_out=<file> --include_imports <proto>.");
 
     private static GrpcStatusException Unexpected(ServerReflectionResponse response) => new(
         (int)StatusCode.Internal, nameof(StatusCode.Internal),

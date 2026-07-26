@@ -3,16 +3,26 @@ using Google.Protobuf.Reflection;
 
 namespace ApiTester.Grpc;
 
-/// <summary>Turns server-reflection bytes into real <see cref="Google.Protobuf.Reflection"/>
-/// descriptors, once per <see cref="GrpcCaller"/> instance. <see cref="Google.Protobuf.Reflection.FileDescriptorProto"/>
+/// <summary>Turns raw <see cref="FileDescriptorProto"/>s — whether fetched live over server
+/// reflection or read whole from a compiled <see cref="FileDescriptorSet"/> — into real
+/// <see cref="Google.Protobuf.Reflection"/> descriptors. <see cref="Google.Protobuf.Reflection.FileDescriptorProto"/>
 /// is public in Google.Protobuf 3.35.1 (confirmed against the pinned package), so this pool parses
-/// reflection bytes with it directly rather than needing the raw-<see cref="CodedInputStream"/>
-/// fallback the brief allowed for.</summary>
-internal sealed class DescriptorPool(ReflectionClient reflection)
+/// bytes with it directly rather than needing the raw-<see cref="CodedInputStream"/> fallback the
+/// brief allowed for.</summary>
+internal sealed class DescriptorPool
 {
     // Far more than any real dependency graph should ever need. A server that keeps introducing
     // filenames past this bound is either malicious or broken, and failing loudly beats hanging.
     private const int MaxFilesFetched = 100;
+
+    // Null in protoset mode: every descriptor is already in hand at construction time, so there is
+    // nothing left to fetch and no reflection client is ever consulted. Non-null in the mode
+    // GrpcCaller already uses, where descriptors arrive lazily as FindServiceAsync is called.
+    private readonly ReflectionClient? _reflection;
+
+    // What every user-facing message in this class calls the source of its descriptors, so the
+    // same wording is honest whether they came from a live server or a file on disk.
+    private readonly string _sourceLabel;
 
     private readonly Dictionary<string, FileDescriptorProto> _protos = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ServiceDescriptor> _services = new(StringComparer.Ordinal);
@@ -26,14 +36,74 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
     // service, and this index is shared across every service this pool has ever resolved.
     private readonly Dictionary<string, MessageDescriptor> _messages = new(StringComparer.Ordinal);
 
+    // Populated by Rebuild(), in the order the topologically sorted files declare them —
+    // deterministic, and what DescribeServices() walks for the offline `grpc list --protoset` path.
+    private IReadOnlyList<FileDescriptor> _built = Array.Empty<FileDescriptor>();
+
+    /// <summary>The mode GrpcCaller already uses: descriptors are fetched lazily, one server round
+    /// trip at a time, as FindServiceAsync is called for each service in turn.</summary>
+    internal DescriptorPool(ReflectionClient reflection)
+    {
+        _reflection = reflection;
+        _sourceLabel = "the descriptors the server returned";
+    }
+
+    private DescriptorPool(string sourceLabel)
+    {
+        _reflection = null;
+        _sourceLabel = sourceLabel;
+    }
+
+    /// <summary>Protoset mode: every descriptor is already in hand, so reflection is never
+    /// consulted and no socket is ever opened. <paramref name="files"/> must already be the
+    /// complete dependency closure — GrpcDescriptorSet validates that before calling this.</summary>
+    internal static DescriptorPool FromDescriptorSet(IReadOnlyList<FileDescriptorProto> files, string sourcePath)
+    {
+        var pool = new DescriptorPool($"the descriptor set '{sourcePath}'");
+        foreach (var file in files) pool.AddProto(file);
+        try
+        {
+            pool.Rebuild();
+        }
+        catch (GrpcDescriptorSetException)
+        {
+            // Rebuild() -> TopologicalSort() -> Broken(...) already throws a precise
+            // GrpcDescriptorSetException for protoset mode (e.g. a circular dependency); let it pass
+            // through untouched rather than re-wrapping it below into a doubly-worded message.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // The backstop for everything Rebuild() can throw — most commonly
+            // Google.Protobuf.Reflection's own DescriptorValidationException when the closure is
+            // well-formed enough to sort but not to build (a missing import). Slice 2 adds a
+            // precise, friendlier check ahead of this for the missing-import case; this is the
+            // backstop, not the primary message.
+            throw new GrpcDescriptorSetException(
+                $"The descriptor set '{sourcePath}' could not be built into descriptors: {ex.Message}");
+        }
+        return pool;
+    }
+
     /// <summary>The descriptor for a fully-qualified service name, built from the file the server
     /// reports plus the transitive closure of its dependencies. Cached: a `grpc call` should cost
-    /// one reflection round trip, not one per lookup.</summary>
+    /// one reflection round trip, not one per lookup.
+    /// <para>In protoset mode every service was already built into the cache at construction time
+    /// (see <see cref="FromDescriptorSet"/>), so a cache miss here means the set genuinely does not
+    /// declare the requested service — there is no server left to ask, and none is asked.</para></summary>
     internal async Task<ServiceDescriptor> FindServiceAsync(string serviceFullName, CancellationToken ct)
     {
         if (_services.TryGetValue(serviceFullName, out var cached)) return cached;
 
-        var roots = await reflection.FileContainingSymbolAsync(serviceFullName, ct);
+        if (_reflection is null)
+        {
+            var declared = DescribeServices();
+            string known = declared.Count == 0 ? "(none)" : string.Join(", ", declared.Select(s => s.Name));
+            throw new GrpcDescriptorSetException(
+                $"Service '{serviceFullName}' is not in {_sourceLabel}. Services it declares: {known}.");
+        }
+
+        var roots = await _reflection.FileContainingSymbolAsync(serviceFullName, ct);
         foreach (var bytes in roots) AddProto(FileDescriptorProto.Parser.ParseFrom(bytes));
 
         await ResolveDependenciesAsync(ct);
@@ -42,16 +112,27 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
 
         if (_services.TryGetValue(serviceFullName, out var found)) return found;
         throw new GrpcMethodNotFoundException(
-            $"Service '{serviceFullName}' was not found among the descriptors the server returned for it.");
+            $"Service '{serviceFullName}' was not found among {_sourceLabel} for it.");
     }
 
-    /// <summary>Resolves a message by its full name across every file server reflection has fetched so
-    /// far — the production resolver behind google.protobuf.Any expansion. Returns null when the name
-    /// is not among the descriptors fetched so far, which is the caller's cue to fall back to the
+    /// <summary>Resolves a message by its full name across every file collected so far — the
+    /// production resolver behind google.protobuf.Any expansion. Returns null when the name is not
+    /// among the descriptors collected so far, which is the caller's cue to fall back to the
     /// visible base64 rendering rather than fail the call (see ProtoJsonReader/Writer's Any
     /// handling).</summary>
     internal MessageDescriptor? FindMessage(string fullName) =>
         _messages.TryGetValue(fullName, out var found) ? found : null;
+
+    /// <summary>The one projection from a built descriptor to the public record shape, shared by
+    /// the reflection listing and the descriptor-set listing.</summary>
+    internal static GrpcServiceInfo Describe(ServiceDescriptor service) =>
+        new(service.FullName, service.Methods.Select(m => new GrpcMethodInfo(
+            m.Name, m.IsClientStreaming, m.IsServerStreaming, m.InputType.FullName, m.OutputType.FullName)).ToList());
+
+    /// <summary>Every service the pool has built, in the order the topologically sorted files
+    /// declare them. Deterministic, and used for the offline `grpc list --protoset` path.</summary>
+    internal IReadOnlyList<GrpcServiceInfo> DescribeServices() =>
+        _built.SelectMany(f => f.Services).Select(Describe).ToList();
 
     private void AddProto(FileDescriptorProto proto) => _protos.TryAdd(proto.Name, proto);
 
@@ -59,7 +140,10 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
     /// reflection implementations differ on this. Fetch every dependency filename not yet collected,
     /// and repeat until nothing is missing. Filenames already collected can never be requested again,
     /// which is what keeps a cyclic dependency graph from looping here; the file-count cap below is
-    /// the backstop for a server that keeps naming files we have never seen before.</summary>
+    /// the backstop for a server that keeps naming files we have never seen before.
+    /// <para>Reflection-only: only ever reached from <see cref="FindServiceAsync"/> after that method
+    /// has already confirmed <c>_reflection</c> is not null, so the null-forgiving reference below
+    /// does not weaken the protoset mode's "no socket is ever opened" guarantee.</para></summary>
     private async Task ResolveDependenciesAsync(CancellationToken ct)
     {
         while (true)
@@ -75,14 +159,16 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
             {
                 if (_protos.Count >= MaxFilesFetched)
                 {
-                    // GrpcMethodNotFoundException fits best of the five declared exception types:
+                    // GrpcMethodNotFoundException fits best of the declared exception types:
                     // functionally, this means the service being looked up could not be resolved via
-                    // reflection because its dependency graph never stopped growing.
+                    // reflection because its dependency graph never stopped growing. This path is
+                    // reflection-only (protoset mode never reaches ResolveDependenciesAsync at all),
+                    // so it stays a reflection-only message.
                     throw new GrpcMethodNotFoundException(
                         $"Server reflection dependency resolution exceeded {MaxFilesFetched} files while " +
                         $"fetching '{filename}'; the server may be reporting an unbounded dependency graph.");
                 }
-                var files = await reflection.FileByFilenameAsync(filename, ct);
+                var files = await _reflection!.FileByFilenameAsync(filename, ct);
                 foreach (var bytes in files) AddProto(FileDescriptorProto.Parser.ParseFrom(bytes));
             }
         }
@@ -90,12 +176,15 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
 
     /// <summary>Rebuilds every file collected so far (previous calls' files included) into real
     /// descriptors and re-populates the service cache from all of them — not just the one that was
-    /// asked for — so a second service living in an already-fetched file costs nothing.</summary>
+    /// asked for — so a second service living in an already-fetched file costs nothing. In protoset
+    /// mode this runs exactly once, at construction, seeding the cache with every service the set
+    /// declares; in reflection mode it reruns each time FindServiceAsync fetches something new.</summary>
     private void Rebuild()
     {
-        var ordered = TopologicalSort(_protos);
+        var ordered = TopologicalSort();
         var built = FileDescriptor.BuildFromByteStrings(ordered.Select(p => p.ToByteString()).ToList());
 
+        _built = built;
         _services.Clear();
         _messages.Clear();
         foreach (var file in built)
@@ -116,12 +205,19 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
         foreach (var nested in message.NestedTypes) AddMessageRecursive(nested);
     }
 
+    /// <summary>Chooses the right exception type for a broken dependency graph: a
+    /// GrpcMethodNotFoundException when the descriptors came from a server (something reflection
+    /// could still recover from on a retry), a GrpcDescriptorSetException when they came from a
+    /// file on disk (nothing left to retry — the file itself is broken).</summary>
+    private Exception Broken(string message) =>
+        _reflection is null ? new GrpcDescriptorSetException(message) : new GrpcMethodNotFoundException(message);
+
     /// <summary><see cref="FileDescriptor.BuildFromByteStrings"/> requires each file's dependencies to
     /// precede it in the input; feeding it unsorted input fails in a confusing way. A cycle among the
     /// collected files (which a well-formed compiled `.proto` set could never contain, but a
-    /// malicious/buggy server's raw bytes are not obligated to be well-formed) is reported here rather
-    /// than looping.</summary>
-    private static List<FileDescriptorProto> TopologicalSort(Dictionary<string, FileDescriptorProto> protos)
+    /// malicious/buggy server's raw bytes, or a hand-assembled descriptor set, are not obligated to be
+    /// well-formed) is reported here rather than looping.</summary>
+    private List<FileDescriptorProto> TopologicalSort()
     {
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var visiting = new HashSet<string>(StringComparer.Ordinal);
@@ -130,11 +226,11 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
         void Visit(string name)
         {
             if (visited.Contains(name)) return;
-            if (!protos.TryGetValue(name, out var proto)) return;
+            if (!_protos.TryGetValue(name, out var proto)) return;
             if (!visiting.Add(name))
             {
-                throw new GrpcMethodNotFoundException(
-                    $"Circular dependency detected among the file descriptors the server returned, involving '{name}'.");
+                throw Broken(
+                    $"Circular dependency detected among the file descriptors in {_sourceLabel}, involving '{name}'.");
             }
             foreach (var dependency in proto.Dependency) Visit(dependency);
             visiting.Remove(name);
@@ -142,7 +238,7 @@ internal sealed class DescriptorPool(ReflectionClient reflection)
             ordered.Add(proto);
         }
 
-        foreach (var name in protos.Keys) Visit(name);
+        foreach (var name in _protos.Keys) Visit(name);
         return ordered;
     }
 }

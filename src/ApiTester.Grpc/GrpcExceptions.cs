@@ -25,3 +25,7 @@ public sealed class GrpcStatusException(int statusCode, string statusName, strin
     public string StatusDetail { get; } = statusDetail;
     public IReadOnlyList<KeyValuePair<string, string>> Trailers { get; } = trailers;
 }
+
+/// <summary>The supplied descriptor set file is missing, unreadable, not a parseable
+/// FileDescriptorSet, or does not contain what the call needs -> exit 3.</summary>
+public sealed class GrpcDescriptorSetException(string message) : Exception(message);

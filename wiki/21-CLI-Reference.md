@@ -322,17 +322,24 @@ the client-certificate path end to end.
 
 ```
 certapi grpc list <address> [options]
+certapi grpc list --protoset <file> [options]
 certapi grpc call <address> <Service/Method> [options]
 ```
 
 Calls a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-store
 certificate handling as the rest of certapi. `list` shows the services and methods a server
-advertises via server reflection (`grpc.reflection.v1alpha.ServerReflection`); `call` invokes one —
-unary, or server-streaming (messages print as they arrive). A short service name resolves when it's
-unambiguous (`Echo/Unary` finds `certapi.test.Echo`).
+advertises via server reflection (`grpc.reflection.v1alpha.ServerReflection`) — or, for a server that
+doesn't implement reflection, the services and methods declared by a compiled descriptor set supplied
+with `--protoset` (below); `call` invokes one — unary, or server-streaming (messages print as they
+arrive). A short service name resolves when it's unambiguous (`Echo/Unary` finds `certapi.test.Echo`).
 
 - `-d, --data <json>` — the request message as JSON (default `{}`); `--data-file <path>` reads it
   from a file instead
+- `--protoset <file>` — read services and methods from a compiled `FileDescriptorSet` instead of
+  server reflection. Produce one with `protoc --descriptor_set_out=<file> --include_imports <proto>`
+  — `--include_imports` isn't optional, or the set is missing the types it imports. Wins over server
+  reflection when both are available (the two are never merged); `grpc list --protoset` needs no
+  address and opens no connection at all
 - `-H, --header "k: v"` — request metadata (repeatable)
 - `--max-messages <n>` — stop a server-streaming call after n messages (exit 0, not a failure)
 - `--timeout <seconds>` — default 100
@@ -355,17 +362,20 @@ Exit codes: `0` on success (including a stream stopped early by `--max-messages`
 gRPC status returned is not OK (`--json` carries `{status, statusName, detail}`) · `2` on a bad
 command line — an address whose scheme isn't `http`/`https`, a malformed `Service/Method`, or a
 client-streaming/bidirectional method (out of scope for this version) · `3` on a data problem —
-server reflection unavailable, or an unknown service/method/field, naming the offending one.
+server reflection unavailable, an unknown service/method/field naming the offending one, or a
+`--protoset` file that's missing, unreadable, not a compiled `FileDescriptorSet`, or missing part of
+its dependency closure (e.g. `protoc` was run without `--include_imports`).
 
-Server reflection is required; there's no way to supply a compiled descriptor set instead. The
-well-known Protocol Buffers (Protobuf) types render — and are accepted on the way in — in their
-canonical JSON forms rather than as ordinary messages: `Timestamp` is an RFC 3339 string
-(`"2023-11-14T22:13:20Z"`), `Duration` is seconds with an `s` suffix (`"1.500s"`), the wrapper
-types (`Int32Value`, `StringValue`, and the rest) are the bare underlying value, `Struct`/`Value`/
-`ListValue` are a plain JSON object/value/array, `FieldMask` is comma-joined lowerCamelCase paths,
-and `Empty` is `{}`. `Any` expands to `{"@type":…, …fields}` when its type resolves against the
-descriptors reflection fetched, and degrades to `{"@type":…,"value":"<base64>"}` rather than
-failing the call when it doesn't. `certapi serve` does not proxy gRPC — `HttpListener` is
+Server reflection is the default source of descriptors; `--protoset` is the alternative for a server
+that doesn't offer it, and wins over reflection when both are available. The well-known Protocol
+Buffers (Protobuf) types render — and are accepted on the way in — in their canonical JSON forms
+rather than as ordinary messages: `Timestamp` is an RFC 3339 string (`"2023-11-14T22:13:20Z"`),
+`Duration` is seconds with an `s` suffix (`"1.500s"`), the wrapper types (`Int32Value`,
+`StringValue`, and the rest) are the bare underlying value, `Struct`/`Value`/`ListValue` are a plain
+JSON object/value/array, `FieldMask` is comma-joined lowerCamelCase paths, and `Empty` is `{}`. `Any`
+expands to `{"@type":…, …fields}` when its type resolves against whichever descriptors are in play —
+reflection-fetched or supplied with `--protoset` — and degrades to `{"@type":…,"value":"<base64>"}`
+rather than failing the call when it doesn't. `certapi serve` does not proxy gRPC — `HttpListener` is
 HTTP/1.1-only — so `certapi grpc` reaches the service directly with your certificate rather than
 going through the gateway.
 
