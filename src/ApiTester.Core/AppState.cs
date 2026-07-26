@@ -290,7 +290,9 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
     {
         if (Request is not { } r) return null;
 
-        // Merge any query still in the path with the enabled rows of the Params grid.
+        // Merge any query still in the path with the enabled rows of the Params grid. This is a
+        // collection export, so it keeps {{variable}} tokens literal — the export is a template
+        // someone else fills in, not a request the server will actually receive.
         var (path, rawQuery) = QueryString.Split((r.Path ?? "").Trim());
         var pairs = QueryString.Parse(rawQuery);
         pairs.AddRange(r.EnabledParams());
@@ -299,7 +301,7 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
         {
             Method = r.Method,
             BaseUrl = string.IsNullOrWhiteSpace(r.BaseUrl) ? null : r.BaseUrl!.Trim(),
-            Url = QueryString.Compose(path, pairs),
+            Url = QueryString.ComposeTemplate(path, pairs),
             Name = Name,
             Description = HasResult ? StatusSummary : null,
             Body = string.IsNullOrEmpty(r.Body) ? null : r.Body,

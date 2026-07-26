@@ -29,13 +29,21 @@ public static class QueryString
     }
 
     /// <summary>Build a raw query string (encoded, no leading '?') from pairs; "" if none.</summary>
-    public static string Build(IEnumerable<KeyValuePair<string, string>> pairs)
+    public static string Build(IEnumerable<KeyValuePair<string, string>> pairs) =>
+        Build(pairs, Uri.EscapeDataString);
+
+    /// <summary>Build a raw query string for an *export*: escaped exactly as <see cref="Build"/>
+    /// escapes it, except that <c>{{variable}}</c> tokens in a key or value stay literal.</summary>
+    public static string BuildTemplate(IEnumerable<KeyValuePair<string, string>> pairs) =>
+        Build(pairs, s => VariableResolver.EscapeOutsideTokens(s, Uri.EscapeDataString));
+
+    private static string Build(IEnumerable<KeyValuePair<string, string>> pairs, Func<string, string> escape)
     {
         var sb = new StringBuilder();
         foreach (var p in pairs)
         {
             if (sb.Length > 0) sb.Append('&');
-            sb.Append(Uri.EscapeDataString(p.Key)).Append('=').Append(Uri.EscapeDataString(p.Value));
+            sb.Append(escape(p.Key)).Append('=').Append(escape(p.Value));
         }
         return sb.ToString();
     }
@@ -45,6 +53,15 @@ public static class QueryString
     {
         var (path, _) = Split(url);
         var q = Build(pairs);
+        return q.Length == 0 ? path : path + "?" + q;
+    }
+
+    /// <summary>Like <see cref="Compose"/>, but keeps <c>{{variable}}</c> tokens literal —
+    /// see <see cref="BuildTemplate"/>.</summary>
+    public static string ComposeTemplate(string url, IEnumerable<KeyValuePair<string, string>> pairs)
+    {
+        var (path, _) = Split(url);
+        var q = BuildTemplate(pairs);
         return q.Length == 0 ? path : path + "?" + q;
     }
 

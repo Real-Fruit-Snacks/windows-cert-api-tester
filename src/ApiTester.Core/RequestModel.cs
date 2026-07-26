@@ -83,6 +83,22 @@ public sealed class RequestModel : INotifyPropertyChanged
         return RequestUrl.Effective(resolve(BaseUrl ?? ""), resolve(Path), resolved);
     }
 
+    /// <summary>The URL as an *export template*. Like <see cref="EffectiveUrl"/> — a
+    /// <paramref name="resolve"/> callback still expands what it can, before composing — except that
+    /// any <c>{{variable}}</c> still standing afterwards stays literal instead of being escaped into
+    /// "%7B%7B...%7D%7D". An export is a template a human or another tool fills in later, so escaped
+    /// braces would make a copied cURL command silently wrong when re-run. The wire keeps
+    /// <see cref="EffectiveUrl"/>: there, a token that survived resolution is not a template, it is a
+    /// value the server will actually receive.</summary>
+    public string ExportUrl(Func<string, string>? resolve = null)
+    {
+        if (resolve is null) return RequestUrl.EffectiveTemplate(BaseUrl, Path, EnabledParams());
+        var resolved = EnabledParams()
+            .Select(p => new KeyValuePair<string, string>(resolve(p.Key).Trim(), resolve(p.Value)))
+            .Where(p => p.Key.Length > 0);   // a key that resolves to nothing is dropped, as a blank one is
+        return RequestUrl.EffectiveTemplate(resolve(BaseUrl ?? ""), resolve(Path), resolved);
+    }
+
     /// <summary>Build a history entry from this request and the response it produced.</summary>
     public HistoryEntry ToHistoryEntry(int? statusCode, HistorySnapshot? snapshot)
     {

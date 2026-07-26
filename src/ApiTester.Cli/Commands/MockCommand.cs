@@ -57,9 +57,11 @@ public static class MockCommand
         if (portRaw is not null && (!int.TryParse(portRaw, out port) || port is < 0 or > 65535))
             throw new CliUsageException($"--port expects 0-65535, got '{portRaw}'.");
 
+        bool http = args.Flag("--http");   // explicit no-op selector for the default, useful for scripts to state
         bool tls = args.Flag("--tls");
         bool mtls = args.Flag("--mtls");
-        if (tls && mtls) throw new CliUsageException("--tls and --mtls are mutually exclusive.");
+        if ((http ? 1 : 0) + (tls ? 1 : 0) + (mtls ? 1 : 0) > 1)
+            throw new CliUsageException("--http, --tls, and --mtls are mutually exclusive.");
         var mode = mtls ? MockTlsMode.Mtls : tls ? MockTlsMode.Https : MockTlsMode.Http;
         string certDir = args.Value("--cert-dir") ?? Path.Combine(Directory.GetCurrentDirectory(), "certapi-mock-certs");
         bool quiet = args.Flag("-q", "--quiet");

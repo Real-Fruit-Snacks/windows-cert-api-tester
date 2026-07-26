@@ -2151,8 +2151,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Resolve the active request's URL, headers, and body against the current
-    /// environment's <c>{{variables}}</c>, returning any tokens that couldn't be resolved.</summary>
-    private (string Url, List<KeyValuePair<string, string>> Headers, string? Body, List<string> Unresolved) ResolveActive()
+    /// environment's <c>{{variables}}</c>, returning any tokens that couldn't be resolved. With
+    /// <paramref name="preserveVariables"/>, a token the environment could not resolve stays literal,
+    /// because the caller is producing an export rather than a request to send.</summary>
+    private (string Url, List<KeyValuePair<string, string>> Headers, string? Body, List<string> Unresolved) ResolveActive(bool preserveVariables = false)
     {
         var m = ActiveRequest!;
         var vars = CurrentVars();
@@ -2164,7 +2166,7 @@ public partial class MainWindow : Window
             return r;
         }
 
-        var url = m.EffectiveUrl(R);
+        var url = preserveVariables ? m.ExportUrl(R) : m.EffectiveUrl(R);
         var headers = BuildHeaders().Select(h => new KeyValuePair<string, string>(R(h.Key), R(h.Value))).ToList();
         var body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body);
         return (url, headers, body, unresolved);
@@ -2409,12 +2411,13 @@ public partial class MainWindow : Window
         TrySetClipboard(CodeGenerator.Generate(lang, req), $"Copied as {item.Header}.");
     }
 
-    /// <summary>The active request (with variables resolved) as a language-agnostic code spec.</summary>
+    /// <summary>The active request, as a language-agnostic code spec, with variables resolved where
+    /// possible; any token that could not be resolved stays literal.</summary>
     private CodeRequest? CurrentCodeRequest()
     {
         if (ActiveRequest is not { } model) return null;
         CaptureControlsInto(model);
-        var (url, headers, body, _) = ResolveActive();
+        var (url, headers, body, _) = ResolveActive(preserveVariables: true);
         if (string.IsNullOrWhiteSpace(url)) return null;
         return new CodeRequest(model.Method, url, headers, body, model.IgnoreServerCert, model.CertThumbprint);
     }

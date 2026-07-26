@@ -85,8 +85,9 @@ certapi send https://api.example.com/graphql `
 In the response toolbar (next to **Copy body**), **Copy as ▾** turns the current request into a
 ready-to-run snippet — **cURL**,
 **PowerShell** (`Invoke-RestMethod`), **Python** (`requests`), or **C#** (`HttpClient`) — with
-`{{variables}}` resolved and headers/body included. Handy for sharing a repro or moving a call into
-code.
+`{{variables}}` resolved and headers/body included. A token the active environment can't resolve
+stays literal (`{{tok}}`) instead of arriving percent-escaped, so the snippet is a fillable template
+rather than a silently broken URL. Handy for sharing a repro or moving a call into code.
 
 ## Timeout
 

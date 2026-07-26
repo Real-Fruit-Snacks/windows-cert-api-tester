@@ -6,6 +6,44 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.55.1] - 2026-07-26
+
+### Fixed
+- **Exporting a request escaped its `{{variable}}` tokens.** The collections export path and the
+  app's **Copy as ▾** snippets (cURL, PowerShell, Python, C#) composed the URL through the same
+  escaping query composer the wire path uses, so a saved parameter value of `{{tok}}` exported
+  as `a=%7B%7Btok%7D%7D` — a token the active environment couldn't resolve arrived percent-escaped
+  instead of literal, so a snippet copied for later use ran the wrong request the moment it was
+  pasted and re-run. Exports now keep `{{…}}` sequences verbatim while escaping everything else
+  exactly as before; a token the environment *can* resolve is still substituted first and its value
+  escaped normally (resolve-then-escape, unchanged), and a value mixing a token with reserved
+  characters, `{{tok}}&x=1`, exports as `{{tok}}%26x%3D1`, so the raw `&` can't split it into two
+  parameters. This is the opposite-facing rule from the v1.54.0 fix in this changelog: there, an
+  unresolved token had to resolve correctly before reaching the wire; here, a token that legitimately
+  stays unresolved has to survive an export unescaped. The wire path — `EffectiveUrl`,
+  `RequestUrl.Effective`, and the escaping `QueryString.Build`/`Compose` — is deliberately untouched,
+  because a request actually being sent has no template to preserve, only a value to escape
+  correctly. The emitted OpenAPI document was unaffected either way — it already percent-decodes the
+  composed query before writing it — and that is now pinned by a test.
+- **`certapi mock --http` was documented but not accepted.** `MockCommand.Help` has always documented
+  `--http` ("Plain HTTP (default) — hit it with anything, no certificates"), but `MockCommand.Run`
+  only consumed `--tls` and `--mtls`, so the leftover token reached the argument parser's
+  unknown-option check and `certapi mock --http` failed with `Unknown option '--http'.` and exit code
+  2 — following the tool's own documentation produced an error. `--http` is now consumed as an
+  explicit selector for the default plain-HTTP mode, a no-op that resolves to the same mode as
+  passing nothing, so a script can state the mode it wants instead of relying on the default by
+  omission. The exclusivity check is now three-way: `--http`, `--tls`, and `--mtls` are mutually
+  exclusive, and combining any two is a usage error (exit 2, `--http, --tls, and --mtls are mutually
+  exclusive.`). Nothing else about the mock server changed.
+- **Bench exit-code wording in the docs overstated its leniency.** `README.md` said `certapi bench`
+  "exits 0 whatever the failure rate" and `docs/index.html` said it "exits 0 whatever the numbers
+  say" — both omitted the one case it doesn't cover. The rule enforced by `BenchCommand.Run`,
+  unchanged by this release, is: exit 0 whenever at least one request got a response, however bad —
+  503s and 404s included — and exit 1 only when nothing answered at all. Both pages now state the
+  exit-1 case explicitly. `wiki/21-CLI-Reference.md` and the in-app Help window (`HelpWindow.xaml.cs`)
+  were checked against the same rule and were already correct, so neither was touched. The command's
+  behavior did not change in this release — only the prose describing it did.
+
 ## [1.55.0] - 2026-07-26
 
 ### Added
@@ -996,7 +1034,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.1...HEAD
+[1.55.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.0...v1.55.1
 [1.55.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.54.0...v1.55.0
 [1.54.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.53.0...v1.54.0
 [1.53.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.52.0...v1.53.0

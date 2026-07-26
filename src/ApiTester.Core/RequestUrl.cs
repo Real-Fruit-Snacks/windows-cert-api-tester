@@ -13,6 +13,17 @@ public static class RequestUrl
         return q.Length == 0 ? bare : bare + "?" + q;
     }
 
+    /// <summary>Like <see cref="Effective"/>, but for an export: <c>{{variable}}</c> tokens in the
+    /// parameters stay literal instead of being percent-escaped.</summary>
+    public static string EffectiveTemplate(string? baseUrl, string path,
+        IEnumerable<KeyValuePair<string, string>> enabledParams)
+    {
+        var combined = UrlCombine(baseUrl, path);
+        var (bare, _) = QueryString.Split(combined);
+        var q = QueryString.BuildTemplate(enabledParams);
+        return q.Length == 0 ? bare : bare + "?" + q;
+    }
+
     /// <summary>Split a path or full URL into its path and the parsed query parameters.</summary>
     public static (string PathNoQuery, List<KeyValuePair<string, string>> Params) SplitForEditing(string pathOrUrl)
     {

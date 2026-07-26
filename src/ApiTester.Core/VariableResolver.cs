@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ApiTester.Core;
@@ -23,5 +24,24 @@ public static class VariableResolver
             return m.Value;                                    // leave "{{unknown}}" intact
         });
         return (result, unresolved);
+    }
+
+    /// <summary>Apply <paramref name="escape"/> to every span *outside* a <c>{{variable}}</c> token,
+    /// leaving the tokens themselves verbatim. Exports use this: an exported artifact is a template
+    /// someone fills in later, so its tokens must survive escaping intact.</summary>
+    public static string EscapeOutsideTokens(string value, Func<string, string> escape)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? "";
+
+        var sb = new StringBuilder();
+        int last = 0;
+        foreach (Match m in Token.Matches(value))
+        {
+            sb.Append(escape(value[last..m.Index]));
+            sb.Append(m.Value);
+            last = m.Index + m.Length;
+        }
+        sb.Append(escape(value[last..]));
+        return sb.ToString();
     }
 }
