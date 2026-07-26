@@ -456,6 +456,7 @@ public partial class HelpWindow : Window
             "certapi certs lists client certificates; certapi selftest proves the mutual-TLS path end to end.",
             "certapi mock runs a standing local test server to fire requests at — it echoes each request and serves /status/<code>, /sse, /token, /windows-auth, /cookie-auth, and a WebSocket echo, over http, --tls, or --mtls (generating the certs). Point the app at it to try every feature without a real API. --har <file> replays a captured session instead — the built-in routes aren't served while replaying, and --no-match-status (default 404) sets what a request matching nothing gets back.",
             "certapi serve <upstream> --port <n> runs a local gateway on 127.0.0.1: point an app's base URL at the port and it reaches a certificate-protected site with your client certificate attached — no mTLS code in the app. Mount several upstreams behind the one port with --upstream /api=https://api.internal, add --browser when the caller is a web page (below), and add --tls to serve the gateway itself over HTTPS.",
+            "certapi grpc list <address> discovers the services and methods a gRPC server advertises via server reflection; certapi grpc call <address> <Service/Method> -d '<json>' invokes one, unary or server-streaming, with your Windows-store client certificate attached exactly as send uses it. A response prints as JSON — one compact object per line for a streaming method as each arrives — and --max-messages <n> stops a stream early. See the note below for what this command deliberately does not do.",
             "certapi mcp runs a Model Context Protocol server so an AI agent can make mTLS calls with a certificate you pin at launch, bounded by a host allowlist — send_request, list_certificates, list_saved, run_saved, and self_test tools over stdio.",
             "certapi import / export move cURL commands, OpenAPI documents, and whole workspaces in and out.",
             "Exit codes are script-friendly: 0 success, 1 failure, 2 usage error, 3 data error. Run certapi help <command> for all options."),
@@ -500,7 +501,13 @@ public partial class HelpWindow : Window
                 "all work. The first bind needs an elevated prompt (the exact netsh command is " +
                 "printed when one isn't available), and --tls-trust installs the certificate so the " +
                 "browser stops warning about it — reversible with --tls-untrust."),
-        NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."));
+        NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."),
+        NoteBox("certapi grpc is command-line only — there is no window for it. It needs the server to " +
+                "offer server reflection; there's no way to supply a compiled descriptor set instead. " +
+                "Client-streaming and bidirectional methods are out of scope. And certapi serve does not " +
+                "proxy gRPC, because HttpListener (what the gateway is built on) is HTTP/1.1-only — " +
+                "certapi grpc reaches the service directly with your certificate instead of going " +
+                "through the gateway."));
 
     private UIElement Rendered() => Section("Rendered website",
         P("The Rendered response tab opens the current request's URL as a web page instead of raw text — useful when the target is a site rather than an API."),

@@ -17,6 +17,7 @@ public class HelpTextTests
         { "mcp", McpCommand.Help },
         { "trust", TrustCommand.Help },
         { "bench", BenchCommand.Help },
+        { "grpc", GrpcCommand.Help },
     };
 
     [Theory]

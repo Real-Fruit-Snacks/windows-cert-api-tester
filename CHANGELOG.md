@@ -6,6 +6,68 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.55.0] - 2026-07-26
+
+### Added
+- **gRPC calls, unary and server-streaming** — `certapi grpc` reaches a gRPC service (HTTP/2) that
+  requires a client certificate, using the same Windows-store certificate handling as the rest of
+  certapi, so this is the tool to reach for over `grpcurl` whenever the service sits behind mutual
+  TLS. `certapi grpc list <address> --cert "CN=My Client"` discovers the services and methods a
+  server advertises via server reflection (`grpc.reflection.v1alpha.ServerReflection`), printed
+  indented under their service with `stream` marking a streaming request or response (`--json` for
+  an array instead). `certapi grpc call <address> <Service/Method> -d '<json>'` invokes one —
+  request bodies are supplied as JSON (`-d`/`--data`, default `{}`; or `--data-file <path>`),
+  metadata as repeatable `-H "k: v"` headers, and the response prints back as indented JSON to
+  stdout; a server-streaming method instead prints one compact JSON object per line as each message
+  arrives, so it pipes straight into a line-oriented consumer, and `--max-messages <n>` stops it
+  early (a clean exit 0, not a failure). A short service name resolves when it's unambiguous —
+  `Echo/Unary` finds `certapi.test.Echo` — so you don't have to type the fully-qualified name every
+  time. A host already pinned with `certapi trust add` is reached without `--insecure`, exactly as
+  `certapi send` already allows, and a bearer token captured by an earlier `certapi send` to the
+  same host is attached automatically as metadata (`--no-auto-token` opts out) — though `certapi
+  grpc` never captures a *new* token itself. The proxy switches (`--proxy`/`--no-proxy`/
+  `--proxy-user`) and `--insecure` apply to the channel; `--timeout <seconds>` defaults to 100.
+  Exit codes follow the rest of certapi: 0 on success (including a stream stopped early by
+  `--max-messages`), 1 when the gRPC status returned is not OK (`--json` carries `{status,
+  statusName, detail}`), 2 on a bad command line (an address whose scheme isn't `http`/`https`, a
+  malformed `Service/Method`, or a client-streaming/bidirectional method — out of scope, so asking
+  for one is a usage error, not a data error), and 3 on a data problem (server reflection
+  unavailable, or an unknown service/method/field, naming the offending one). A failure names its
+  real cause the same way `certapi send` has since v1.50.0 — a refused or untrusted certificate
+  reports `The remote certificate was rejected by the provided RemoteCertificateValidationCallback`,
+  a closed port reports `No connection could be made because the target machine actively refused
+  it` — rather than an unhelpful bare cancellation. **The honest limits.** Server reflection is
+  required; a server that doesn't implement it can't be listed or called, and this version has no
+  way to supply a compiled descriptor set instead. Client-streaming and bidirectional methods are
+  out of scope for this version. `certapi serve` does not proxy gRPC — `HttpListener` is
+  HTTP/1.1-only — so `certapi grpc` reaches the service directly with your certificate rather than
+  going through the gateway. And the well-known Protocol Buffers (Protobuf) types
+  (`google.protobuf.Timestamp`, `Duration`, `Struct`, `Any`, the wrapper types) render as ordinary
+  messages rather than their special-cased JavaScript Object Notation (JSON) forms — a `Timestamp`
+  shows as `{"seconds":"5","nanos":0}`, not an ISO 8601 string — and are supplied the same way on
+  the way in. There is no window for this: it's a command-line concern, like `bench` and `serve`.
+
+### Changed
+- **The dependency posture, stated plainly.** This release takes `Grpc.Net.Client`, `Grpc.Reflection`,
+  and `Google.Protobuf` — the one place the no-new-dependencies rule bends, because hand-rolling a
+  Protocol Buffers (Protobuf) wire codec and a reflection client is a large, bug-prone surface for
+  something two well-maintained packages already do correctly, and getting wire encoding subtly
+  wrong in a *testing* tool would produce false results, which is the worst possible failure for
+  this product. The containment is precise: the packages live in a new `src/ApiTester.Grpc` project
+  referenced only by the command-line client; `ApiTester.Core` still has zero package references,
+  and the desktop application is unchanged — a test (`GrpcContainmentTests`) now fails the build if
+  either of those assemblies ever picks up a reference to `Grpc.*` or `Google.Protobuf`. The
+  repository's "no external dependencies" claim is restated rather than quietly dropped: the
+  application and `certapi` remain self-contained single-file executables with no *install*
+  requirements — the packages are compiled in, exactly as the WebView2 loader already is, so there
+  is still no installer, no admin rights, and no runtime to add. Measured, not guessed: the
+  self-contained single-file `certapi.exe` grew from 36,732,361 to 37,242,477 bytes — **+510,116
+  bytes (+0.49 MB)** — smaller than the spec's original ~5–8 MB estimate because
+  `EnableCompressionInSingleFile` compresses the bundle; the added assemblies total about 1.0 MB
+  (1,030,904 bytes) uncompressed. Building from source now restores these packages from NuGet in
+  addition to the existing ones, which matters to anyone building offline or from an internal
+  mirror.
+
 ## [1.54.0] - 2026-07-26
 
 ### Added
@@ -934,7 +996,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.54.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.55.0...HEAD
+[1.55.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.54.0...v1.55.0
 [1.54.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.53.0...v1.54.0
 [1.53.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.51.0...v1.52.0

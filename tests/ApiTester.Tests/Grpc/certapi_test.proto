@@ -1,0 +1,84 @@
+syntax = "proto3";
+package certapi.test;
+
+// Deliberately wide: every field kind ApiTester.Grpc's JSON<->Protobuf conversion has to handle
+// appears here once, so the conversion tests can be differential — the same JSON through our
+// converter and through Google's own JsonParser/JsonFormatter must agree.
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+  COLOR_GREEN = 2;
+}
+
+message Nested {
+  string label = 1;
+  int32 depth = 2;
+  Nested child = 3;
+}
+
+message AllTypes {
+  double f_double = 1;
+  float f_float = 2;
+  int32 f_int32 = 3;
+  int64 f_int64 = 4;
+  uint32 f_uint32 = 5;
+  uint64 f_uint64 = 6;
+  sint32 f_sint32 = 7;
+  sint64 f_sint64 = 8;
+  fixed32 f_fixed32 = 9;
+  fixed64 f_fixed64 = 10;
+  sfixed32 f_sfixed32 = 11;
+  sfixed64 f_sfixed64 = 12;
+  bool f_bool = 13;
+  string f_string = 14;
+  bytes f_bytes = 15;
+  Color f_enum = 16;
+  Nested f_nested = 17;
+  repeated string r_string = 18;
+  repeated int32 r_int32 = 19;
+  repeated Color r_enum = 20;
+  repeated Nested r_nested = 21;
+  map<string, string> m_string = 22;
+  map<string, Nested> m_nested = 23;
+  map<int32, string> m_int_key = 24;
+  string snake_case_name = 25;
+  oneof choice {
+    string choice_string = 26;
+    int32 choice_int = 27;
+  }
+}
+
+message EchoRequest {
+  string text = 1;
+  int32 count = 2;
+  Color color = 3;
+  Nested nested = 4;
+  repeated string tags = 5;
+  AllTypes all = 6;
+}
+
+message EchoReply {
+  string text = 1;
+  int32 count = 2;
+  Color color = 3;
+  Nested nested = 4;
+  repeated string tags = 5;
+  AllTypes all = 6;
+  // What the server actually observed, so a test can assert on the server's view of the call
+  // rather than only on the client's.
+  string observed_metadata = 7;
+  string observed_client_cert_thumbprint = 8;
+  int32 message_index = 9;
+}
+
+service Echo {
+  rpc Unary(EchoRequest) returns (EchoReply);
+  rpc ServerStream(EchoRequest) returns (stream EchoReply);
+  rpc Failing(EchoRequest) returns (EchoReply);
+  // Exists only so "this method kind is out of scope" is testable against a real server.
+  rpc ClientStream(stream EchoRequest) returns (EchoReply);
+  // Streams a few messages and then fails, so a client can be tested on seeing both the partial
+  // stream and the status that ended it.
+  rpc StreamThenFail(EchoRequest) returns (stream EchoReply);
+}

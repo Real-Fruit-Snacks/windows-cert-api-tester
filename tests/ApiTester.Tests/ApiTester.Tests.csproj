@@ -18,6 +18,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Test-only: an in-process Kestrel + Grpc.AspNetCore server (Phase D5 of the spec) so
+         GrpcCaller (later slices) and the harness itself (this slice) can be exercised against a
+         real gRPC/HTTP2 server rather than a stand-in. Pinned to the same version as
+         ApiTester.Grpc's Grpc.Net.Client/Grpc.Reflection, and Google.Protobuf pinned to the same
+         version everywhere it appears, so no NU1605 downgrade warning trips -warnaserror. -->
+    <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+    <PackageReference Include="Grpc.AspNetCore.Server.Reflection" Version="2.80.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
@@ -25,6 +36,13 @@
     <ProjectReference Include="..\..\src\ApiTester.Core\ApiTester.Core.csproj" />
     <ProjectReference Include="..\..\src\ApiTester.App\ApiTester.App.csproj" />
     <ProjectReference Include="..\..\src\ApiTester.Cli\ApiTester.Cli.csproj" />
+    <ProjectReference Include="..\..\src\ApiTester.Grpc\ApiTester.Grpc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- GrpcServices="Both": tests need the client stub (to prove the harness works, and later to
+         drive JSON<->Protobuf differential tests) and the server stub (to implement EchoService). -->
+    <Protobuf Include="Grpc\certapi_test.proto" GrpcServices="Both" />
   </ItemGroup>
 
 </Project>

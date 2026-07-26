@@ -49,6 +49,7 @@ public static class CliApp
           export            Export collections as OpenAPI, or the whole workspace
           trust             Manage per-site trusted (pinned) server certificates
           serve <upstream>  Run a local mTLS gateway that forwards to <upstream>
+          grpc              Discover and call a gRPC service (unary/server-streaming)
           mcp               Run an MCP server so AI agents can make mTLS calls
           help [command]    Show help (for one command, or this overview)
 
@@ -145,6 +146,7 @@ public static class CliApp
                 "export" => Commands.ExportCommand.Run(new Args(rest), stdout, err, services),
                 "trust" => Commands.TrustCommand.Run(new Args(rest), stdout, err, services),
                 "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, err, services),
+                "grpc" => Commands.GrpcCommand.Run(new Args(rest), stdout, err, services),
                 _ => throw new CliUsageException($"Unknown command '{g.Remaining[0]}'.\n{Usage}")
             };
         }
@@ -181,6 +183,7 @@ public static class CliApp
             "trust" => Commands.TrustCommand.Help,
             "serve" => Commands.ServeCommand.Help,
             "mcp" => Commands.McpCommand.Help,
+            "grpc" => Commands.GrpcCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;

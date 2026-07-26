@@ -76,6 +76,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **HAR → OpenAPI** — `certapi export openapi --from-har session.har -o api.json` turns a captured session into an OpenAPI 3.0 document: repeated calls to the same endpoint collapse into one operation, identifier-looking path segments become `{id}` (conservatively — only digits, a Universally Unique Identifier (UUID), or a long hexadecimal string, and only when the value actually varies between calls), responses of 400 and above are skipped, and redacted (`[redacted]`) header values are never written. In the app, Import ▾ → **Export OpenAPI from HAR file…** does the same.
 - **Mock from HAR** — `certapi mock --har session.har` serves a captured session back as a fake backend instead of the built-in routes: exact method + path + query wins, then method + path, then `--no-match-status` (default 404); repeated calls to a route replay in recorded order and then repeat the last one. In the app, the Mock server window's **From HAR…** button starts a replay the same way.
 - **`serve --tls`** — serve the gateway itself over HTTPS on `127.0.0.1` with a generated, cached certificate, so `Secure`, `SameSite=None`, and `__Host-`/`__Secure-` cookies all work through it. The first bind needs an elevated prompt (the exact `netsh` command is printed when one isn't available); `--tls-trust` installs the certificate so the browser stops warning, reversibly, with `--tls-untrust`.
+- **gRPC (`certapi grpc`)** — call a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-store certificate handling as everything else — the reason to reach for this instead of `grpcurl` when the service sits behind mutual TLS. `certapi grpc list <address>` discovers the services and methods a server advertises via server reflection; `certapi grpc call <address> <Service/Method> -d '<json>'` invokes one, JSON in and JSON out — a unary response prints as indented JSON, a server-streaming one prints a compact JSON object per line as each message arrives (`--max-messages <n>` stops it early). A host pinned with `certapi trust add` needs no `--insecure`, exactly as `certapi send`. **The honest limits:** server reflection is required (there's no descriptor-set input in this version), client-streaming and bidirectional methods are out of scope, `certapi serve` does not proxy gRPC, and well-known Protobuf types (`Timestamp`, `Duration`, `Struct`, `Any`, the wrappers) render as ordinary messages rather than their special-cased forms.
 - **Pop-out response views** — open a single response view *or the whole response panel (tabs and all)* in its own window: detach the panel to give the request editor the full main window, or pop just the Network trace or a Rendered page beside your work. Everything stays live — the trace keeps streaming, a Rendered page stays interactive — and closing a popped-out window puts its content back.
 - **Saved websites** — save a base URL (e.g. `https://internal.corp`) and the URL box becomes just the path after it, so you can fire off `/api/thing`, `/api/other` without retyping the host.
 - **Request history** — a sidebar of recent requests, labelled by path (with the host beneath). Click one to reload the *entire* request — website, certificate, headers, auth, timeout, and body — **and** the response it returned. The app also remembers your window, last certificate, and settings between runs.
@@ -238,6 +239,11 @@ certapi export openapi --from-har session.har -o api.json
 # pin the server certificate a specific host must present, instead of ignoring errors wholesale
 certapi trust add internal.corp --from-url https://internal.corp
 certapi trust list
+
+# call a gRPC service that requires a client certificate — discover it, then call it
+certapi grpc list https://api.internal.corp:5001 --cert "CN=matt"
+certapi grpc call https://api.internal.corp:5001 my.pkg.Greeter/SayHello -d '{"name":"Ada"}' --cert "CN=matt"
+certapi grpc call https://api.internal.corp:5001 my.pkg.Feed/Watch --cert "CN=matt" --max-messages 5
 ```
 
 Saved requests, collections, and environments come from the app's own state automatically, or from any exported workspace file via `--workspace` — so it works on machines that have never opened the app. Run `certapi help <command>` for every option. Response bodies go to stdout and diagnostics to stderr, with script-friendly exit codes (0 success · 1 failure · 2 usage · 3 data).
@@ -402,7 +408,8 @@ dotnet publish src/ApiTester.Cli -c Release -r win-x64 --self-contained -o publi
 
 - **Running it:** the released `ApiTester.App.exe` is a self-contained single file. Copy it to any Windows 10/11 machine and run it — no installer, no admin rights, and no pre-existing .NET runtime.
 - **One optional exception:** the *Rendered* website view uses the Microsoft Edge **WebView2 runtime**, which ships with Windows 11 (and is a standard component on up-to-date Windows 10). It loads only when you open that tab; if the runtime is absent, the tab says so and everything else works unchanged.
-- **Building it on your own CI:** the repository includes a [`.gitlab-ci.yml`](.gitlab-ci.yml) so a self-hosted GitLab instance can build, test, and package the executable on a Windows runner, and optionally publish this documentation site to GitLab Pages. Point NuGet at your own package mirror if you use one.
+- **`certapi grpc` is built on `Grpc.Net.Client`/`Google.Protobuf`, and they're compiled in too:** the claim above is about *install* requirements, not about the absence of libraries. Those packages (plus `Grpc.Reflection`) live in a dedicated `ApiTester.Grpc` project referenced only by the command-line client — the desktop application and every other command are unaffected — and, like WebView2's loader, they're compiled into `certapi.exe` itself. There's still no installer, no admin rights, and no runtime to add.
+- **Building it on your own CI:** the repository includes a [`.gitlab-ci.yml`](.gitlab-ci.yml) so a self-hosted GitLab instance can build, test, and package the executable on a Windows runner, and optionally publish this documentation site to GitLab Pages. Point NuGet at your own package mirror if you use one — building from source now restores `Grpc.Net.Client`, `Grpc.Reflection`, and `Google.Protobuf` too.
 
 ## How it works
 
@@ -419,7 +426,9 @@ dotnet publish src/ApiTester.Cli -c Release -r win-x64 --self-contained -o publi
 windows-cert-api-tester/
 ├── src/
 │   ├── ApiTester.Core/     Engine — cert store access, mTLS client, response formatting, self-test
-│   └── ApiTester.App/      WPF desktop UI (a thin layer over Core)
+│   ├── ApiTester.App/      WPF desktop UI (a thin layer over Core)
+│   ├── ApiTester.Cli/      certapi — the headless command-line client
+│   └── ApiTester.Grpc/     gRPC/Protobuf support for `certapi grpc` (the one project with those deps)
 ├── tests/
 │   └── ApiTester.Tests/    Unit tests + an end-to-end mutual-TLS integration test
 ├── .github/workflows/      Build/test CI and the release pipeline

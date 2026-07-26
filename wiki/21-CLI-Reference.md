@@ -24,6 +24,7 @@ Usage: certapi <command> [options]
 | [`import`](#import) | Import a cURL command or an OpenAPI file |
 | [`export`](#export) | Export collections as OpenAPI, or the whole workspace |
 | [`serve <upstream>`](#serve) | Run a local mTLS gateway that forwards to an upstream |
+| [`grpc`](#grpc) | Discover and call a gRPC service (unary/server-streaming) |
 | [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
 
@@ -316,6 +317,52 @@ the client-certificate path end to end.
 
 `certapi serve <upstream> --port <n> [options]` — local mTLS gateway (see
 [Local Gateway](19-Local-Gateway.md)).
+
+## grpc
+
+```
+certapi grpc list <address> [options]
+certapi grpc call <address> <Service/Method> [options]
+```
+
+Calls a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-store
+certificate handling as the rest of certapi. `list` shows the services and methods a server
+advertises via server reflection (`grpc.reflection.v1alpha.ServerReflection`); `call` invokes one —
+unary, or server-streaming (messages print as they arrive). A short service name resolves when it's
+unambiguous (`Echo/Unary` finds `certapi.test.Echo`).
+
+- `-d, --data <json>` — the request message as JSON (default `{}`); `--data-file <path>` reads it
+  from a file instead
+- `-H, --header "k: v"` — request metadata (repeatable)
+- `--max-messages <n>` — stop a server-streaming call after n messages (exit 0, not a failure)
+- `--timeout <seconds>` — default 100
+- cert flags (see [`send`](#send)) + `--insecure` — a host pinned with `certapi trust add` needs
+  no `--insecure`, exactly as `send`
+- `--proxy <url>` / `--no-proxy` / `--proxy-user <u:pass>` — apply to the channel; HTTP-version
+  pinning, redirects, decompression, and retries do not apply to a gRPC channel and have no flags
+  here
+- `--no-auto-token` — don't attach a captured bearer token as metadata for this call (one is
+  attached automatically otherwise; `certapi grpc` never captures a *new* token)
+- `--workspace <file>` — load pins and tokens from a workspace file instead of the live state
+- `--json` — a JSON envelope instead of the plain rendering; `-q, --quiet` — no metadata line on
+  stderr
+
+`list` prints services to stdout, one per line, indented with their methods (`stream` marks a
+streaming request or response); `call` prints the response — or, for a server-streaming method, one
+compact JSON object per line as each message arrives — to stdout.
+
+Exit codes: `0` on success (including a stream stopped early by `--max-messages`) · `1` when the
+gRPC status returned is not OK (`--json` carries `{status, statusName, detail}`) · `2` on a bad
+command line — an address whose scheme isn't `http`/`https`, a malformed `Service/Method`, or a
+client-streaming/bidirectional method (out of scope for this version) · `3` on a data problem —
+server reflection unavailable, or an unknown service/method/field, naming the offending one.
+
+Server reflection is required; there's no way to supply a compiled descriptor set instead. Well-known
+Protocol Buffers (Protobuf) types (`google.protobuf.Timestamp`, `Duration`, `Struct`, `Any`, the
+wrapper types) render as ordinary messages rather than their special-cased forms — a `Timestamp`
+shows as `{"seconds":"5","nanos":0}`, not an ISO 8601 string. `certapi serve` does not proxy gRPC —
+`HttpListener` is HTTP/1.1-only — so `certapi grpc` reaches the service directly with your
+certificate rather than going through the gateway.
 
 ## mcp
 
