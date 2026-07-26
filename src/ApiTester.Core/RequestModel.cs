@@ -68,11 +68,23 @@ public sealed class RequestModel : INotifyPropertyChanged
         QueryParams.Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.Key))
                    .Select(p => new KeyValuePair<string, string>(p.Key.Trim(), p.Value ?? ""));
 
-    /// <summary>Base URL + path + enabled query parameters, composed into the URL to send.</summary>
-    public string EffectiveUrl() => RequestUrl.Effective(BaseUrl, Path, EnabledParams());
+    /// <summary>Base URL + path + enabled query parameters, composed into the URL to send.
+    /// <para>With a <paramref name="resolve"/> callback, <c>{{variable}}</c> tokens are expanded in the
+    /// base URL, the path, and each enabled parameter's key and value *before* the query is composed —
+    /// so what gets percent-encoded is the resolved value, not the token. Resolving afterwards, on the
+    /// finished URL, cannot work: escaping has already turned "{{tok}}" into "%7B%7Btok%7D%7D".
+    /// Without a callback the raw fields are composed exactly as stored.</para></summary>
+    public string EffectiveUrl(Func<string, string>? resolve = null)
+    {
+        if (resolve is null) return RequestUrl.Effective(BaseUrl, Path, EnabledParams());
+        var resolved = EnabledParams()
+            .Select(p => new KeyValuePair<string, string>(resolve(p.Key).Trim(), resolve(p.Value)))
+            .Where(p => p.Key.Length > 0);   // a key that resolves to nothing is dropped, as a blank one is
+        return RequestUrl.Effective(resolve(BaseUrl ?? ""), resolve(Path), resolved);
+    }
 
     /// <summary>Build a history entry from this request and the response it produced.</summary>
-    public HistoryEntry ToHistoryEntry(int? statusCode, ResponseSnapshot? snapshot)
+    public HistoryEntry ToHistoryEntry(int? statusCode, HistorySnapshot? snapshot)
     {
         var entry = new HistoryEntry
         {

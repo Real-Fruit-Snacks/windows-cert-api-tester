@@ -26,6 +26,10 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
     /// Recorded by the echo endpoint.</summary>
     public string? LastSniHost { get; private set; }
 
+    /// <summary>How many requests this server has answered — the ground truth a retry test checks
+    /// its attempt count against.</summary>
+    public int RequestCount { get; private set; }
+
     private LoopbackMtlsServer(TcpListener listener, int port,
         Func<TcpClient, CancellationToken, Task> handleClient)
     {
@@ -179,6 +183,94 @@ public sealed class LoopbackMtlsServer : IAsyncDisposable
         await ssl.WriteAsync(bodyBytes, ct);
         await ssl.FlushAsync(ct);
     }
+
+    /// <summary>A server that answers <paramref name="failures"/> requests with
+    /// <paramref name="failStatus"/> before answering 200 — the only honest way to test that a retry
+    /// actually retried, rather than that the code path merely ran. The response body is the 1-based
+    /// attempt number, so a test can also see how many times it was really called.</summary>
+    public static Task<LoopbackMtlsServer> StartFlakyAsync(
+        X509Certificate2 serverCertificate, string expectedClientThumbprint,
+        int failures, int failStatus = 503, string? retryAfter = null)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        // Every request arrives on its own connection (the answer says Connection: close), so the
+        // only place a count of them can live is outside the handler, incremented atomically.
+        int seen = 0;
+        // The handler is built before the instance exists, so the count is written back through the
+        // captured variable once it does.
+        LoopbackMtlsServer? started = null;
+        started = new LoopbackMtlsServer(listener, port,
+            (client, ct) => HandleFlakyAsync(
+                client, serverCertificate, expectedClientThumbprint, failures, failStatus, retryAfter,
+                () =>
+                {
+                    int n = Interlocked.Increment(ref seen);
+                    if (started is not null) started.RequestCount = n;
+                    return n;
+                }, ct));
+        return Task.FromResult(started);
+    }
+
+    private static async Task HandleFlakyAsync(
+        TcpClient client, X509Certificate2 serverCert, string expectedClientThumbprint,
+        int failures, int failStatus, string? retryAfter, Func<int> countRequest, CancellationToken ct)
+    {
+        await using var ssl = await AuthenticateServerAsync(client, serverCert, expectedClientThumbprint, ct);
+
+        var buffer = new byte[8192];
+        var request = new StringBuilder();
+        int headerEnd = -1;
+        while (headerEnd < 0)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            headerEnd = request.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        }
+        // Drain whatever body the client sent before answering: a client still writing its request
+        // when the connection closes never observes the status this server exists to send.
+        int contentLength = ParseContentLength(request.ToString());
+        int bodyHave = headerEnd >= 0 ? request.Length - (headerEnd + 4) : 0;
+        while (bodyHave < contentLength)
+        {
+            int n = await ssl.ReadAsync(buffer, ct);
+            if (n == 0) break;
+            request.Append(Encoding.UTF8.GetString(buffer, 0, n));
+            bodyHave += n;
+        }
+
+        // Counted only once the request is fully read, so the number is requests answered rather
+        // than connections opened.
+        int attempt = countRequest();
+        bool fail = attempt <= failures;
+
+        var bodyBytes = Encoding.UTF8.GetBytes(attempt.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var head = new StringBuilder()
+            .Append(fail ? $"HTTP/1.1 {failStatus} {FailureReason(failStatus)}\r\n" : "HTTP/1.1 200 OK\r\n")
+            .Append("Content-Type: text/plain\r\n")
+            .Append($"Content-Length: {bodyBytes.Length}\r\n")
+            .Append("Connection: close\r\n");
+        if (fail && retryAfter is not null)
+            head.Append("Retry-After: ").Append(retryAfter).Append("\r\n");
+        head.Append("\r\n");
+
+        await ssl.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct);
+        await ssl.WriteAsync(bodyBytes, ct);
+        await ssl.FlushAsync(ct);
+    }
+
+    private static string FailureReason(int statusCode) => statusCode switch
+    {
+        404 => "Not Found",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        _ => "Error"
+    };
 
     private static string ReasonPhrase(int statusCode) => statusCode switch
     {

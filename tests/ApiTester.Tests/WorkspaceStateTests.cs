@@ -180,6 +180,54 @@ public class WorkspaceStateTests
     }
 
     [Fact]
+    public void Chains_survive_a_workspace_round_trip()
+    {
+        // The workspace file is what Export writes and Import reads, and chains are the newest thing
+        // it carries. A chains-only round trip is already guarded in ChainCliTests; what this guards
+        // is chains travelling *alongside* the older sections — the shape an exported workspace has,
+        // and the one whose import silently dropped them.
+        var path = Path.Combine(Path.GetTempPath(), $"certapi-ws-chains-{Guid.NewGuid():N}.json");
+        try
+        {
+            var state = new AppState
+            {
+                Collections = { new CollectionNode { Id = "r1", IsFolder = false, Name = "login" } },
+                Environments = { new ApiEnvironment { Id = "e1", Name = "Staging" } },
+                Chains =
+                {
+                    new RequestChain
+                    {
+                        Id = "c1", Name = "login then browse", EnvironmentName = "Staging",
+                        Steps =
+                        {
+                            new ChainStep { RequestId = "r1" },
+                            new ChainStep { RequestId = "r2", StopOnFailure = false }
+                        }
+                    }
+                }
+            };
+            state.SaveTo(path);
+
+            var back = AppState.LoadFrom(path);
+
+            var chain = Assert.Single(back.Chains);
+            Assert.Equal("c1", chain.Id);                       // Import de-duplicates a merge by Id
+            Assert.Equal("login then browse", chain.Name);
+            Assert.Equal("Staging", chain.EnvironmentName);
+            Assert.Equal(2, chain.Steps.Count);
+            Assert.Equal("r1", chain.Steps[0].RequestId);       // step order is the whole point
+            Assert.True(chain.Steps[0].StopOnFailure);
+            Assert.Equal("r2", chain.Steps[1].RequestId);
+            Assert.False(chain.Steps[1].StopOnFailure);
+
+            // The neighbours a real export carries came back too, so nothing traded places.
+            Assert.Equal("login", Assert.Single(back.Collections).Name);
+            Assert.Equal("Staging", Assert.Single(back.Environments).Name);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void SaveTo_and_LoadFrom_round_trip_an_explicit_path()
     {
         var path = Path.Combine(Path.GetTempPath(), $"certapi-test-{Guid.NewGuid():N}.json");

@@ -212,7 +212,7 @@ public static class McpCommand
                         headers.Add(new("Authorization", "Basic " +
                             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{R(m.AuthUser ?? "")}:{R(m.AuthSecret ?? "")}")))); break;
                 }
-                string url = R(m.EffectiveUrl());
+                string url = m.EffectiveUrl(R);
                 string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
                 if (unresolved.Count > 0)
                     return Err("unresolved variables: " + string.Join(", ", unresolved.Select(u => "{{" + u + "}}")));

@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private bool _loading;            // true while pushing a model into the controls
 
     private readonly ObservableCollection<CollectionNode> _collections = new();
+    private readonly ObservableCollection<RequestChain> _chains = new();
     private readonly ObservableCollection<ApiEnvironment> _environments = new();
     private List<string> _unresolvedVars = new();
     private bool _envLoading;
@@ -52,6 +53,12 @@ public partial class MainWindow : Window
     private (string Text, BodyKind Kind)? _lastPretty;
     private string _lastRawText = "";
     private CancellationTokenSource? _cts;
+
+    /// <summary>A HAR baseline the user chose for the Diff view, and the file it came from. Null means
+    /// compare against the saved request's own known-good response instead. Per window rather than per
+    /// tab: a chosen baseline is a comparison the user is running right now, not a property of a request.</summary>
+    private ResponseSnapshot? _diffBaseline;
+    private string? _diffBaselineName;
 
     private sealed record CertOption(string Label, X509Certificate2? Cert, string? Thumbprint);
 
@@ -77,6 +84,7 @@ public partial class MainWindow : Window
         RefreshHistoryList();
         InitializeTabs();
         InitializeCollections();
+        InitializeChains();
         InitializeEnvironments();
 
         PreviewKeyDown += Window_PreviewKeyDown;
@@ -146,6 +154,7 @@ public partial class MainWindow : Window
         _state.Tabs = _tabs.Select(t => t.Request).ToList();
         _state.ActiveTabIndex = Math.Max(0, TabStrip.SelectedIndex);
         _state.Collections = _collections.ToList();
+        _state.Chains = _chains.ToList();
         _state.Environments = _environments.ToList();
 
         // Keep the single-value globals in step with the active tab for first-launch continuity.
@@ -316,6 +325,11 @@ public partial class MainWindow : Window
                 HttpVersionMode.Http2 => 2,
                 _ => 0
             };
+            TransportRetriesBox.Text = m.Transport.Retries.ToString();
+            TransportRetryOnBox.Text = m.Transport.RetryOn ?? "";
+            TransportRetryDelayBox.Text = m.Transport.RetryDelayMs.ToString();
+            TransportRetryUnsafeCheck.IsChecked = m.Transport.RetryUnsafeMethods;
+            TransportRetryTransportCheck.IsChecked = m.Transport.RetryOnTransportError;
             UpdateTransportPanels();
         }
         finally { _loading = false; }
@@ -371,6 +385,14 @@ public partial class MainWindow : Window
             2 => HttpVersionMode.Http2,
             _ => HttpVersionMode.Auto
         };
+        m.Transport.Retries = ParseCount(TransportRetriesBox.Text, fallback: 0, max: 20);
+        // An emptied box has not said "never retry on status", it has said nothing — so fall back to
+        // the default set, matching what TransportSettings.ToOptions() does for an unparseable string.
+        m.Transport.RetryOn = string.IsNullOrWhiteSpace(TransportRetryOnBox.Text)
+            ? "429,502,503,504" : TransportRetryOnBox.Text.Trim();
+        m.Transport.RetryDelayMs = ParseCount(TransportRetryDelayBox.Text, fallback: 500, max: 60000);
+        m.Transport.RetryUnsafeMethods = TransportRetryUnsafeCheck.IsChecked == true;
+        m.Transport.RetryOnTransportError = TransportRetryTransportCheck.IsChecked == true;
         // Headers and QueryParams edited in the grids are the model's own collections — already current.
     }
 
@@ -408,16 +430,23 @@ public partial class MainWindow : Window
 
     // ---------- sidebar mode ----------
 
-    private void ShowHistory_Click(object sender, RoutedEventArgs e) => SetSidebarMode(history: true);
-    private void ShowCollections_Click(object sender, RoutedEventArgs e) => SetSidebarMode(history: false);
+    private enum SidebarMode { History, Collections, Chains }
 
-    private void SetSidebarMode(bool history)
+    private void ShowHistory_Click(object sender, RoutedEventArgs e) => SetSidebarMode(SidebarMode.History);
+    private void ShowCollections_Click(object sender, RoutedEventArgs e) => SetSidebarMode(SidebarMode.Collections);
+    private void ShowChains_Click(object sender, RoutedEventArgs e) => SetSidebarMode(SidebarMode.Chains);
+
+    /// <summary>Show exactly one of the sidebar's three sections and mark its tab active. Clear is a
+    /// history-only action, so it appears with the History section and nowhere else.</summary>
+    private void SetSidebarMode(SidebarMode mode)
     {
-        HistoryList.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
-        CollectionsArea.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
-        ClearHistoryButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
-        HistoryTabButton.Tag = history ? "active" : null;
-        CollectionsTabButton.Tag = history ? null : "active";
+        HistoryList.Visibility = mode == SidebarMode.History ? Visibility.Visible : Visibility.Collapsed;
+        CollectionsArea.Visibility = mode == SidebarMode.Collections ? Visibility.Visible : Visibility.Collapsed;
+        ChainsArea.Visibility = mode == SidebarMode.Chains ? Visibility.Visible : Visibility.Collapsed;
+        ClearHistoryButton.Visibility = mode == SidebarMode.History ? Visibility.Visible : Visibility.Collapsed;
+        HistoryTabButton.Tag = mode == SidebarMode.History ? "active" : null;
+        CollectionsTabButton.Tag = mode == SidebarMode.Collections ? "active" : null;
+        ChainsTabButton.Tag = mode == SidebarMode.Chains ? "active" : null;
     }
 
     // ---------- collections ----------
@@ -469,7 +498,7 @@ public partial class MainWindow : Window
         var node = new CollectionNode { Name = name, IsFolder = false, Request = CloneRequest(m) };
         TargetFolder().Add(node);
         m.SourceCollectionId = node.Id;   // future sends of this tab record the endpoint's result
-        SetSidebarMode(history: false);
+        SetSidebarMode(SidebarMode.Collections);
         UpdateCollectionsHint();
         StatusText.Text = $"Saved “{name}” to collections.";
     }
@@ -494,6 +523,99 @@ public partial class MainWindow : Window
         if (CollectionsTree.SelectedItem is not CollectionNode sel) { StatusText.Text = "Select a collection item to delete."; return; }
         (FindParent(sel) ?? _collections).Remove(sel);
         UpdateCollectionsHint();
+    }
+
+    // ---------- chains ----------
+
+    private void InitializeChains()
+    {
+        foreach (var c in _state.Chains) _chains.Add(c);
+        ChainsList.ItemsSource = _chains;
+        UpdateChainsHint();
+    }
+
+    private void UpdateChainsHint() =>
+        ChainsEmptyHint.Visibility = _chains.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary><c>certapi run --chain &lt;name&gt;</c> resolves a chain by name, so two chains sharing one
+    /// would make that command ambiguous. Reject the collision here rather than at the shell.</summary>
+    private bool ChainNameTaken(string name, RequestChain? except = null) =>
+        _chains.Any(c => !ReferenceEquals(c, except) &&
+                         string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private void NewChainButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = InputDialog.Show(this, "New chain", "Name for this chain", "New chain");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (ChainNameTaken(name)) { StatusText.Text = $"A chain named “{name}” already exists."; return; }
+
+        var chain = new RequestChain { Name = name };
+        _chains.Add(chain);
+        ChainsList.SelectedItem = chain;
+        UpdateChainsHint();
+
+        // Straight into the step editor: an empty chain has no obvious next action otherwise.
+        EditChain(chain);
+    }
+
+    private void RenameChainButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChainsList.SelectedItem is not RequestChain chain) { StatusText.Text = "Select a chain to rename."; return; }
+        var name = InputDialog.Show(this, "Rename chain", "Chain name", chain.Name);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (ChainNameTaken(name, chain)) { StatusText.Text = $"A chain named “{name}” already exists."; return; }
+
+        chain.Name = name;
+        ChainsList.Items.Refresh();   // RequestChain isn't observable
+        StatusText.Text = $"Renamed chain to “{name}”.";
+    }
+
+    private void DeleteChainButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChainsList.SelectedItem is not RequestChain chain) { StatusText.Text = "Select a chain to delete."; return; }
+        if (!ChoiceDialog.Confirm(this, "Delete chain",
+                $"Delete the chain “{chain.Name}”? The saved requests it runs are not affected.",
+                "Delete")) return;
+
+        _chains.Remove(chain);
+        UpdateChainsHint();
+        StatusText.Text = $"Deleted chain “{chain.Name}”.";
+    }
+
+    private void EditChainButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChainsList.SelectedItem is RequestChain chain) EditChain(chain);
+        else StatusText.Text = "Select a chain to edit its steps.";
+    }
+
+    private void ChainsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ChainsList.SelectedItem is RequestChain chain) EditChain(chain);
+    }
+
+    /// <summary>Open the step editor on this chain. The editor edits the same instance the sidebar holds,
+    /// so there is nothing to copy back — but RequestChain raises no change notification, so the row's
+    /// step count has to be refreshed by hand once the editor closes.</summary>
+    private void EditChain(RequestChain chain)
+    {
+        // The picker offers everything in _state.Collections, so sync the live sidebar into state first
+        // (as Discover does) — otherwise requests saved this session wouldn't be offered.
+        _state.Collections = _collections.ToList();
+        _state.Chains = _chains.ToList();
+
+        new ChainEditorWindow(chain, _state) { Owner = this }.ShowDialog();
+
+        ChainsList.Items.Refresh();
+        StatusText.Text = chain.Steps.Count == 0
+            ? $"Chain “{chain.Name}” has no steps yet."
+            : $"Chain “{chain.Name}”: {chain.Steps.Count} step(s). Run it with certapi run --chain \"{chain.Name}\".";
+    }
+
+    private void CopyChainCommandButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChainsList.SelectedItem is not RequestChain chain) { StatusText.Text = "Select a chain to copy its command."; return; }
+        var command = $"certapi run --chain \"{chain.Name}\"";
+        TrySetClipboard(command, "Copied: " + command);
     }
 
     private void CollectionsTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -716,7 +838,8 @@ public partial class MainWindow : Window
         catch (Exception ex) { StatusText.Text = "Could not read the workspace file: " + ex.Message; return; }
         ws?.Migrate();
         if (ws is null ||
-            (ws.Tabs.Count == 0 && ws.Collections.Count == 0 && ws.Environments.Count == 0 && ws.History.Count == 0))
+            (ws.Tabs.Count == 0 && ws.Collections.Count == 0 && ws.Environments.Count == 0 && ws.History.Count == 0
+             && ws.Chains.Count == 0))
         {
             StatusText.Text = "That file doesn't contain a workspace.";
             return;
@@ -725,9 +848,9 @@ public partial class MainWindow : Window
         int saved = ws.Collections.Sum(CountNodes);
         var choice = ChoiceDialog.Show(this, "Import workspace",
             $"“{System.IO.Path.GetFileName(dialog.FileName)}” contains {ws.Tabs.Count} open tab(s), {saved} saved request(s), " +
-            $"{ws.Environments.Count} environment(s), and {ws.History.Count} history " +
+            $"{ws.Environments.Count} environment(s), {ws.Chains.Count} chain(s), and {ws.History.Count} history " +
             $"{(ws.History.Count == 1 ? "entry" : "entries")}.\n\n" +
-            "Merge adds them to what you have. Replace discards your current tabs, collections, environments, and history first.",
+            "Merge adds them to what you have. Replace discards your current tabs, collections, environments, chains, and history first.",
             "Merge", "Replace");
         if (choice == DialogChoice.Cancel) return;
 
@@ -744,6 +867,7 @@ public partial class MainWindow : Window
             _tabs.Clear();
             _collections.Clear();
             _environments.Clear();
+            _chains.Clear();
             _state.History.Clear();
             _state.SavedBaseUrls.Clear();
             _state.ActiveEnvironmentId = ws.ActiveEnvironmentId;
@@ -757,6 +881,11 @@ public partial class MainWindow : Window
         foreach (var env in ws.Environments)
             if (!merge || _environments.All(x => x.Id != env.Id)) _environments.Add(env);
 
+        // Export writes chains, so import has to read them back or a workspace moved between machines
+        // loses every chain silently.
+        foreach (var chain in ws.Chains)
+            if (!merge || _chains.All(x => x.Id != chain.Id)) _chains.Add(chain);
+
         foreach (var h in ws.History) _state.History.Add(h);
         _state.History.Sort((a, b) => b.Timestamp.CompareTo(a.Timestamp));
         if (_state.History.Count > 30) _state.History.RemoveRange(30, _state.History.Count - 30);
@@ -768,6 +897,7 @@ public partial class MainWindow : Window
         RefreshSavedBases();
         RefreshEnvCombo();
         UpdateCollectionsHint();
+        UpdateChainsHint();
         StatusText.Text = merge ? "Workspace merged into your current one." : "Workspace loaded.";
     }
 
@@ -900,6 +1030,7 @@ public partial class MainWindow : Window
         // rebuild reflects this session's edits too — otherwise unsaved top-level collection
         // changes would be reverted.
         _state.Collections = _collections.ToList();
+        _state.Chains = _chains.ToList();
         var certs = _allOptions.Select(o => new FuzzWindow.CertChoice(o.Label, o.Cert, o.Thumbprint)).ToList();
         var win = new FuzzWindow(_state, _apiClient,
             ActiveRequest?.BaseUrl ?? BaseUrlBox.Text.Trim(),
@@ -921,7 +1052,7 @@ public partial class MainWindow : Window
             _collections.Clear();
             foreach (var c in _state.Collections) _collections.Add(c);
             UpdateCollectionsHint();
-            SetSidebarMode(history: false);
+            SetSidebarMode(SidebarMode.Collections);
         }
     }
 
@@ -970,7 +1101,7 @@ public partial class MainWindow : Window
             var node = CollectionNode.FromParsed(parsed);
             _collections.Add(node);
             UpdateCollectionsHint();
-            SetSidebarMode(history: false);
+            SetSidebarMode(SidebarMode.Collections);
             var count = CountRequests(node);
             StatusText.Text = count == 0
                 ? $"Imported “{parsed.Name}”, but it defined no operations."
@@ -1001,7 +1132,7 @@ public partial class MainWindow : Window
             var node = CollectionNode.FromParsed(pc);
             _collections.Add(node);
             UpdateCollectionsHint();
-            SetSidebarMode(history: false);
+            SetSidebarMode(SidebarMode.Collections);
             StatusText.Text = $"Imported {CountRequests(node)} request(s) from HAR.";
         }
         catch (HarFormatException ex)
@@ -1100,12 +1231,136 @@ public partial class MainWindow : Window
         return plus >= 0 ? v[..plus] : v;
     }
 
+    // ---------- response diff ----------
+
+    /// <summary>Populate the Diff view: the last response compared against a baseline — the HAR entry the
+    /// user chose, else the saved request's own known-good response. Computed on demand when the tab is
+    /// opened rather than after every send, because a diff nobody is looking at is wasted work.</summary>
+    private void ShowDiff()
+    {
+        // An empty box shows its Tag placeholder, which already says what to do next.
+        if (_lastResponse is null)
+        {
+            DiffBox.Text = "";
+            DiffBaselineText.Text = _diffBaselineName is { } waiting
+                ? $"Baseline: {waiting}. Send a request to compare it."
+                : "Comparing against the saved request's known-good response.";
+            return;
+        }
+
+        // The saved entry this tab came from, found the way the send path finds it to record a result.
+        var node = ActiveRequest?.SourceCollectionId is { } srcId &&
+                   FindNodeById(srcId) is { IsFolder: false, Request: not null } leaf
+            ? leaf
+            : null;
+
+        var baseline = _diffBaseline ?? node?.KnownGood;
+        if (baseline is null)
+        {
+            // A blank pane with no explanation is the worst outcome here: say which baseline is missing.
+            DiffBox.Text = node is null
+                ? "Nothing to compare against yet.\n\n" +
+                  "This tab's request is not linked to a saved collection entry, so there is no known-good " +
+                  "response on file. Save it into a collection and send it once — a 2xx response is kept as " +
+                  "the baseline — or choose an HTTP Archive (.har) baseline with the button above."
+                : $"Nothing to compare against yet.\n\n" +
+                  $"“{node.Name}” has no known-good response recorded. Send it once from the " +
+                  "collection, or run it with 'certapi run', and its 2xx response becomes the baseline. " +
+                  "You can also choose an HTTP Archive (.har) baseline with the button above.";
+            DiffBaselineText.Text = "No baseline recorded for this request yet.";
+            return;
+        }
+
+        // Default options: the volatile header set ignored, no ignore paths. The app has no ignore-path
+        // editor this release — that lives on the command line, so the default is the only choice here.
+        var diff = ResponseDiff.Compare(baseline, ResponseSnapshot.From(_lastResponse), new DiffOptions());
+        DiffBox.Text = DiffText.Format(diff);
+        DiffBaselineText.Text = _diffBaselineName is { } name
+            ? $"Compared against {name}."
+            : $"Compared against known-good ({node!.Name}).";
+    }
+
+    /// <summary>Recompute the diff when the Diff tab is the one on screen. A send, or a click on a history
+    /// entry, replaces the response without firing the tab's selection handler — and a diff describing the
+    /// response that used to be there is worse than an empty pane.</summary>
+    private void RefreshDiffIfVisible()
+    {
+        if (ResponseTabs.SelectedItem is TabItem { Header: "Diff" }) ShowDiff();
+    }
+
+    /// <summary>Pick a recorded exchange out of an HTTP Archive to diff this response against.</summary>
+    private void DiffChooseHarButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose a HAR baseline",
+            Filter = "HTTP Archive (*.har)|*.har|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        Har har;
+        try
+        {
+            har = HarReader.Parse(File.ReadAllText(dlg.FileName));
+        }
+        catch (HarFormatException ex)
+        {
+            StatusText.Text = "Couldn't read that HAR: " + ex.Message;
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StatusText.Text = "Couldn't read that file: " + ex.Message;
+            return;
+        }
+
+        var entries = har.Log.Entries;
+        string method = ActiveRequest?.Method ?? "";
+        string url = ActiveRequest?.EffectiveUrl() ?? "";
+
+        // Prefer the entry that recorded this very request; fall back to the only entry a single-exchange
+        // archive can mean. Anything else would be a guess, so it leaves the previous baseline alone.
+        var match = entries.FirstOrDefault(en =>
+                        string.Equals(en.Request.Method, method, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(en.Request.Url, url, StringComparison.OrdinalIgnoreCase))
+                    ?? (entries.Count == 1 ? entries[0] : null);
+        if (match is null)
+        {
+            StatusText.Text = $"That archive has no {method} entry for {url} — keeping the previous baseline.";
+            return;
+        }
+
+        _diffBaseline = ResponseSnapshot.From(match);
+        _diffBaselineName = System.IO.Path.GetFileName(dlg.FileName);
+        ShowDiff();
+    }
+
+    private void DiffClearBaseline_Click(object sender, RoutedEventArgs e)
+    {
+        _diffBaseline = null;
+        _diffBaselineName = null;
+        ShowDiff();
+    }
+
+    /// <summary>The snapshot to keep as this request's known-good baseline, or null when the body is too
+    /// large to belong in state.json — a settings file is not a blob store. RecordResult already refuses
+    /// anything that is not a 2xx, so that check is not repeated here.</summary>
+    private static ResponseSnapshot? KnownGoodSnapshot(ApiResponse response) =>
+        response.Error is not null || response.Body.LongLength > MaxKnownGoodBody
+            ? null
+            : ResponseSnapshot.From(response);
+
+    /// <summary>Deliberately separate from <c>MaxStoredBody</c>: history keeps thirty entries and wants a
+    /// tight cap, while a baseline is one response per saved request and can afford more.</summary>
+    private const long MaxKnownGoodBody = 1024 * 1024;   // 1 MiB
+
     // ---------- rendered website view ----------
 
     private void ResponseTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, ResponseTabs)) return;
         if (ResponseTabs.SelectedItem is TabItem { Header: "Rendered" }) _ = ShowRenderedAsync();
+        else if (ResponseTabs.SelectedItem is TabItem { Header: "Diff" }) ShowDiff();
     }
 
     private void RenderReloadButton_Click(object sender, RoutedEventArgs e) => _ = ShowRenderedAsync();
@@ -1828,6 +2083,11 @@ public partial class MainWindow : Window
         return 20;
     }
 
+    /// <summary>A non-negative number from a text box, clamped. A typo in a settings box must not be a
+    /// crash or a silent thirty-thousand-retry loop, so an unparseable value falls back to the default.</summary>
+    private static int ParseCount(string? text, int fallback, int max) =>
+        int.TryParse(text, out var n) && n >= 0 ? Math.Min(n, max) : fallback;
+
     private List<KeyValuePair<string, string>> BuildHeaders()
     {
         var m = ActiveRequest!;
@@ -1904,7 +2164,7 @@ public partial class MainWindow : Window
             return r;
         }
 
-        var url = R(m.EffectiveUrl());
+        var url = m.EffectiveUrl(R);
         var headers = BuildHeaders().Select(h => new KeyValuePair<string, string>(R(h.Key), R(h.Value))).ToList();
         var body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body);
         return (url, headers, body, unresolved);
@@ -2029,7 +2289,8 @@ public partial class MainWindow : Window
             if (model.SourceCollectionId is { } srcId &&
                 FindNodeById(srcId) is { IsFolder: false, Request: { } saved } srcNode &&
                 saved.Method == model.Method && saved.EffectiveUrl() == model.EffectiveUrl())
-                srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow);
+                srcNode.RecordResult(response.Error is null ? response.StatusCode : null, DateTime.UtcNow,
+                                     KnownGoodSnapshot(response));
             // First successful send from a collection whose root has no defaults yet: remember
             // the website and certificate that worked, so sibling endpoints inherit them.
             if (response.Error is null && model.SourceCollectionId is { } rememberId &&
@@ -2090,6 +2351,7 @@ public partial class MainWindow : Window
     private void RenderResponse(ApiResponse response)
     {
         _lastResponse = response;
+        RefreshDiffIfVisible();
         DiagnosticsBox.Text = TransportDiagnostics.Format(response);
 
         if (response.Error is not null)
@@ -2265,11 +2527,11 @@ public partial class MainWindow : Window
         RefreshHistoryList();
     }
 
-    private ResponseSnapshot BuildSnapshot(ApiResponse r)
+    private HistorySnapshot BuildSnapshot(ApiResponse r)
     {
         var body = r.Body;
         bool truncated = body.Length > MaxStoredBody;
-        return new ResponseSnapshot
+        return new HistorySnapshot
         {
             StatusCode = r.StatusCode,
             ReasonPhrase = r.ReasonPhrase,
@@ -2323,7 +2585,7 @@ public partial class MainWindow : Window
         else ClearResponse();
     }
 
-    private void RenderSnapshot(ResponseSnapshot s, bool fromHistory)
+    private void RenderSnapshot(HistorySnapshot s, bool fromHistory)
     {
         var suffix = fromHistory ? "   (from history)" : "";
         DiagnosticsBox.Text = s.Diagnostics ?? "No connection details available.";
@@ -2336,6 +2598,7 @@ public partial class MainWindow : Window
             RawBox.Text = s.ErrorMessage;
             ResponseHeadersBox.Text = "";
             StatusText.Text = $"Error [{s.ErrorKind}]: {s.ErrorMessage}{suffix}";
+            RefreshDiffIfVisible();
             return;
         }
 
@@ -2349,6 +2612,7 @@ public partial class MainWindow : Window
             Elapsed = TimeSpan.FromMilliseconds(s.ElapsedMs)
         };
         _lastResponse = recon;
+        RefreshDiffIfVisible();
 
         if (s.BodyTruncated)
         {
@@ -2372,6 +2636,9 @@ public partial class MainWindow : Window
         RawBox.Text = "";
         ResponseHeadersBox.Text = "";
         DiagnosticsBox.Text = "";
+        // A stale diff on screen would describe a response that is no longer shown. The chosen baseline
+        // deliberately survives: comparing send after send against one baseline is the whole workflow.
+        DiffBox.Text = "";
         _lastResponse = null;
         _lastRawText = "";
     }
@@ -2401,6 +2668,7 @@ public partial class MainWindow : Window
         RawBox.Text = "Waiting for response…";
         ResponseHeadersBox.Text = "";
         DiagnosticsBox.Text = "";
+        DiffBox.Text = "";
     }
 
     private string SelectedMethod() => ((ComboBoxItem)MethodCombo.SelectedItem).Content!.ToString()!;
@@ -2530,7 +2798,7 @@ public partial class MainWindow : Window
         }
         _collections.Add(folder);
         UpdateCollectionsHint();
-        SetSidebarMode(history: false);
+        SetSidebarMode(SidebarMode.Collections);
     }
 
     private static string ShortPath(string url) =>

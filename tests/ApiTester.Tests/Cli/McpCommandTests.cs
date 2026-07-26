@@ -159,4 +159,50 @@ public class McpCommandTests
         var first = send.Handler(System.Text.Json.JsonDocument.Parse($"{{\"url\":\"{server.BaseUrl}\"}}").RootElement);
         Assert.DoesNotContain("captured bearer token", first.Json);
     }
+
+    [Fact]
+    public async Task Run_saved_resolves_a_query_variable_on_the_wire()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartEchoAsync(server, client.Thumbprint!);
+
+            var node = new CollectionNode
+            {
+                Id = "r1", Name = "get item", IsFolder = false,
+                Request = new RequestModel { Method = "GET", Path = upstream.BaseUrl, IgnoreServerCert = true }
+            };
+            node.Request!.QueryParams.Add(new ParamRow { Key = "api_key", Value = "{{tok}}" });
+
+            var state = new AppState();
+            state.Collections.Add(node);
+            state.Environments.Add(new ApiEnvironment
+            {
+                Id = "e1", Name = "E",
+                Variables = { new Variable { Key = "tok", Value = "SECRET123" } }
+            });
+            var ws = Path.Combine(Path.GetTempPath(), $"certapi-mcp-queryvar-{Guid.NewGuid():N}.json");
+            state.SaveTo(ws);
+            try
+            {
+                var host = new Uri(upstream.BaseUrl).Host;   // 127.0.0.1
+                var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                    insecure: true, timeout: 30, includeLocalMachine: false, workspace: ws,
+                    noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+                var result = Tool(tools, "run_saved").Handler(Args("{\"path\":\"get item\",\"env\":\"E\"}"));
+
+                Assert.False(result.IsError);
+                using var doc = JsonDocument.Parse(result.Json);
+                Assert.Equal(200, doc.RootElement.GetProperty("status").GetInt32());
+                // Genuine wire truth: the echo server answers with the request text it actually
+                // received, so this is what the server actually got — not what the client composed.
+                string echoedRequest = doc.RootElement.GetProperty("body").GetString()!;
+                Assert.Contains("api_key=SECRET123", echoedRequest);
+                Assert.DoesNotContain("%7B%7B", echoedRequest);
+            }
+            finally { File.Delete(ws); }
+        }
+    }
 }

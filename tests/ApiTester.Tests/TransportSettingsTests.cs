@@ -210,6 +210,114 @@ public class TransportSettingsTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public void Retry_defaults_leave_retry_switched_off()
+    {
+        var options = new TransportSettings().ToOptions();
+
+        Assert.Equal(0, options.Retries);
+        Assert.Equal(new[] { 429, 502, 503, 504 }, options.RetryOn);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), options.RetryDelay);
+        Assert.True(options.RetryOnTransportError);
+        Assert.True(options.HonorRetryAfter);
+        Assert.False(options.RetryUnsafeMethods);
+    }
+
+    [Fact]
+    public void Retry_settings_survive_a_round_trip_through_options()
+    {
+        var back = TransportSettings.From(new TransportOptions
+        {
+            Retries = 4,
+            RetryOn = new[] { 500, 503 },
+            RetryDelay = TimeSpan.FromMilliseconds(250),
+            RetryOnTransportError = false,
+            HonorRetryAfter = false,
+            RetryUnsafeMethods = true
+        }).ToOptions();
+
+        Assert.Equal(4, back.Retries);
+        Assert.Equal(new[] { 500, 503 }, back.RetryOn);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), back.RetryDelay);
+        Assert.False(back.RetryOnTransportError);
+        Assert.False(back.HonorRetryAfter);
+        Assert.True(back.RetryUnsafeMethods);
+    }
+
+    [Fact]
+    public void CopyFrom_carries_every_retry_setting()
+    {
+        var target = new TransportSettings();
+
+        target.CopyFrom(RetrySettings());
+
+        AssertRetrySettings(target);
+    }
+
+    [Fact]
+    public void A_clone_keeps_its_retry_settings_when_the_original_is_edited_afterwards()
+    {
+        var original = RetrySettings();
+
+        var clone = original.Clone();
+        original.Retries = 99;
+        original.RetryOn = "418";
+        original.RetryDelayMs = 1;
+        original.RetryOnTransportError = true;
+        original.HonorRetryAfter = true;
+        original.RetryUnsafeMethods = false;
+
+        AssertRetrySettings(clone);
+    }
+
+    [Fact]
+    public void A_retry_list_with_junk_in_it_keeps_the_codes_that_are_codes()
+    {
+        var options = new TransportSettings { RetryOn = "429, oops, 503" }.ToOptions();
+
+        Assert.Equal(new[] { 429, 503 }, options.RetryOn);
+    }
+
+    [Fact]
+    public void A_retry_list_with_nothing_usable_in_it_falls_back_to_the_defaults()
+    {
+        // An empty list would switch retry-on-status off while the user believes they configured it,
+        // which is the one outcome worse than ignoring what they typed.
+        var options = new TransportSettings { RetryOn = "oops" }.ToOptions();
+
+        Assert.Equal(new[] { 429, 502, 503, 504 }, options.RetryOn);
+    }
+
+    [Fact]
+    public void Retry_settings_survive_a_json_round_trip()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(RetrySettings());
+
+        var back = System.Text.Json.JsonSerializer.Deserialize<TransportSettings>(json)!;
+
+        AssertRetrySettings(back);
+    }
+
+    private static TransportSettings RetrySettings() => new()
+    {
+        Retries = 4,
+        RetryOn = "500,503",
+        RetryDelayMs = 250,
+        RetryOnTransportError = false,
+        HonorRetryAfter = false,
+        RetryUnsafeMethods = true
+    };
+
+    private static void AssertRetrySettings(TransportSettings settings)
+    {
+        Assert.Equal(4, settings.Retries);
+        Assert.Equal("500,503", settings.RetryOn);
+        Assert.Equal(250, settings.RetryDelayMs);
+        Assert.False(settings.RetryOnTransportError);
+        Assert.False(settings.HonorRetryAfter);
+        Assert.True(settings.RetryUnsafeMethods);
+    }
+
     private static void AssertPreFeatureDefaults(TransportOptions options)
     {
         Assert.Equal(ProxyMode.System, options.Proxy);

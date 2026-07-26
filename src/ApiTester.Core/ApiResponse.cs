@@ -54,6 +54,10 @@ public sealed record ApiResponse
     /// response was final.</summary>
     public IReadOnlyList<RedirectHop> Redirects { get; init; } = Array.Empty<RedirectHop>();
 
+    /// <summary>How many attempts this result took. 1 when no retry happened, which is every response
+    /// this client produced before retry existed.</summary>
+    public int Attempts { get; init; } = 1;
+
     public bool IsSuccess => Error is null && StatusCode is >= 200 and < 300;
 }
 

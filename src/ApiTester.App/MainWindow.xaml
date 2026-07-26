@@ -79,9 +79,11 @@
                         <Button x:Name="HistoryTabButton" Content="HISTORY" Style="{StaticResource SideTab}"
                                 Tag="active" Click="ShowHistory_Click"/>
                         <Button x:Name="CollectionsTabButton" Content="COLLECTIONS" Style="{StaticResource SideTab}"
-                                Margin="14,0,0,0" Click="ShowCollections_Click"/>
+                                Margin="4,0,0,0" Click="ShowCollections_Click"/>
+                        <Button x:Name="ChainsTabButton" Content="CHAINS" Style="{StaticResource SideTab}"
+                                Margin="4,0,0,0" Click="ShowChains_Click"/>
                     </StackPanel>
-                    <Button x:Name="ClearHistoryButton" Content="Clear" Height="24" FontSize="11" Padding="10,0"
+                    <Button x:Name="ClearHistoryButton" Content="Clear" Height="24" FontSize="11" Padding="8,0"
                             HorizontalAlignment="Right" Margin="0,0,10,0" Click="ClearHistoryButton_Click"/>
                 </Grid>
                 <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Border}"/>
@@ -155,6 +157,43 @@
                                 </HierarchicalDataTemplate>
                             </TreeView.ItemTemplate>
                         </TreeView>
+                    </DockPanel>
+
+                    <DockPanel x:Name="ChainsArea" Visibility="Collapsed">
+                        <StackPanel DockPanel.Dock="Bottom" Margin="8">
+                            <Button x:Name="NewChainButton" Content="+ New chain…" Height="28"
+                                    Click="NewChainButton_Click" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="EditChainButton" Content="Edit steps…" Height="26" FontSize="11" Padding="9,0"
+                                        Click="EditChainButton_Click"/>
+                                <Button x:Name="RenameChainButton" Content="Rename" Height="26" FontSize="11" Padding="9,0"
+                                        Margin="6,0,0,0" Click="RenameChainButton_Click"/>
+                                <Button x:Name="DeleteChainButton" Content="Delete" Height="26" FontSize="11" Padding="9,0"
+                                        Margin="6,0,0,0" Click="DeleteChainButton_Click"/>
+                            </StackPanel>
+                            <Button x:Name="CopyChainCommandButton" Content="Copy run command" Height="26" FontSize="11"
+                                    Margin="0,6,0,0" Click="CopyChainCommandButton_Click"
+                                    ToolTip="Copy the certapi command that runs this chain."/>
+                        </StackPanel>
+                        <TextBlock x:Name="ChainsEmptyHint" DockPanel.Dock="Top" Margin="14,14,14,0"
+                                   Foreground="{DynamicResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
+                                   Text="No chains yet. A chain runs saved requests in order, so a token captured by the first is usable by the next. Create one, then run it with certapi run --chain."/>
+                        <ListBox x:Name="ChainsList" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 MouseDoubleClick="ChainsList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource Text.Normal}" FontSize="12"/>
+                                        <TextBlock Foreground="{DynamicResource Text.Faint}" FontSize="10" Margin="0,1,0,0">
+                                            <TextBlock.Text>
+                                                <Binding Path="Steps.Count" StringFormat="{}{0} step(s)"/>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </DockPanel>
                 </Grid>
             </DockPanel>
@@ -572,6 +611,36 @@
                                            Text="Pin a version when a gateway behaves differently on HTTP/1.1 and HTTP/2."/>
                             </StackPanel>
                         </Border>
+                        <!-- HonorRetryAfter deliberately has no control: it defaults to on, the command line does not
+                             expose it either, and honoring the server's own Retry-After is not a preference to argue with. -->
+                        <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,12,0,0">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="RETRIES" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                    <TextBox x:Name="TransportRetriesBox" Width="56" Height="26" Padding="7,0"
+                                             Text="0" VerticalContentAlignment="Center"
+                                             ToolTip="How many times to retry after a failure. 0 means retries are off."/>
+                                    <TextBlock Text="STATUSES" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                                    <TextBox x:Name="TransportRetryOnBox" Width="160" Height="26" Padding="7,0" Margin="6,0,0,0"
+                                             Text="429,502,503,504" VerticalContentAlignment="Center"
+                                             ToolTip="Comma-separated response statuses that earn a retry."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="DELAY" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                                    <TextBox x:Name="TransportRetryDelayBox" Width="72" Height="26" Padding="7,0"
+                                             Text="500" VerticalContentAlignment="Center"
+                                             ToolTip="Milliseconds before the first retry. It doubles on each further attempt, with jitter, capped at 30 seconds — and a Retry-After header from the server overrides it."/>
+                                </StackPanel>
+                                <CheckBox x:Name="TransportRetryUnsafeCheck" Content="Also retry POST and PATCH"
+                                          VerticalAlignment="Center" Margin="92,0,0,6"
+                                          ToolTip="Off by default: re-sending a POST nobody confirmed can charge a card twice."/>
+                                <CheckBox x:Name="TransportRetryTransportCheck" Content="Retry connection failures and timeouts"
+                                          IsChecked="True" VerticalAlignment="Center" Margin="92,0,0,8"
+                                          ToolTip="Retry a connection refused or reset, a DNS failure, or a timeout — a request that never reached the server."/>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,0"
+                                           Text="Retry a request that failed with one of these statuses, or that could not connect at all. Off by default. Only GET, HEAD, OPTIONS, PUT, and DELETE are retried unless you opt POST and PATCH in — a request the server may already have acted on is not safe to repeat."/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     </ScrollViewer>
                 </TabItem>
@@ -702,6 +771,28 @@
                         <TextBox x:Name="DiagnosticsBox" IsReadOnly="True" AcceptsReturn="True" BorderThickness="0"
                                  Tag="TLS and certificate details appear here after a request."
                                  VerticalScrollBarVisibility="Auto" FontFamily="Consolas" Padding="10"/>
+                    </TabItem>
+                    <TabItem Header="Diff">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource Bg.Window}" Padding="8,6"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                <DockPanel>
+                                    <Button x:Name="DiffChooseHarButton" DockPanel.Dock="Right" Content="Compare with HAR…"
+                                            Height="26" FontSize="11" Padding="10,0" Click="DiffChooseHarButton_Click"
+                                            ToolTip="Compare this response against one recorded in an HTTP Archive (.har) file"/>
+                                    <Button x:Name="DiffClearBaselineButton" DockPanel.Dock="Right" Content="Clear"
+                                            Height="26" FontSize="11" Padding="10,0" Margin="0,0,6,0" Click="DiffClearBaseline_Click"
+                                            ToolTip="Go back to comparing against the saved request's known-good response"/>
+                                    <TextBlock x:Name="DiffBaselineText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource Text.Muted}" FontSize="11"
+                                               Text="Comparing against the saved request's known-good response."/>
+                                </DockPanel>
+                            </Border>
+                            <TextBox x:Name="DiffBox" IsReadOnly="True" AcceptsReturn="True" BorderThickness="0"
+                                     Tag="Send a request to compare it against its known-good response, or choose an HTTP Archive (.har) baseline above."
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas" Padding="10"/>
+                        </DockPanel>
                     </TabItem>
                     <TabItem Header="Rendered">
                         <DockPanel>

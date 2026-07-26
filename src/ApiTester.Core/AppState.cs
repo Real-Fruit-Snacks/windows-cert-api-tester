@@ -31,6 +31,11 @@ public sealed class AppState
     public List<ApiEnvironment> Environments { get; set; } = new();
     public string? ActiveEnvironmentId { get; set; }
 
+    /// <summary>Saved request chains: ordered sequences run as one unit, so "log in, then call the API"
+    /// is a thing you can run rather than a convention you remember. Additive — a state.json written
+    /// before this existed loads with an empty list.</summary>
+    public List<RequestChain> Chains { get; set; } = new();
+
     public List<SessionToken> SessionTokens { get; set; } = new();
     public List<SessionCookie> SessionCookies { get; set; } = new();
 
@@ -150,7 +155,7 @@ public sealed class HistoryEntry
     public TransportSettings Transport { get; set; } = new();
 
     public int? StatusCode { get; set; }
-    public ResponseSnapshot? Response { get; set; }
+    public HistorySnapshot? Response { get; set; }
     public List<CaptureRule> Captures { get; set; } = new();
     public List<AssertionRule> Assertions { get; set; } = new();
     public bool IsMultipart { get; set; }
@@ -207,11 +212,20 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
         set { _lastCheckedUtc = value; RaiseStatus(); }
     }
 
-    /// <summary>Record the outcome of sending this saved request.</summary>
-    public void RecordResult(int? statusCode, DateTime utcNow)
+    /// <summary>The response this saved request returned the last time it was known good (a 2xx),
+    /// kept so `certapi send --diff known-good` has a baseline to compare against. Additive: null in
+    /// a state.json written before this existed, and left null when a send fails.</summary>
+    public ResponseSnapshot? KnownGood { get; set; }
+
+    /// <summary>Record the outcome of sending this saved request. A snapshot is kept only for a
+    /// known-good (2xx) result: a baseline that recorded a 500 would make every later diff lie.</summary>
+    public void RecordResult(int? statusCode, DateTime utcNow, ResponseSnapshot? snapshot = null)
     {
         _lastStatusCode = statusCode;
         _lastCheckedUtc = utcNow;
+        // Only a success replaces the baseline, and nothing ever clears it — a failing send is the
+        // moment the last good response is most worth still having.
+        if (snapshot is not null && statusCode is >= 200 and < 300) KnownGood = snapshot;
         RaiseStatus();
     }
 
@@ -242,6 +256,7 @@ public sealed class CollectionNode : System.ComponentModel.INotifyPropertyChange
         Raise(nameof(LastStatusCode));
         Raise(nameof(LastCheckedUtc));
         Raise(nameof(IsKnownGood));
+        Raise(nameof(KnownGood));
         Raise(nameof(HasResult));
         Raise(nameof(StatusSummary));
     }
@@ -421,8 +436,10 @@ public sealed class CaptureRule : System.ComponentModel.INotifyPropertyChanged
     private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));
 }
 
-/// <summary>A stored snapshot of the response for a history entry.</summary>
-public sealed class ResponseSnapshot
+/// <summary>A stored snapshot of the response for a history entry — what the History list replays
+/// into the response panel. Named for its owner because response diffing has its own, differently
+/// shaped snapshot type.</summary>
+public sealed class HistorySnapshot
 {
     public int? StatusCode { get; set; }
     public string? ReasonPhrase { get; set; }

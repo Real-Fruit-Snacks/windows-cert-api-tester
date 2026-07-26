@@ -20,6 +20,12 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
     private int _maxRedirects = 20;
     private bool _decompress = true;
     private HttpVersionMode _version = HttpVersionMode.Auto;
+    private int _retries;
+    private string _retryOn = "429,502,503,504";
+    private int _retryDelayMs = 500;
+    private bool _retryOnTransportError = true;
+    private bool _honorRetryAfter = true;
+    private bool _retryUnsafeMethods;
 
     public ProxyMode Proxy { get => _proxy; set { _proxy = value; Raise(nameof(Proxy)); } }
     public string? ProxyUrl { get => _proxyUrl; set { _proxyUrl = value; Raise(nameof(ProxyUrl)); } }
@@ -29,6 +35,28 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
     public int MaxRedirects { get => _maxRedirects; set { _maxRedirects = value; Raise(nameof(MaxRedirects)); } }
     public bool Decompress { get => _decompress; set { _decompress = value; Raise(nameof(Decompress)); } }
     public HttpVersionMode Version { get => _version; set { _version = value; Raise(nameof(Version)); } }
+
+    /// <summary>How many times to retry a failed request. 0 = off, which is the behavior this client
+    /// had before retry existed.</summary>
+    public int Retries { get => _retries; set { _retries = value; Raise(nameof(Retries)); } }
+
+    /// <summary>The statuses that earn a retry, comma-separated. A string rather than a list because
+    /// this is the value the request editor binds a text box to and the workspace file stores, and a
+    /// text box is the honest control for "429,502,503,504".</summary>
+    public string RetryOn { get => _retryOn; set { _retryOn = value; Raise(nameof(RetryOn)); } }
+
+    /// <summary>The first backoff delay in milliseconds; each further attempt doubles it.</summary>
+    public int RetryDelayMs { get => _retryDelayMs; set { _retryDelayMs = value; Raise(nameof(RetryDelayMs)); } }
+
+    /// <summary>Retry connection refused/reset, DNS failures, and timeouts.</summary>
+    public bool RetryOnTransportError { get => _retryOnTransportError; set { _retryOnTransportError = value; Raise(nameof(RetryOnTransportError)); } }
+
+    /// <summary>Let a Retry-After header override the computed backoff.</summary>
+    public bool HonorRetryAfter { get => _honorRetryAfter; set { _honorRetryAfter = value; Raise(nameof(HonorRetryAfter)); } }
+
+    /// <summary>Also retry POST and PATCH. Off by default: re-sending a POST nobody confirmed can
+    /// charge a card twice.</summary>
+    public bool RetryUnsafeMethods { get => _retryUnsafeMethods; set { _retryUnsafeMethods = value; Raise(nameof(RetryUnsafeMethods)); } }
 
     /// <summary>Build the immutable per-send options, folding in the request's own
     /// ignore-certificate-errors switch (which lives on the request, not here).</summary>
@@ -42,8 +70,28 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
         MaxRedirects = MaxRedirects,
         Decompress = Decompress,
         Version = Version,
-        IgnoreServerCertificateErrors = ignoreServerCertificateErrors
+        IgnoreServerCertificateErrors = ignoreServerCertificateErrors,
+        Retries = Retries,
+        RetryOn = ParseRetryOn(RetryOn),
+        RetryDelay = TimeSpan.FromMilliseconds(RetryDelayMs),
+        RetryOnTransportError = RetryOnTransportError,
+        HonorRetryAfter = HonorRetryAfter,
+        RetryUnsafeMethods = RetryUnsafeMethods
     };
+
+    /// <summary>The typed status list behind the text box. Anything that is not a number is skipped
+    /// rather than fatal, but a list with nothing usable in it falls back to the defaults: an empty
+    /// list would switch retry-on-status off while the user believes they configured it.</summary>
+    private static IReadOnlyList<int> ParseRetryOn(string? text)
+    {
+        var codes = (text ?? "")
+            .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(token => int.TryParse(token, out var code) ? code : (int?)null)
+            .Where(code => code is not null)
+            .Select(code => code!.Value)
+            .ToArray();
+        return codes.Length > 0 ? codes : new TransportOptions().RetryOn;
+    }
 
     /// <summary>The reverse of <see cref="ToOptions"/>, for tests and for seeding the editor from a
     /// set of options. The options' certificate and resolve fields have no home here by design.</summary>
@@ -56,7 +104,13 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
         FollowRedirects = options.FollowRedirects,
         MaxRedirects = options.MaxRedirects,
         Decompress = options.Decompress,
-        Version = options.Version
+        Version = options.Version,
+        Retries = options.Retries,
+        RetryOn = string.Join(",", options.RetryOn),
+        RetryDelayMs = (int)options.RetryDelay.TotalMilliseconds,
+        RetryOnTransportError = options.RetryOnTransportError,
+        HonorRetryAfter = options.HonorRetryAfter,
+        RetryUnsafeMethods = options.RetryUnsafeMethods
     };
 
     /// <summary>Copy another instance's values into this one — used when a history entry is loaded
@@ -71,6 +125,12 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
         MaxRedirects = other.MaxRedirects;
         Decompress = other.Decompress;
         Version = other.Version;
+        Retries = other.Retries;
+        RetryOn = other.RetryOn;
+        RetryDelayMs = other.RetryDelayMs;
+        RetryOnTransportError = other.RetryOnTransportError;
+        HonorRetryAfter = other.HonorRetryAfter;
+        RetryUnsafeMethods = other.RetryUnsafeMethods;
     }
 
     /// <summary>An independent copy, so a stored history entry cannot be mutated by later editing.</summary>

@@ -94,6 +94,55 @@ public class StreamWindowSmokeTests
     }
 
     [Fact]
+    public void ChainEditorWindow_loads_with_the_theme()
+    {
+        Exception? error = null;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                var app = Application.Current ?? new Application();
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/ApiTester.App;component/Themes/TerminalWorkbench.xaml")
+                });
+
+                // Seeded with a real saved request inside a folder (so the depth-first flatten runs)
+                // and a chain whose second step points at an id that no longer resolves — the
+                // "(missing request)" branch is the one most likely to throw at load, so it must be
+                // exercised here rather than only the empty state.
+                var state = new ApiTester.Core.AppState();
+                var saved = new ApiTester.Core.CollectionNode
+                {
+                    Name = "Login",
+                    IsFolder = false,
+                    Request = new ApiTester.Core.RequestModel { Method = "POST", Path = "/login" }
+                };
+                state.Collections.Add(new ApiTester.Core.CollectionNode
+                {
+                    Name = "Auth",
+                    IsFolder = true,
+                    Children = { saved }
+                });
+
+                var chain = new ApiTester.Core.RequestChain { Name = "login then list", EnvironmentName = "chain" };
+                chain.Steps.Add(new ApiTester.Core.ChainStep { RequestId = saved.Id });
+                chain.Steps.Add(new ApiTester.Core.ChainStep { RequestId = "deleted-request-id", StopOnFailure = false });
+                state.Chains.Add(chain);
+
+                var win = new ApiTester.App.ChainEditorWindow(chain, state);
+                win.Close();
+            }
+            catch (Exception ex) { error = ex; }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+
+        Assert.True(error is null, error?.ToString());
+    }
+
+    [Fact]
     public void MockServerWindow_loads_with_the_theme()
     {
         Exception? error = null;

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -26,6 +27,119 @@ public sealed class ApiClient
         if (ValidateTransport(transport, request.Url) is { } problem)
             return new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, problem) };
 
+        int attempt = 0;
+        while (true)
+        {
+            attempt++;
+            var response = await SendOnceAsync(request, clientCertificate, transport,
+                                               trustServerCertificate, cookies, cancellationToken);
+            if (!ShouldRetry(response, transport, request.Method, attempt, cancellationToken))
+                return response with { Attempts = attempt };
+
+            var delay = RetryDelayFor(response, transport, attempt);
+            // Waiting is where a retrying send spends nearly all of its time, so the wait — not just
+            // the request — has to answer to the caller's cancellation.
+            try { await Task.Delay(delay, cancellationToken); }
+            catch (OperationCanceledException) { return response with { Attempts = attempt }; }
+        }
+    }
+
+    /// <summary>Whether the result of one attempt earns another. Kept deterministic and free of the
+    /// backoff's randomness so the decision itself is exactly what the observable behavior shows.</summary>
+    private static bool ShouldRetry(
+        ApiResponse response, TransportOptions transport, HttpMethod method, int attempt, CancellationToken ct)
+    {
+        if (transport.Retries <= 0) return false;
+        // Retries counts the *re*-tries, so Retries = 2 allows a third and last attempt.
+        if (attempt > transport.Retries) return false;
+        if (ct.IsCancellationRequested) return false;
+
+        // The method the user asked for, not whatever a redirect rewrote it to along the way: their
+        // intent is what decides whether sending it a second time is safe.
+        bool idempotent = method.Method.Equals("GET", StringComparison.OrdinalIgnoreCase) ||
+                          method.Method.Equals("HEAD", StringComparison.OrdinalIgnoreCase) ||
+                          method.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) ||
+                          method.Method.Equals("PUT", StringComparison.OrdinalIgnoreCase) ||
+                          method.Method.Equals("DELETE", StringComparison.OrdinalIgnoreCase);
+        if (!idempotent && !transport.RetryUnsafeMethods) return false;
+
+        if (response.Error is not null)
+        {
+            if (!transport.RetryOnTransportError) return false;
+            // Only the failures a second attempt could plausibly survive. A refused or untrusted
+            // certificate will be refused again — retrying it just fails slower — a redirect loop is
+            // still a loop on the next pass, Unknown means the request itself was malformed rather
+            // than the connection, and None is the cancelled case, which must not be re-sent at all.
+            return response.Error.Kind is ApiErrorKind.Network
+                or ApiErrorKind.Timeout
+                or ApiErrorKind.ConnectionRefused
+                or ApiErrorKind.ConnectionReset
+                or ApiErrorKind.NameResolution
+                or ApiErrorKind.ProxyFailure;
+        }
+
+        return response.StatusCode is { } status && transport.RetryOn.Contains(status);
+    }
+
+    /// <summary>How long to wait before the next attempt: exponential backoff with jitter, unless the
+    /// server said when to come back. Jitter keeps a fleet of clients that all failed at the same
+    /// moment from returning in one synchronized wave.</summary>
+    private static TimeSpan RetryDelayFor(ApiResponse response, TransportOptions transport, int attempt)
+    {
+        const double capMs = 30_000;
+
+        // A server that bothers to say when to come back knows better than any computed guess.
+        if (transport.HonorRetryAfter && RetryAfterDelay(response) is { } asked)
+            return TimeSpan.FromMilliseconds(Math.Clamp(asked.TotalMilliseconds, 0, capMs));
+
+        // No delay asked for is no delay, however many times it is doubled — and taking this out
+        // first keeps the multiplication below from being 0 * infinity, which is NaN rather than a
+        // number any clamp can rescue.
+        double baseMs = transport.RetryDelay.TotalMilliseconds;
+        if (baseMs <= 0) return TimeSpan.Zero;
+
+        // Computed in milliseconds as a double and clamped before it becomes a TimeSpan: doubling a
+        // TimeSpan for a large retry count overflows long before the cap would have applied.
+        double ms = baseMs * Math.Pow(2, attempt - 1);
+        ms *= 0.9 + (Random.Shared.NextDouble() * 0.2);
+        return TimeSpan.FromMilliseconds(Math.Clamp(ms, 0, capMs));
+    }
+
+    /// <summary>The wait a Retry-After header asks for, or null when there is none this client can make
+    /// sense of — in which case the computed backoff stands rather than the send failing over a header.</summary>
+    private static TimeSpan? RetryAfterDelay(ApiResponse response)
+    {
+        string? value = response.Headers
+            .FirstOrDefault(h => h.Key.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)).Value;
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = value.Trim();
+
+        // Delta-seconds is the common form; an HTTP-date is equally legal and some gateways send it.
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds))
+            return seconds < 0 ? TimeSpan.Zero : TimeSpan.FromSeconds(seconds);
+
+        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var when))
+        {
+            var wait = when - DateTimeOffset.UtcNow;
+            // A date that has already passed means "now", not a negative wait.
+            return wait < TimeSpan.Zero ? TimeSpan.Zero : wait;
+        }
+
+        return null;
+    }
+
+    /// <summary>One attempt: build the transport, send, and follow any redirect chain to its end.
+    /// Everything about a single send lives here so <see cref="SendAsync"/> can be about nothing but
+    /// deciding whether to do it again.</summary>
+    private async Task<ApiResponse> SendOnceAsync(
+        ApiRequest request,
+        X509Certificate2? clientCertificate,
+        TransportOptions transport,
+        Func<X509Certificate2?, bool>? trustServerCertificate,
+        System.Net.CookieContainer? cookies,
+        CancellationToken cancellationToken)
+    {
         bool ignoreServerCertificateErrors = transport.IgnoreServerCertificateErrors;
         bool serverUntrusted = false;
 

@@ -10,6 +10,7 @@ Every way the app shows you a response, plus copying, saving, and themes.
 | **Raw** | The exact response bytes decoded as text, with a **find** box (Enter for next match, wraps around). |
 | **Headers** | Every response header. |
 | **Diagnostics** | Connection details — TLS (Transport Layer Security) version and cipher, whether your client certificate was presented, and the server's certificate and chain. See [Certificates & mTLS](06-Certificates-and-mTLS.md). |
+| **Diff** | What changed since the last known-good response — or since a recorded session (below). |
 | **Rendered** | The request's URL (Uniform Resource Locator) opened as a **web page** (below). |
 | **Network** | A browser-style trace of every HTTP (Hypertext Transfer Protocol) call (below). |
 
@@ -17,6 +18,34 @@ Every way the app shows you a response, plus copying, saving, and themes.
 
 Above the response, the **find** box locates and selects the next match in the body — Enter (or **Find
 next**) jumps to the next occurrence and wraps around. Handy for a value buried in a large payload.
+
+## Diff
+
+An assertion checks what you thought to check. The **Diff** tab answers the other question: did
+anything change at all? It compares the response you just got against a baseline and lists the
+differences — the status, each header, and each value in the body.
+
+The baseline is the saved request's **known-good** response: the last 2xx it returned, recorded
+automatically (and capped at 1 MiB, so the settings file doesn't become a blob store). **Compare with
+HAR…** points it at a response recorded in an HTTP Archive (HAR) `.har` file instead, and **Clear**
+goes back to the known-good one.
+
+How the body is compared depends on what the body is:
+
+| Both sides | Comparison |
+|---|---|
+| JSON | Structural — each changed path is named (`data.items[0].id`) as added, removed, changed, or type-changed, with arrays compared by index. |
+| Text, not JSON | A one-line summary: the lines and bytes on each side. |
+| Binary (either side) | Size and equality only — it doesn't pretend to diff a PDF. |
+
+Headers that change on every response are ignored by default, or a real difference would drown in
+them: `Date`, `Set-Cookie`, `ETag`, `Age`, `X-Request-Id`, `X-Correlation-Id`, and `Server-Timing`.
+
+On the command line, `certapi send <url> --diff <baseline>` does the same against a `.har` file, a
+`.json` response file, or the word `known-good`, with `--diff-fail` to fail a build on any
+difference; and `certapi run --diff-har session.har` replays a captured session and passes an entry
+only when its response is identical to the recorded one. See the
+[CLI Reference](21-CLI-Reference.md#send).
 
 ## Rendered website
 

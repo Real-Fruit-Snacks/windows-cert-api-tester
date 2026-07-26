@@ -41,8 +41,11 @@ public static class SendCommand
 
         """ + TransportFlags.Help + """
 
+
+        Addresses:
           --all-ips               Send once per address the host resolves to and compare the
-                                  results (one row each; not with --json/-o/--capture/--assert)
+                                  results (one row each; not with --json/-o/--capture/--assert/
+                                  --diff)
 
         Automatic tokens:
           A bearer token found in a response (access_token, id_token, token, accessToken, jwt,
@@ -66,6 +69,15 @@ public static class SendCommand
                                     header <name> contains <v> | body <jsonpath> exists
                                     body-text matches <regex>
                                   ops: == != contains matches exists !exists < >
+
+        Diff:
+          --diff <baseline>       Compare the response against a baseline and print what changed:
+                                  a .har file, a .json response file, or 'known-good' (the stored
+                                  response for the matching saved request)
+          --diff-fail             Exit 1 when anything differs (the CI form)
+          --diff-ignore <path>    JSON path to ignore, e.g. data.timestamp (repeatable; a trailing
+                                  * on a segment matches by prefix)
+          --diff-ignore-header <n>  Header to ignore on top of the volatile defaults (repeatable)
 
         Output:
           -o, --output <file>     Write the body to a file instead of stdout
@@ -123,6 +135,10 @@ public static class SendCommand
           # Capture the request/response (and every redirect hop) as a HAR file
           certapi send https://api.example.com/health --har session.har
 
+          # Record a baseline once, then fail CI when the response stops matching it
+          certapi send https://api.example.com/users --har baseline.har
+          certapi send https://api.example.com/users --diff baseline.har --diff-fail --diff-ignore data.generatedAt
+
         The body goes to stdout; everything else goes to stderr. Exit 0 on a delivered
         response (any status unless --fail), 1 on transport errors, 2/3 on usage/data errors.
         """;
@@ -166,6 +182,10 @@ public static class SendCommand
         string? winPass = args.Value("--windows-password");
         var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
         bool allIps = args.Flag("--all-ips");
+        string? diffBaseline = args.Value("--diff");
+        bool diffFail = args.Flag("--diff-fail");
+        var diffIgnorePaths = args.Values("--diff-ignore");
+        var diffIgnoreHeaders = args.Values("--diff-ignore-header");
         string? harPath = args.Value("--har");
         bool harIncludeSecrets = args.Flag("--har-include-secrets");
         // Resolve the certificate here (Windows store or a file) so its options are consumed
@@ -211,10 +231,22 @@ public static class SendCommand
             throw new CliUsageException("--bearer and --basic are mutually exclusive.");
         // --all-ips produces one response per address; every option below describes a single one,
         // and there is no honest way to pick which response it should apply to.
-        if (allIps && (json || outFile is not null || captureRules.Count > 0 || assertRules.Count > 0))
+        if (allIps && (json || outFile is not null || captureRules.Count > 0 || assertRules.Count > 0 ||
+                       diffBaseline is not null))
             throw new CliUsageException(
                 "--all-ips sends once per address, so it cannot be combined with --json, -o/--output, " +
-                "--capture, or --assert — each of those describes a single response.");
+                "--capture, --assert, or --diff — each of those describes a single response.");
+        // A flag that silently does nothing is worse than an error, so the diff modifiers name
+        // themselves rather than quietly evaporating when there is no baseline to modify.
+        string? orphanDiffFlag =
+            diffBaseline is not null ? null
+            : diffFail ? "--diff-fail"
+            : diffIgnorePaths.Count > 0 ? "--diff-ignore"
+            : diffIgnoreHeaders.Count > 0 ? "--diff-ignore-header"
+            : null;
+        if (orphanDiffFlag is not null)
+            throw new CliUsageException(
+                $"{orphanDiffFlag} needs --diff <baseline> — there is nothing to compare against without it.");
         // --har's directory must exist before the first request, not merely before the write — a
         // typo shouldn't surface after a request already went out over the wire.
         if (harPath is not null)
@@ -306,6 +338,21 @@ public static class SendCommand
         Func<System.Security.Cryptography.X509Certificates.X509Certificate2?, bool> trustCert = c =>
             c is not null && TrustService.IsTrusted(state, host, c.Thumbprint!);
 
+        // ---- diff baseline ----
+        // Resolved after the URL is fully variable-resolved but before anything goes over the wire:
+        // a baseline that doesn't exist has to fail the command without making a network call.
+        var diffOptions = diffBaseline is null ? null : new DiffOptions
+        {
+            IgnorePaths = diffIgnorePaths,
+            // Added to the volatile defaults rather than replacing them: a user naming one noisy
+            // header has said nothing about wanting Date and Set-Cookie compared from now on.
+            IgnoreHeaders = diffIgnoreHeaders.Count == 0
+                ? DiffOptions.DefaultIgnoredHeaders
+                : DiffOptions.DefaultIgnoredHeaders.Concat(diffIgnoreHeaders).ToList(),
+            CompareHeaderValues = true
+        };
+        var baseline = diffBaseline is null ? null : DiffBaseline.Resolve(diffBaseline, method, url, state);
+
         // ---- automatic session token ----
         if (!noAutoToken)
         {
@@ -384,6 +431,19 @@ public static class SendCommand
             TrustService.IsTrusted(state, host, thumb))
             stderr.WriteLine($"note: trusting pinned certificate for {host}");
 
+        // ---- diff ----
+        // Computed here so the JSON envelope below can carry it. A transport failure produced no
+        // response to compare, and the error path already returns 1 on its own.
+        DiffResult? diff = null;
+        if (baseline is not null && response.Error is null)
+        {
+            diff = ResponseDiff.Compare(baseline, ResponseSnapshot.From(response), diffOptions);
+            // Printed even under --quiet, the way --show-redirects is: it was asked for explicitly,
+            // and the body still owns stdout.
+            stderr.WriteLine($"diff vs {diffBaseline}:");
+            stderr.WriteLine(DiffText.Format(diff));
+        }
+
         bool stateDirty = false;
         if (captureRules.Count > 0 && response.Error is null)
         {
@@ -411,7 +471,7 @@ public static class SendCommand
         if (json)
         {
             if (outFile is not null && response.Error is null) File.WriteAllBytes(outFile, response.Body);
-            stdout.WriteLine(BuildEnvelope(response, includeBody: outFile is null));
+            stdout.WriteLine(BuildEnvelope(response, includeBody: outFile is null, diff: diff));
         }
         else if (response.Error is null)
         {
@@ -451,7 +511,10 @@ public static class SendCommand
             stderr.WriteLine($"assertions: {results.Count(r => r.Passed)}/{results.Count} passed");
         }
 
-        if (assertionsFailed) return ExitCodes.Failure;
+        // The diff was already reported above; --diff-fail is the only thing that turns a difference
+        // into an exit code, and it is folded in after the assertions so a send with both has
+        // reported both before either decides the result.
+        if (assertionsFailed || (diffFail && diff is { Identical: false })) return ExitCodes.Failure;
         if (fail && response.StatusCode is >= 400) return ExitCodes.Failure;
         return ExitCodes.Ok;
     }
@@ -586,7 +649,8 @@ public static class SendCommand
         catch (Exception ex) { stderr.WriteLine($"warning: could not save captured values: {ex.Message}"); }
     }
 
-    internal static string BuildEnvelope(ApiResponse r, bool includeBody, IReadOnlyList<string>? notes = null)
+    internal static string BuildEnvelope(ApiResponse r, bool includeBody, IReadOnlyList<string>? notes = null,
+                                         DiffResult? diff = null)
     {
         bool binary = false;
         string? text = null;
@@ -636,6 +700,24 @@ public static class SendCommand
                 authorizationDropped = h.AuthorizationDropped,
                 schemeDowngrade = h.SchemeDowngrade
             }).ToList();
+        // Only when a retry actually happened, for the same reason redirects is conditional: an
+        // "attempts": 1 on every envelope would churn every existing consumer's output for nothing.
+        if (r.Attempts > 1) obj["attempts"] = r.Attempts;
+        if (diff is not null)
+            obj["diff"] = new
+            {
+                identical = diff.Identical,
+                statusBefore = diff.StatusBefore,
+                statusAfter = diff.StatusAfter,
+                headers = diff.Headers.Select(h => new { name = h.Name, before = h.Before, after = h.After }).ToList(),
+                body = diff.Body.Select(b => new
+                {
+                    path = b.Path,
+                    kind = b.Kind.ToString(),
+                    before = b.Before,
+                    after = b.After
+                }).ToList()
+            };
         if (notes is { Count: > 0 }) obj["notes"] = notes;
         if (includeBody && r.Error is null)
         {

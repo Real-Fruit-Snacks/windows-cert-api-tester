@@ -36,6 +36,18 @@ public partial class ChoiceDialog : Window
         return dlg._choice;
     }
 
+    /// <summary>A themed yes/no confirmation: one action button plus Cancel. Exists so a destructive
+    /// action does not have to reach for an unthemed Win32 message box — this dialog already carries the
+    /// app's palette and title-bar treatment, and a confirmation is the last place a user should be
+    /// surprised by a different visual language.</summary>
+    public static bool Confirm(Window owner, string title, string message, string confirmLabel)
+    {
+        var dlg = new ChoiceDialog(title, message, confirmLabel, "") { Owner = owner };
+        dlg.SecondaryButton.Visibility = Visibility.Collapsed;
+        dlg.ShowDialog();
+        return dlg._choice == DialogChoice.Primary;
+    }
+
     private void Primary_Click(object sender, RoutedEventArgs e) { _choice = DialogChoice.Primary; DialogResult = true; }
     private void Secondary_Click(object sender, RoutedEventArgs e) { _choice = DialogChoice.Secondary; DialogResult = true; }
     private void Cancel_Click(object sender, RoutedEventArgs e) { _choice = DialogChoice.Cancel; DialogResult = false; }

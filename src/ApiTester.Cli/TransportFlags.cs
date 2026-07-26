@@ -19,6 +19,15 @@ public static class TransportFlags
           --no-decompress         Relay compressed bytes exactly as received
           --http1.1 / --http2     Pin the HTTP version
           --resolve <host:port:ip>  Pin a host to an address (repeatable; not valid with a proxy)
+
+        Retries:
+          --retry <n>             Retry a failed request up to n times (default 0 = off)
+          --retry-on <codes>      Comma-separated statuses that earn a retry (default 429,502,503,504)
+          --retry-delay <ms>      First backoff delay (default 500); doubles each attempt with
+                                  ±10% jitter, capped at 30s. A Retry-After header overrides it.
+          --retry-unsafe          Also retry POST/PATCH (only GET/HEAD/OPTIONS/PUT/DELETE by default,
+                                  because re-sending a POST nobody confirmed can charge a card twice)
+          --no-retry-transport    Don't retry connection failures and timeouts
         """;
 
     /// <summary>Consume the shared transport flags. <paramref name="showRedirects"/> comes back
@@ -37,6 +46,11 @@ public static class TransportFlags
         bool http2 = args.Flag("--http2");
         var resolveSpecs = args.Values("--resolve");
         showRedirects = args.Flag("--show-redirects");
+        string? retryRaw = args.Value("--retry");
+        string? retryOnRaw = args.Value("--retry-on");
+        string? retryDelayRaw = args.Value("--retry-delay");
+        bool retryUnsafe = args.Flag("--retry-unsafe");
+        bool noRetryTransport = args.Flag("--no-retry-transport");
 
         if (proxyUrl is not null && noProxy)
             throw new CliUsageException("--proxy and --no-proxy are mutually exclusive.");
@@ -69,6 +83,24 @@ public static class TransportFlags
         var resolve = new List<ResolveOverride>();
         foreach (var raw in resolveSpecs) resolve.Add(ParseResolve(raw));
 
+        int? retries = null;
+        if (retryRaw is not null)
+        {
+            if (!int.TryParse(retryRaw, out var n) || n < 0)
+                throw new CliUsageException($"--retry expects a count of 0 or more, got '{retryRaw}'.");
+            retries = n;
+        }
+
+        IReadOnlyList<int>? retryOn = retryOnRaw is null ? null : ParseRetryOn(retryOnRaw);
+
+        int? retryDelayMs = null;
+        if (retryDelayRaw is not null)
+        {
+            if (!int.TryParse(retryDelayRaw, out var ms) || ms < 0)
+                throw new CliUsageException($"--retry-delay expects milliseconds of 0 or more, got '{retryDelayRaw}'.");
+            retryDelayMs = ms;
+        }
+
         return new TransportOverrides
         {
             Proxy = proxyUrl is not null ? ProxyMode.Explicit : noProxy ? ProxyMode.None : null,
@@ -79,8 +111,31 @@ public static class TransportFlags
             MaxRedirects = maxRedirects,
             Decompress = noDecompress ? false : null,
             Version = http11 ? HttpVersionMode.Http11 : http2 ? HttpVersionMode.Http2 : null,
-            Resolve = resolve
+            Resolve = resolve,
+            Retries = retries,
+            RetryOn = retryOn,
+            RetryDelayMs = retryDelayMs,
+            RetryUnsafeMethods = retryUnsafe ? true : null,
+            RetryOnTransportError = noRetryTransport ? false : null
         };
+    }
+
+    /// <summary>The comma-separated status list for --retry-on. Every token has to be a status code:
+    /// dropping a typo'd one would leave the user believing they configured a retry they never got,
+    /// which is worse than refusing the command line outright.</summary>
+    private static IReadOnlyList<int> ParseRetryOn(string raw)
+    {
+        // Never empty — String.Split always yields at least one element — so "--retry-on ''" lands
+        // on the empty token below and is refused rather than read as "retry on nothing".
+        var codes = new List<int>();
+        foreach (var token in raw.Split(','))
+        {
+            string trimmed = token.Trim();
+            if (!int.TryParse(trimmed, out var code) || code is < 100 or > 599)
+                throw new CliUsageException($"--retry-on expects comma-separated status codes, got '{trimmed}'.");
+            codes.Add(code);
+        }
+        return codes;
     }
 
     /// <summary>host:port:ip, split on the first two colons only — curl's rule, and the only one that
@@ -115,6 +170,12 @@ public sealed record TransportOverrides
     public HttpVersionMode? Version { get; init; }
     public IReadOnlyList<ResolveOverride> Resolve { get; init; } = Array.Empty<ResolveOverride>();
 
+    public int? Retries { get; init; }
+    public IReadOnlyList<int>? RetryOn { get; init; }
+    public int? RetryDelayMs { get; init; }
+    public bool? RetryUnsafeMethods { get; init; }
+    public bool? RetryOnTransportError { get; init; }
+
     public TransportOptions ApplyTo(TransportOptions baseline)
     {
         var options = baseline;
@@ -128,6 +189,14 @@ public sealed record TransportOverrides
         if (Version is { } version) options = options with { Version = version };
         // An empty list means "not named", not "pin nothing" — the baseline keeps whatever it had.
         if (Resolve.Count > 0) options = options with { Resolve = Resolve };
+        if (Retries is { } retries) options = options with { Retries = retries };
+        // RetryOn is nullable where Resolve above is an empty-list sentinel, and the two differ on
+        // purpose: an empty pin list can only mean "not named", but an empty status list would be a
+        // real instruction ("retry no status at all"), so absence needs a value of its own here.
+        if (RetryOn is not null) options = options with { RetryOn = RetryOn };
+        if (RetryDelayMs is { } delayMs) options = options with { RetryDelay = TimeSpan.FromMilliseconds(delayMs) };
+        if (RetryUnsafeMethods is { } retryUnsafe) options = options with { RetryUnsafeMethods = retryUnsafe };
+        if (RetryOnTransportError is { } retryTransport) options = options with { RetryOnTransportError = retryTransport };
         return options;
     }
 }

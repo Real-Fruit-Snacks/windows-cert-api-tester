@@ -6,6 +6,137 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.54.0] - 2026-07-26
+
+### Added
+- **Response diffing** — the move from "did it respond" to "did it respond *the same*".
+  `certapi send <url> --diff <baseline>` compares the response it just got against a baseline and
+  prints what changed; the baseline is an HTTP Archive (HAR) file, a `.json` response file, or the
+  literal `known-good` (the stored response of the saved request that matches this method and URL).
+  A `.json` baseline may be either the envelope `certapi send --json` writes or a saved response
+  snapshot, so recording one with `certapi send x --json > baseline.json` and comparing against it
+  with `--diff baseline.json` works — a workflow the tool's own output could not feed would be a
+  trap. `--diff-fail` turns any difference into exit 1, which is the continuous integration (CI)
+  form; without it the diff is reported and the exit code is unaffected, because printing a
+  difference and failing a build are different decisions. `--diff-ignore <path>` and `--diff-ignore-header <name>` are both
+  repeatable, and a named header is *added to* the volatile defaults rather than replacing them —
+  naming one noisy header says nothing about wanting `Date` and `Set-Cookie` compared from now on.
+  The diff prints to stderr even under `--quiet` (the body still owns stdout), and `--json` gains a
+  `diff` object. On `certapi run`, `--diff-har <file.har>` replays an archive and diffs every
+  response against the one it recorded, which is what turns a captured session into a regression
+  test: an entry passes only when its response is identical to the recorded one, status included,
+  and any difference exits 1. There is deliberately no `--diff-fail` there, because a difference is
+  always a failure in that mode. **The honest limits.** The body comparison picks its own mode: when
+  both sides parse as JSON it is structural, naming each changed leaf path in the same `a.b[0].c`
+  form capture rules use (added / removed / changed / type-changed, arrays by index); when either
+  side is not JSON it falls back to a one-line text summary of lines and bytes on each side; and
+  when either side is binary it reports size and equality only — it never pretends to diff a PDF.
+  Seven headers that change on every response are ignored by default, or a real difference would
+  drown in them: `Date`, `Set-Cookie`, `ETag`, `Age`, `X-Request-Id`, `X-Correlation-Id`, and
+  `Server-Timing`. An ignore path may end a segment with `*`, so `data.token*` covers
+  `data.tokenId`, and naming a container (`data`) suppresses everything beneath it. In the app, a
+  **Diff** tab sits with the other response views and compares against the saved request's
+  known-good response, or against an archive chosen with **Compare with HAR…** (**Clear** returns
+  to the known-good baseline). Known-good baselines are recorded automatically on a successful
+  (2xx) send by `certapi run` and by the app, capped at 1 MiB so the settings file does not become
+  a blob store. A missing or unreadable baseline is a data error (exit 3), and `known-good` with no
+  stored snapshot exits 3 naming the request that needs sending once.
+- **Retry and backoff** — surviving a flaky internal endpoint in CI without wrapping every call in a
+  shell loop. `--retry <n>` (0, the previous behavior, is still the default) retries a failed
+  request, `--retry-on <codes>` picks the statuses that earn one (default `429,502,503,504`),
+  `--retry-delay <ms>` sets the first wait (default 500), and `--no-retry-transport` switches off
+  retrying a request that never reached the server at all. The delay doubles on each further
+  attempt with ±10% jitter — jitter so a fleet of clients that all failed at the same moment does
+  not come back in one synchronized wave — capped at 30 seconds, and a `Retry-After` header (delta
+  seconds or an HTTP-date) overrides the computed wait, because a server that says when to come
+  back knows better than any guess. Cancellation is honored during the wait, so Ctrl+C returns
+  immediately instead of after the delay. The stderr metadata line gains `N attempts` when more
+  than one was needed (and a failure reads `… (3 attempts)`: "it failed" and "it failed three
+  times" are different facts), and the `--json` envelope gains `attempts` when it is above 1. The
+  settings are additive on the transport options and mirrored on a saved request, so a request
+  carries its own; on `run` a flag overrides only what it names. The app grows a **Retries** group
+  on the request editor's Transport tab — count, statuses, first delay, "Also retry POST and PATCH",
+  and "Retry connection failures and timeouts". **The honest limits.** Only idempotent methods
+  retry by default — GET, HEAD, OPTIONS, PUT, DELETE — because re-sending a POST nobody confirmed
+  can charge a card twice; `--retry-unsafe` opts POST and PATCH in explicitly. Among transport
+  failures, only the ones a second attempt could plausibly survive earn a retry: connection
+  refused, connection reset, name resolution, timeouts, and proxy failures. A refused or untrusted
+  client or server certificate is **never** retried — it would only fail slower — and neither is a
+  redirect loop. A negative `--retry`, or a `--retry-on` code that is not a number between 100 and
+  599, is a usage error (exit 2) rather than a silently dropped typo that would leave you believing
+  you configured a retry you never got.
+- **Request chains** — "log in, then call the API" as a first-class, saved, runnable thing instead
+  of an implicit convention about the order of a collection. A chain is a name, an ordered list of
+  steps (each naming a saved request, each with its own stop-on-failure, on by default), and an
+  optional environment, all persisted additively on the workspace. `certapi run --chain <name>`
+  runs it, reporting PASS / FAIL per step and exiting 1 if any step failed. A chain reuses the
+  ordinary run path exactly — resolve variables, send, evaluate assertions, apply capture rules,
+  rebuild variables — so a token captured by step 1 is available to step 2 as a `{{variable}}`, and
+  known-good recording applies per step just as in a normal run; running the same way is the whole
+  point of a chain. When a failing step has stop-on-failure set, the chain halts and the remaining
+  steps are reported **SKIP** rather than silently vanishing, since a step that never ran is not a
+  step that passed. Captures write into the environment the chain names, created on first use, and
+  an explicit `--env` wins over it — a flag you typed is a more specific instruction than a stored
+  default. Every step is resolved before anything is sent: an unknown chain exits 3 listing the
+  chains that do exist, and a step whose saved request has been deleted exits 3 naming the step.
+  `--chain` cannot be combined with `--all`, a positional, `--diff-har`, or `--data` (exit 2) — a
+  chain names its own requests in its own order, and whether a data row would repeat the whole
+  chain or each step within it is not defined. **The honest limit.** A **CHAINS** section joins
+  HISTORY and COLLECTIONS in the app sidebar, where a chain is created, its steps picked in order,
+  reordered or removed, its per-step stop-on-failure and environment set, and **Copy run command**
+  puts the matching `certapi run --chain "<name>"` on the clipboard — but *running* a chain is a
+  command-line concern this release. The app builds and saves them; `certapi run --chain` runs
+  them. Chains travel with an exported workspace and are merged or replaced on import like
+  everything else.
+- **Latency and load bench** — `certapi bench <url|saved request>` answers "how fast is this
+  endpoint, and does it stay up under concurrency" over the same client-certificate send path as
+  everything else, so what it measures is what the rest of the tool actually does. It defaults to
+  `-n 100 -c 10` and reports requests sent / succeeded / failed, elapsed, requests per second, the
+  min / p50 / p90 / p99 / max latencies, and the status and error counts; `--json` emits the same as
+  a machine-readable envelope for a job that tracks latency over time. `--duration <seconds>` runs
+  for a wall-clock period instead of a fixed count, and `--warmup <seconds>` sends and discards
+  first so the figures describe a warmed-up endpoint — warm-up requests are extra, so `-n 20` still
+  measures twenty. Percentiles come from the full retained latency array rather than an
+  approximation, a bench never writes state (no known-good markers, no captured tokens, no
+  attached session token), and it exits 0 whenever it measured anything, whatever the statuses came
+  back: it reports numbers rather than passing judgement, so an endpoint that answers 503 or 404
+  every time has still been measured. Exit 1 is reserved for no request getting a response at all,
+  where there is nothing to report but that the endpoint could not be reached — a CI job benching an
+  endpoint whose normal answer is 401 should not be handed a failure for it. `-n` together with
+  `--duration`, a concurrency of zero or less, or a concurrency greater than the count are each usage
+  errors (exit 2). **The honest limits.**
+  Every request opens its own connection, because the client builds a fresh handler per send in
+  order to capture that request's own handshake diagnostics, so the reported latencies include the
+  TCP connect and the TLS handshake. Read them as "how long one request to this endpoint takes,
+  from cold", not "how fast a warm client can stream requests at it" — the command prints that note
+  under every summary, carries it in the `--json` envelope, and says it in its help text rather
+  than quietly letting the numbers flatter the endpoint. Retries are forced off during a bench even
+  when the request or a `--retry` flag asks for them, because a retry turns a failure into a slow
+  success and hides the very failure rate the bench exists to measure; `--bench-retries` measures it
+  anyway. And there is deliberately **no** app user interface for the bench: it is a command-line
+  concern, and adding value in the window would need a chart.
+
+### Fixed
+- **`{{variables}}` in query-parameter values never resolved.** A saved request whose parameter grid
+  held `api_key={{token}}` sent the literal placeholder, percent-escaped, as
+  `api_key=%7B%7Btoken%7D%7D` — the parameter values were escaped while the URL was being composed,
+  and only then was the text searched for `{{…}}`, by which point the pattern no longer existed.
+  Variables in the base URL, path, headers, body, and auth were unaffected. `--strict-vars` could not
+  catch it either, for the same reason: nothing that looked like a variable was left to report.
+  Values are now resolved *before* the query is composed, so the substituted value is what gets
+  escaped — a token containing `&`, `=`, a space, or non-ASCII text is now encoded correctly rather
+  than corrupting the query. Unresolved query tokens are reported like every other kind, so
+  `--strict-vars` fails on them and the ordinary path lists them as unresolved.
+  This mattered most to the request chains added in this release, whose whole purpose is to capture a
+  token in one step and use it in the next: feeding that token as a query parameter silently sent the
+  placeholder, and the endpoint answered 401 with nothing to explain why.
+- **`certapi run --json` reported a URL it had not sent.** The envelope recomputed each request's URL
+  from the saved model instead of carrying the one that went on the wire, so a request using a
+  variable in its query was reported as `?api_key=%7B%7Btoken%7D%7D` while it had actually sent the
+  resolved value. A machine-readable envelope that misreports what was sent is worse than a cosmetic
+  problem — a CI log would record the wrong URL — so the sent URL is now carried through, and a test
+  pins the report and the wire to each other so they cannot drift apart again.
+
 ## [1.53.0] - 2026-07-26
 
 ### Added
@@ -803,7 +934,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.53.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.54.0...HEAD
+[1.54.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.53.0...v1.54.0
 [1.53.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.52.0...v1.53.0
 [1.52.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.51.0...v1.52.0
 [1.51.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.50.0...v1.51.0

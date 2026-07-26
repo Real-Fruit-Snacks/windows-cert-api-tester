@@ -1,0 +1,133 @@
+<Window x:Class="ApiTester.App.ChainEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit chain" Height="480" Width="740" SizeToContent="Manual"
+        WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Soft}"
+        FontFamily="{StaticResource Mono}" FontSize="12.5"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0"
+                      GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Border BorderBrush="{DynamicResource Border.Strong}" BorderThickness="1">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Height="40" Background="{DynamicResource Bg.Panel}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" MouseLeftButtonDown="Header_Drag">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="&#x276F;" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Accent}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock x:Name="HeaderText" Text="EDIT CHAIN" FontWeight="Bold" FontSize="12" Margin="9,0,0,0"
+                                   Foreground="{DynamicResource Text.Normal}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="560"/>
+                    </StackPanel>
+                    <Button Content="&#xE8BB;" HorizontalAlignment="Right" Style="{StaticResource CaptionClose}"
+                            Height="40" Click="Close_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- The environment the chain's captures write into, plus the only footer button there is:
+                 the chain is edited in place, so there is no OK/Cancel — see ChainEditorWindow.xaml.cs. -->
+            <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,12">
+                <TextBlock Text="CAPTURE ENVIRONMENT" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Normal}" Margin="0,0,0,5"/>
+                <TextBox x:Name="EnvironmentBox" Height="26" Padding="7,0" VerticalContentAlignment="Center"
+                         Tag="(no environment)" TextChanged="EnvironmentBox_TextChanged"/>
+                <TextBlock FontSize="10" Margin="0,5,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Text.Faint}"
+                           Text="Values captured by this chain's steps are written into this environment, and it is created on first use if it does not exist yet. Leave it blank for none."/>
+                <Button Content="Close" Height="26" FontSize="11" Padding="9,0" HorizontalAlignment="Right"
+                        Margin="0,10,0,0" Click="Close_Click"/>
+            </StackPanel>
+
+            <Grid Margin="12,12,12,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="1.35*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- every saved request, flattened out of the collections tree -->
+                <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock DockPanel.Dock="Top" Text="SAVED REQUESTS" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Normal}" Margin="0,0,0,6"/>
+                    <Button DockPanel.Dock="Bottom" Content="Add &#x2192;" Height="26" FontSize="11" Padding="9,0"
+                            HorizontalAlignment="Left" Margin="0,8,0,0" Click="AddStep_Click"
+                            ToolTip="Append the selected request to the end of the chain."/>
+                    <TextBlock x:Name="NoRequestsHint" DockPanel.Dock="Top" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text.Faint}" Margin="0,0,0,8"
+                               Text="No saved requests yet. Save a request into your collections first — a chain runs saved requests."/>
+                    <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ListBox x:Name="AvailableList" Margin="2" BorderThickness="0" Background="Transparent"
+                                     MouseDoubleClick="AvailableList_MouseDoubleClick">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="6,4,6,4">
+                                            <TextBlock Text="{Binding MethodBadge}" FontSize="10" FontWeight="Bold" MinWidth="30"
+                                                       Margin="0,0,7,0" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Text.Normal}"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+
+                <!-- the chain's steps, in run order -->
+                <DockPanel Grid.Column="1">
+                    <TextBlock DockPanel.Dock="Top" Text="STEPS, IN RUN ORDER" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Normal}" Margin="0,0,0,6"/>
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="Move up" Height="26" FontSize="11" Padding="9,0" Click="MoveUp_Click"/>
+                        <Button Content="Move down" Height="26" FontSize="11" Padding="9,0" Margin="6,0,0,0" Click="MoveDown_Click"/>
+                        <Button Content="Remove" Height="26" FontSize="11" Padding="9,0" Margin="6,0,0,0" Click="RemoveStep_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="NoStepsHint" DockPanel.Dock="Top" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text.Faint}" Margin="0,0,0,8"
+                               Text="No steps yet. Pick a saved request on the left and add it — the first step runs first, and what it captures is available to the ones after it."/>
+                    <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ListBox x:Name="StepsList" Margin="2" BorderThickness="0" Background="Transparent">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="6,5,6,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Position}" FontSize="10" MinWidth="22"
+                                                       Foreground="{DynamicResource Text.Faint}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Badge}" FontSize="10" FontWeight="Bold" MinWidth="30"
+                                                       Margin="0,0,7,0" Foreground="{DynamicResource Accent}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Label}" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Label}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Text.Normal}"/>
+                                                        <Style.Triggers>
+                                                            <!-- a chain can outlive a deleted request; say so instead of showing a blank row -->
+                                                            <DataTrigger Binding="{Binding Missing}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Text.Faint}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <CheckBox Grid.Column="3" Content="Stop on failure" FontSize="10" Margin="8,0,0,0"
+                                                      VerticalAlignment="Center" IsChecked="{Binding StopOnFailure, Mode=TwoWay}"
+                                                      ToolTip="Stop the chain here when this step fails, instead of calling the next one anyway."/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

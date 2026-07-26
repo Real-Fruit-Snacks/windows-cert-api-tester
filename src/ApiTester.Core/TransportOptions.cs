@@ -51,4 +51,26 @@ public sealed record TransportOptions
     public bool IgnoreServerCertificateErrors { get; init; }
 
     public IReadOnlyList<ResolveOverride> Resolve { get; init; } = Array.Empty<ResolveOverride>();
+
+    /// <summary>How many times to retry a failed request. 0 = off, which is the behavior this client
+    /// had before retry existed.</summary>
+    public int Retries { get; init; }
+
+    /// <summary>Response statuses that earn a retry. The default set is the four a load balancer or
+    /// gateway returns when the answer is "not now" rather than "no".</summary>
+    public IReadOnlyList<int> RetryOn { get; init; } = new[] { 429, 502, 503, 504 };
+
+    /// <summary>The first backoff delay; each further attempt doubles it, with jitter, capped at 30s.</summary>
+    public TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Retry connection refused/reset, DNS failures, and timeouts.</summary>
+    public bool RetryOnTransportError { get; init; } = true;
+
+    /// <summary>Let a Retry-After header override the computed backoff. The server knows better than
+    /// the client's guess when it bothers to say.</summary>
+    public bool HonorRetryAfter { get; init; } = true;
+
+    /// <summary>Also retry POST and PATCH. Off by default: re-sending a POST nobody confirmed can
+    /// charge a card twice, and a client cannot tell a lost response from a lost request.</summary>
+    public bool RetryUnsafeMethods { get; init; }
 }

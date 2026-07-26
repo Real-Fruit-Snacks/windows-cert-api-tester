@@ -188,7 +188,7 @@ public partial class HelpWindow : Window
             "Auth — Auto (use a captured token, the default), None, Bearer token, or Basic (username / password). The helper builds the Authorization header for you.",
             "Capture — save a value from the response into a {{variable}} for later requests (see Automatic tokens).",
             "Tests — assert on the response so a suite can pass/fail (see Testing responses).",
-            "Transport — how the request reaches the endpoint: proxy, redirects, decompression, and HTTP version (below)."),
+            "Transport — how the request reaches the endpoint: proxy, redirects, decompression, HTTP version, and retries (below)."),
         Sub("THE TRANSPORT TAB"),
         P("Transport settings belong to the request and are saved with it. Proxy: use the machine's " +
           "configured proxy (the default), ignore it altogether, or give an explicit proxy URL with a " +
@@ -202,6 +202,24 @@ public partial class HelpWindow : Window
           "presented to a host you didn't choose. The Diagnostics view names the proxy that was used — " +
           "and remember that behind any proxy the TLS version, cipher, and “client certificate " +
           "presented” are blank, so turning the proxy off is also how you get those back."),
+        Sub("RETRIES"),
+        P("The Retries group on the same tab handles an endpoint that fails intermittently. Set a " +
+          "count (0, the default, means no retries), the statuses that earn one (429, 502, 503, and " +
+          "504 to begin with), and the first delay in milliseconds. The delay doubles on each further " +
+          "attempt with a little jitter, capped at 30 seconds — and if the server sends a Retry-After " +
+          "header, that wins, because a server that says when to come back knows better than any " +
+          "guess. “Retry connection failures and timeouts” (on) also retries a request that never " +
+          "reached the server: a refused or reset connection, a name-resolution failure, a proxy " +
+          "failure, or a timeout."),
+        P("Only GET, HEAD, OPTIONS, PUT, and DELETE are retried unless you tick “Also retry POST and " +
+          "PATCH” — re-sending a POST nobody confirmed can charge a card twice, so opting in is " +
+          "explicit. A refused or untrusted certificate is never retried whatever you set: it would " +
+          "only fail slower. Retry settings are saved with the request, and the response's metadata " +
+          "reports how many attempts it took when it took more than one."),
+        NoteBox("Headless, the same switches are --retry <n>, --retry-on <codes>, --retry-delay <ms>, " +
+                "--retry-unsafe, and --no-retry-transport on certapi send, run, and fuzz. On run, a " +
+                "flag overrides only what it names, so a saved request keeps its own retry settings " +
+                "otherwise."),
         Sub("WORKING IN TABS"),
         Bullets(
             "Keep several requests open at once — each tab has its own website, certificate, and response.",
@@ -236,7 +254,7 @@ public partial class HelpWindow : Window
           "certificate is what let the connection through."));
 
     private UIElement Collections() => Section("Collections & history",
-        P("The sidebar has two modes, switched from HISTORY / COLLECTIONS at the top."),
+        P("The sidebar has three modes, switched from HISTORY / COLLECTIONS / CHAINS at the top."),
         Sub("COLLECTIONS"),
         Bullets(
             "“Save current request…” stores the active request under a name.",
@@ -248,6 +266,21 @@ public partial class HelpWindow : Window
           "defaults: endpoints opened from it inherit that website and certificate when they don't " +
           "carry their own. The first successful send from a collection remembers the pair " +
           "automatically, so clicking through an imported API just works."),
+        Sub("CHAINS"),
+        P("CHAINS is the sidebar's answer to the “log in, then call the API” pattern: a chain is " +
+          "saved requests in a stated order, run as one unit. “+ New chain…” creates one; “Edit " +
+          "steps…” picks the requests, reorders or removes them, and sets each step's “stop the chain " +
+          "if this step fails” (on by default) and the environment the chain's captures are written " +
+          "into. Rename and Delete manage the list."),
+        P("A chain runs the same way a suite does — variables resolved, assertions evaluated, capture " +
+          "rules applied, known-good recorded per step — so a token captured by step one is available " +
+          "to step two as a {{variable}}. Each step reports PASS or FAIL; when a failing step is set " +
+          "to stop the chain, the steps that never ran are listed as SKIP rather than quietly " +
+          "disappearing. Chains are included in an exported workspace."),
+        NoteBox("Chains are created here and run from the command line: certapi run --chain \"<name>\" " +
+                "runs one and exits non-zero if any step failed. “Copy run command” puts that exact " +
+                "line on your clipboard. The app builds and saves chains; this release does not run " +
+                "them in the window."),
         Sub("HISTORY"),
         P("History lists your recent requests, labelled by path with the host beneath. Click one to reload the entire request — website, certificate, headers, auth, timeout, and body — and the response it returned. The app also remembers your window, last certificate, and settings between runs."));
 
@@ -282,7 +315,28 @@ public partial class HelpWindow : Window
         NoteBox("Run a suite headless with certapi run <collection>; failed assertions are printed on " +
                 "stderr and included in --json output, and the exit code is non-zero if any request fails. " +
                 "Add --data <file.csv|.json> to repeat the request(s) once per row, each row's columns " +
-                "filling {{variables}} — table-testing an endpoint across many inputs."));
+                "filling {{variables}} — table-testing an endpoint across many inputs."),
+        Sub("RESPONSE DIFFING"),
+        P("An assertion checks what you thought to check. The Diff view answers the other question: " +
+          "did anything change at all? It compares the response you just got against a baseline and " +
+          "lists what differs — the status, each header, and each value in the body."),
+        P("The baseline is the saved request's own known-good response (the last 2xx it returned, " +
+          "recorded for you and capped at 1 MiB), or an HTTP Archive (.har) file you choose with " +
+          "“Compare with HAR…” — “Clear” goes back to the known-good one. When both sides are JSON " +
+          "the comparison is structural: each changed path is named (data.items[0].id) as added, " +
+          "removed, changed, or type-changed, with arrays compared by index. A body that isn't JSON " +
+          "falls back to a one-line summary of the lines and bytes on each side, and a binary body " +
+          "reports size and equality only — it doesn't pretend to diff a PDF."),
+        P("Headers that change on every response are ignored by default, or a real difference would " +
+          "drown in them: Date, Set-Cookie, ETag, Age, X-Request-Id, X-Correlation-Id, and " +
+          "Server-Timing."),
+        NoteBox("Headless: certapi send <url> --diff <baseline> compares against a .har file, a .json " +
+                "response file (the envelope --json writes, or a saved snapshot), or the word " +
+                "known-good; --diff-fail turns any difference into exit 1, the continuous integration " +
+                "form. --diff-ignore <path> and --diff-ignore-header <name> are repeatable, and a named " +
+                "header is added to the volatile defaults rather than replacing them. certapi run " +
+                "--diff-har session.har replays a captured archive and passes an entry only when its " +
+                "response is identical to the one recorded — a captured session as a regression test."));
 
     private UIElement Streaming() => Section("Live streaming",
         P("The Stream button on the request line opens a live console for connection-oriented endpoints — WebSockets and Server-Sent Events — reusing the client certificate you've selected and the Ignore-server-certificate-errors toggle."),
@@ -391,6 +445,7 @@ public partial class HelpWindow : Window
             "certapi send <url> sends a one-off request; pick a client certificate with --cert <thumbprint or subject> (or --cert-file for a .pfx/.pem). The body goes to stdout, diagnostics to stderr. Upload files as multipart with -F \"field=value\" -F \"file=@path\".",
             "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
+            "certapi bench <url or saved request> measures one endpoint under load — -n <count> requests at -c <concurrency> (100 and 10 by default), or --duration <seconds> for a wall-clock run, with --warmup <seconds> discarded first. It reports how many succeeded, the rate, and the min/p50/p90/p99/max latencies (--json for a machine-readable envelope). See the note below about what those latencies include.",
             "send, run, and fuzz share the transport flags. --proxy <url> routes through a proxy you name (--proxy-user user:pass when it wants credentials); --no-proxy ignores the machine's configured proxy — which is also how you get the TLS version, cipher, and “certificate presented” back, since none of the handshake is visible through a proxy.",
             "--no-redirect stops at the 3xx instead of following it, --max-redirs <n> changes the limit (20 by default), and --show-redirects prints every hop — flagging a hop that crosses to another origin, where the Authorization header is dropped and your client certificate would go to a host you didn't choose.",
             "--no-decompress relays the response bytes exactly as they arrived instead of decoding them, and --http1.1 / --http2 pin the HTTP version instead of negotiating it.",
@@ -404,6 +459,23 @@ public partial class HelpWindow : Window
             "certapi mcp runs a Model Context Protocol server so an AI agent can make mTLS calls with a certificate you pin at launch, bounded by a host allowlist — send_request, list_certificates, list_saved, run_saved, and self_test tools over stdio.",
             "certapi import / export move cURL commands, OpenAPI documents, and whole workspaces in and out.",
             "Exit codes are script-friendly: 0 success, 1 failure, 2 usage error, 3 data error. Run certapi help <command> for all options."),
+        Sub("BENCHING AN ENDPOINT"),
+        P("certapi bench sends the same request over and over down the same client-certificate path " +
+          "the rest of the tool uses, so what it measures is what a real send does. Percentiles come " +
+          "from every retained latency rather than an approximation, a bench never writes anything (no " +
+          "known-good markers, no captured tokens, no state file), and it exits 0 whenever it " +
+          "measured anything, however bad the failure rate — it reports numbers rather than passing " +
+          "judgement. Exit 1 means no request got a response at all, where there is nothing to " +
+          "report but that the endpoint could not be reached."),
+        NoteBox("What the latencies include: every request opens its own connection, because this " +
+                "client builds a fresh handler per send in order to capture that request's own " +
+                "handshake diagnostics. There is no connection pooling to hide the cost, so each " +
+                "measured request pays its own TCP connect and TLS handshake. Read the figures as " +
+                "“how long one request to this endpoint takes, from cold”, not “how fast a warm client " +
+                "can stream requests at it”. Retries are also forced off during a bench, because a " +
+                "retry turns a failure into a slow success and hides the failure rate the bench exists " +
+                "to measure — --bench-retries measures it anyway. There is no window for the bench: it " +
+                "is a command-line concern."),
         Sub("THE GATEWAY, FROM A BROWSER"),
         P("One certapi serve can front several upstreams: --upstream /api=https://api.internal mounts " +
           "a host at a path prefix and repeats as often as you like, so GET /api/orders reaches " +

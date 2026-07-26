@@ -39,6 +39,7 @@ public static class CliApp
           token             Fetch an OAuth 2.0 access token (and optionally save it)
           run <path>        Run saved requests from your collections (or --all)
           fuzz <base-url>   Discover endpoints from a wordlist (which ones exist?)
+          bench <url>       Measure an endpoint's latency under load (how fast is it?)
           sse <url>         Stream Server-Sent Events (text/event-stream)
           ws <url>          Open a WebSocket, send messages, print what arrives
           certs             List client certificates
@@ -63,6 +64,7 @@ public static class CliApp
               # a token in the response (access_token / id_token / …) is captured
               # automatically and reused for later requests to the same host
           certapi run smoke-suite --env Staging
+          certapi bench https://api.example.com/health --cert "CN=My Client" -n 500 -c 20
           certapi selftest
           certapi send https://api.example.com/x --debug --log-file certapi.log
 
@@ -136,6 +138,7 @@ public static class CliApp
                 "run" => Commands.RunCommand.Run(new Args(rest), stdout, err, services),
                 "token" => Commands.TokenCommand.Run(new Args(rest), stdout, err, services),
                 "fuzz" => Commands.FuzzCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
+                "bench" => Commands.BenchCommand.Run(new Args(rest), stdout, err, services),
                 "selftest" => Commands.SelfTestCommand.Run(new Args(rest), stdout, err),
                 "mock" => Commands.MockCommand.Run(new Args(rest), stdout, err, services),
                 "import" => Commands.ImportCommand.Run(new Args(rest), stdout, err, services),
@@ -168,6 +171,7 @@ public static class CliApp
             "run" => Commands.RunCommand.Help,
             "token" => Commands.TokenCommand.Help,
             "fuzz" => Commands.FuzzCommand.Help,
+            "bench" => Commands.BenchCommand.Help,
             "sse" => Commands.SseCommand.Help,
             "ws" => Commands.WsCommand.Help,
             "selftest" => Commands.SelfTestCommand.Help,

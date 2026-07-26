@@ -57,6 +57,36 @@ automatic tokens), and the rest of the collection uses it. In a `certapi run`, a
 early request is reused by the later ones — add `--cookies` to also carry a `Set-Cookie` session
 across the run.
 
+## Request chains (the explicit form)
+
+A suite relies on the order requests happen to sit in. A **chain** says the order out loud: it is a
+named, saved list of steps, each naming a saved request, run as one unit. That makes "log in, then call
+the API" a thing you keep rather than a convention you remember.
+
+Build one in the app: switch the sidebar to **CHAINS** (beside HISTORY and COLLECTIONS), then
+**+ New chain…** and **Edit steps…** to pick the saved requests in order, reorder or remove them, and
+set each step's *stop the chain if this step fails* (on by default). A chain can also name the
+environment its captures are written into — it is created on first use.
+
+Run it from the command line:
+
+```powershell
+# step 1 logs in and captures the token; step 2 uses it as {{token}}
+certapi run --chain "login then browse"
+```
+
+A chain runs exactly the way a suite does — variables resolved, the request sent, assertions
+evaluated, capture rules applied, variables rebuilt — so a value captured by one step is available to
+the next as a `{{variable}}`, and known-good results are recorded per step. Each step reports PASS or
+FAIL, and any failed step exits 1. When a failing step is set to stop the chain, the steps that never
+ran are reported as **SKIP** rather than quietly disappearing. An explicit `--env` wins over the
+environment the chain names.
+
+Chains are **created in the app and run with `certapi run --chain`** — the sidebar's **Copy run
+command** button puts the exact line on your clipboard. This release does not run them inside the
+window. They are included in an exported workspace, and merged or replaced on import like everything
+else. See the [CLI Reference](21-CLI-Reference.md#run) for the flag's full rules.
+
 ## Session cookies
 
 Separately from tokens, the app keeps a **cookie jar** like a browser: a `Set-Cookie` in any response

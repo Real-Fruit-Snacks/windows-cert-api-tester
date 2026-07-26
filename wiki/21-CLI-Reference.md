@@ -15,6 +15,7 @@ Usage: certapi <command> [options]
 | [`token`](#token) | Fetch an OAuth 2.0 access token (and optionally save it) |
 | [`run <path>`](#run) | Run saved requests from your collections (or `--all`) |
 | [`fuzz <base-url>`](#fuzz) | Discover endpoints from a wordlist |
+| [`bench <url>`](#bench) | Measure an endpoint's latency under load |
 | [`sse <url>`](#sse) | Stream Server-Sent Events (SSE) |
 | [`ws <url>`](#ws) | Open a WebSocket, send messages, print what arrives |
 | [`certs`](#certs) | List client certificates |
@@ -97,6 +98,45 @@ body cleanly.
   test without a saved workspace — the same checks the GUI's Tests tab and `certapi run` apply to
   saved requests.
 
+**Diff**
+
+- `--diff <baseline>` — compare the response against a baseline and print what changed. The baseline
+  is an HTTP Archive (HAR) `.har` file, a `.json` response file (either the envelope `--json` writes
+  or a saved response snapshot), or the literal `known-good` — the stored response of the saved
+  request matching this method and URL.
+- `--diff-fail` — exit 1 when anything differs (the CI form). Without it the diff is printed and the
+  exit code is unchanged.
+- `--diff-ignore <path>` — a JSON path to overlook, e.g. `data.timestamp` (repeatable; a trailing `*`
+  on a segment matches by prefix, and naming a container suppresses everything beneath it)
+- `--diff-ignore-header <name>` — a header to overlook **on top of** the volatile defaults (`Date`,
+  `Set-Cookie`, `ETag`, `Age`, `X-Request-Id`, `X-Correlation-Id`, `Server-Timing`), not instead of
+  them (repeatable)
+
+Both bodies JSON gives a structural comparison that names each changed path (`data.items[0].id`) as
+added, removed, changed, or type-changed, arrays compared by index; a non-JSON body falls back to a
+one-line summary of lines and bytes; a binary body reports size and equality only. The diff goes to
+stderr even under `-q`, and `--json` gains a `diff` object. A missing or unreadable baseline is exit
+3, as is `known-good` with no recorded snapshot (it names the request to send once). The diff
+modifiers need `--diff`, and `--diff` can't be combined with `--all-ips` (exit 2 for either).
+
+**Retries** (shared with [`run`](#run) and [`fuzz`](#fuzz))
+
+- `--retry <n>` — retry a failed request up to n times (default `0`, off). A negative count is exit 2.
+- `--retry-on <codes>` — comma-separated statuses that earn a retry (default `429,502,503,504`). A
+  token that isn't a status code between 100 and 599 is exit 2 rather than a silently dropped typo.
+- `--retry-delay <ms>` — the first backoff delay (default `500`). It doubles on each further attempt
+  with ±10% jitter, capped at 30 seconds; a `Retry-After` header (delta seconds or an HTTP-date)
+  overrides the computed wait.
+- `--retry-unsafe` — also retry POST and PATCH. Only GET, HEAD, OPTIONS, PUT, and DELETE are retried
+  by default, because re-sending a POST nobody confirmed can charge a card twice.
+- `--no-retry-transport` — don't retry a request that never reached the server. By default a refused
+  or reset connection, a name-resolution failure, a proxy failure, and a timeout each earn a retry; a
+  refused or untrusted certificate never does (it would only fail slower), and neither does a
+  redirect loop.
+
+Cancellation is honored during the backoff wait. The stderr metadata line reports `N attempts` when
+more than one was needed, and `--json` carries `attempts` when it is above 1.
+
 **Output**
 
 - `-o, --output <file>` — write the body to a file
@@ -129,9 +169,21 @@ The interactive **authorization-code** grant is app-only (see [Authentication](0
 
 ## run
 
-`certapi run <Collection[/Folder][/Request]> [options]` or `certapi run --all [options]`.
+`certapi run <Collection[/Folder][/Request]> [options]`, `certapi run --all [options]`, or
+`certapi run --chain <name> [options]`.
 
 - `--all` — run every saved request in the workspace
+- `--chain <name>` — run a saved chain: its requests, in the order the chain names them, as one unit,
+  so a token captured by one step is usable by the next through its `{{variable}}` (see
+  [Capturing Values](12-Capturing-Values.md)). Steps report PASS / FAIL; a failing step stops the
+  chain unless it is marked to carry on, and the steps that never ran are listed as SKIP. Any failed
+  step exits 1. Captures write into the environment the chain names (created on first use); an
+  explicit `--env` wins over it.
+- `--diff-har <file.har>` — replay a HAR archive and compare each response against the one it
+  recorded, which turns a captured session into a regression test. An entry passes only when its
+  diff is identical (the status is part of the diff), and any difference exits 1 — there is no
+  `--diff-fail` here, because diffing the capture is the whole point of the flag.
+  `--diff-ignore <path>` and `--diff-ignore-header <name>` work as they do on [`send`](#send).
 - `--workspace <file>` — collections from a workspace file (default: live GUI (graphical user
   interface) state)
 - `--env <name>` / `--var k=v` — variables
@@ -148,6 +200,12 @@ The interactive **authorization-code** grant is app-only (see [Authentication](0
 
 A request passes when its assertions pass, or on any 2xx if it has none. Exit 1 if any request fails.
 
+The [retry flags](#send) apply here too; a saved request keeps its own retry settings unless a flag
+overrides them, and a flag overrides only what it names. `--chain` names its own requests, so it can't
+be combined with `--all`, a positional, `--diff-har`, or `--data` (exit 2). An unknown chain is exit 3
+and lists the chains that do exist; a step whose saved request has been deleted is exit 3 naming the
+step, before anything is sent.
+
 ---
 
 ## fuzz
@@ -160,6 +218,57 @@ A request passes when its assertions pass, or on any 2xx if it has none. Exit 1 
 - `--match <codes>` / `--hide <codes>` / `--all` — control the view
 - `-H`, `--bearer`, `--env`/`--var`, `--no-auto-token`, cert flags, `--insecure`
 - `--save-collection <name>`, `-o <file>`, `--json`, `-q`
+
+---
+
+## bench
+
+`certapi bench <url> [options]` or `certapi bench <Collection[/Folder]/Request> [options]` — send one
+request over and over and report how long it took. It uses the same client-certificate send path as
+`send`, so what it measures is what the rest of the tool does. A saved-request positional must name
+exactly one request.
+
+**Load**
+
+- `-n, --count <n>` — total requests to send (default 100)
+- `-c, --concurrency <n>` — parallel workers (default 10; never more than `--count`)
+- `--duration <seconds>` — run for a wall-clock period instead of a fixed count; `-n` is then unused,
+  and the two can't be combined
+- `--warmup <seconds>` — send for this long first and discard every result. Warm-up requests are
+  **extra** — they don't come out of `--count`.
+- `--bench-retries` — let the [retry flags](#send) apply during the bench (off by default)
+
+**Request, TLS, and variables**
+
+- `-X, --method <m>`, `-H, --header "k: v"`, `-d, --data <body>`, `--content-type <ct>`,
+  `--bearer <token>`, `--timeout <seconds>`
+- cert flags + `--insecure`; `--env <name>` / `--var k=v` / `--workspace <file>`
+
+On a saved request these override or add to what it already carries; everything else about it (its own
+auth, headers, body, and transport settings) is used as saved. A multipart request can't be benched.
+
+**Output**
+
+- `--json` — a JSON envelope instead of the summary table
+
+The report gives requests sent / succeeded / failed, elapsed, requests per second, the min / p50 / p90
+/ p99 / max latencies, and the status and error counts. Percentiles come from the full retained
+latency array, not an approximation.
+
+| Behaviour | Why |
+|---|---|
+| Retries are forced off, even when the request or `--retry` asks for them | A retry turns a failure into a slow success and hides the failure rate a bench exists to measure. `--bench-retries` measures it anyway. |
+| Nothing is written — no known-good markers, no captured tokens, no state file | A measurement isn't an observation worth keeping. The workspace is read for `{{variables}}`, saved requests, and pinned certificates only, and captured session tokens are not attached. |
+| **Every request opens its own connection**, so the latencies include the TCP connect and the TLS handshake | The client builds a fresh handler per send in order to capture that request's own handshake diagnostics, so there is no pooling to hide the cost. Read the figures as "how long one request to this endpoint takes, from cold", not "how fast a warm client can stream requests at it". The command prints this as a note under every summary and carries it in the `--json` envelope. |
+
+Exit codes: `0` whenever the bench measured anything — it reports numbers rather than passing
+judgement, so an endpoint that answers 503 or 404 every time has still been measured and exits 0 ·
+`1` only when no request got a response at all (every attempt failed at the transport level, so
+there is nothing to report but that the endpoint could not be reached) · `2` usage (`-n` with
+`--duration`, a concurrency of zero or less, or a concurrency greater than the count) · `3` data
+error.
+
+There is no window for the bench: it is a command-line concern.
 
 ---
 
