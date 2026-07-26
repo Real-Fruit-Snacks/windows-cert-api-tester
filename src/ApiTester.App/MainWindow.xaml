@@ -191,6 +191,9 @@
                             <MenuItem Header="Import OpenAPI file…" Click="ImportOpenApi_Click"/>
                             <MenuItem Header="Import workspace…" Click="ImportWorkspace_Click"/>
                             <MenuItem Header="Export workspace…" Click="ExportWorkspace_Click"/>
+                            <MenuItem Header="Import HAR file…" Click="ImportHar_Click"/>
+                            <MenuItem Header="Export Network trace as HAR…" Click="ExportNetworkHar_Click"/>
+                            <MenuItem Header="Trusted certificates…" Click="ManageTrustedCerts_Click"/>
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>

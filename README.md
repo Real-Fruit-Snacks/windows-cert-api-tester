@@ -68,6 +68,8 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **A response viewer for unknown formats** — reads the `Content-Type` but doesn't trust it blindly: pretty-prints JSON and XML with **syntax highlighting**, shows HTML/text, and hex-dumps binary. When the content type is missing or misleading it *sniffs* the body (JSON → XML → text → binary). Pretty / Raw / Headers / Diagnostics views are always available.
 - **Connection diagnostics** — see the negotiated **TLS version and cipher**, whether your client certificate was **actually presented** to the server, and the server's certificate (subject, issuer, thumbprint, expiry, and chain).
 - **Network trace** — a **Network** tab, like a browser's network panel: every HTTP call is logged — the request you sent *and* every resource the Rendered view fetches — with method, status, type, size, timing, and a marker when it used your client certificate. Filter by text, status class (2xx–5xx, errors), or cert-only; click a row for a resizable details pane with its headers; right-click to copy the URL or a matching curl command.
+- **HTTP Archive (HAR) capture & replay** — `--har trace.har` on `certapi send`, `run`, and `fuzz` records every request (redirect hops included) into a well-formed HAR file, with secret values redacted by default (`--har-include-secrets` to keep them). `certapi import har session.har` turns a captured archive into a collection, and `certapi run session.har` replays its entries as a suite — with your client certificate attached, which is the one thing a browser's own HAR export can never do. In the app, Import ▾ → **Export Network trace as HAR…** and **HAR file…** do the same capture and replay.
+- **Per-site server-certificate trust** — pin one server certificate's thumbprint to one host with `certapi trust add <host> --thumbprint <t>` (or `--from-url <https-url>` to capture and pin it in one step) — narrower than the blanket *ignore server cert errors* toggle. `certapi trust list` / `trust remove <host>` manage the pins, and `send`/`run` honor them automatically. In the app, a **Trust & retry** action appears on a certificate-untrusted response, alongside a Trusted-certificates manager (Import ▾ → **Trusted certificates…**).
 - **Pop-out response views** — open a single response view *or the whole response panel (tabs and all)* in its own window: detach the panel to give the request editor the full main window, or pop just the Network trace or a Rendered page beside your work. Everything stays live — the trace keeps streaming, a Rendered page stays interactive — and closing a popped-out window puts its content back.
 - **Saved websites** — save a base URL (e.g. `https://internal.corp`) and the URL box becomes just the path after it, so you can fire off `/api/thing`, `/api/other` without retyping the host.
 - **Request history** — a sidebar of recent requests, labelled by path (with the host beneath). Click one to reload the *entire* request — website, certificate, headers, auth, timeout, and body — **and** the response it returned. The app also remembers your window, last certificate, and settings between runs.
@@ -214,6 +216,15 @@ certapi export workspace -o team-setup.json
 # run a local test server and fire requests at it (try --tls or --mtls too)
 certapi mock --port 8770
 certapi send http://127.0.0.1:8770/anything -X POST -d '{"hi":1}'
+
+# capture a session as a HAR file, then replay it later through mutual TLS
+certapi send https://api.internal/health --cert "CN=matt" --har trace.har
+certapi import har .\session.har --into imported
+certapi run session.har --cert "CN=matt"
+
+# pin the server certificate a specific host must present, instead of ignoring errors wholesale
+certapi trust add internal.corp --from-url https://internal.corp
+certapi trust list
 ```
 
 Saved requests, collections, and environments come from the app's own state automatically, or from any exported workspace file via `--workspace` — so it works on machines that have never opened the app. Run `certapi help <command>` for every option. Response bodies go to stdout and diagnostics to stderr, with script-friendly exit codes (0 success · 1 failure · 2 usage · 3 data).

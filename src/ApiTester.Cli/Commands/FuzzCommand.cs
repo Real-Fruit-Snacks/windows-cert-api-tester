@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Reflection;
 using System.Text.Json;
 using ApiTester.Core;
 
@@ -58,6 +59,10 @@ public static class FuzzCommand
           --save-collection <name> Save discovered endpoints as requests in a collection
           --workspace <file>       Use a workspace file instead of the live GUI state
           -q, --quiet              No progress counter on stderr
+          --har <file>             Capture every probe as a HAR file, written once when the run
+                                   finishes
+          --har-include-secrets    Don't redact Authorization/Proxy-Authorization/Cookie/
+                                   Set-Cookie values in the captured HAR (redacted by default)
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -80,6 +85,9 @@ public static class FuzzCommand
 
           # Machine-readable, only interesting results, into a file
           certapi fuzz https://api.example.com -w .\endpoints.txt --match 200,401,403 --json -o hits.json
+
+          # Capture every probe as a HAR file for later replay or review
+          certapi fuzz https://api.example.com -w .\endpoints.txt --har probes.har
 
         Exit 0 on completion, 1 if every probe failed to connect, 2 usage, 3 data error.
         """;
@@ -106,6 +114,8 @@ public static class FuzzCommand
         string? saveCollection = args.Value("--save-collection");
         string? workspace = args.Value("--workspace");
         bool quiet = args.Flag("-q", "--quiet");
+        string? harPath = args.Value("--har");
+        bool harIncludeSecrets = args.Flag("--har-include-secrets");
         // --show-redirects is accepted and has nothing to report: probes never follow redirects.
         var transportOverrides = TransportFlags.Parse(args, out _);
         // Resolve the certificate (store or file) before Positionals() rejects its options.
@@ -119,6 +129,13 @@ public static class FuzzCommand
         // creating it (a discovery write starts from an empty workspace).
         if (workspace is not null && saveCollection is null && !File.Exists(workspace))
             throw new CliDataException($"Workspace file not found: {workspace}");
+
+        // --har's directory must exist before the first probe goes out, not merely before the write.
+        if (harPath is not null)
+        {
+            var harDir = Path.GetDirectoryName(Path.GetFullPath(harPath));
+            if (!Directory.Exists(harDir)) throw new CliUsageException($"--har directory does not exist: {harDir}");
+        }
 
         int timeout = ParsePositive(timeoutRaw, 100, "--timeout");
         int concurrency = ParsePositive(concurrencyRaw, 8, "--concurrency");
@@ -175,6 +192,9 @@ public static class FuzzCommand
         // The send delegate owns transport: per-request auto-token attach + capture, the cert,
         // insecure, and the timeout.
         var captureLock = new object();
+        // A pinned server-certificate thumbprint lets a probe through even without --insecure;
+        // --insecure (above) already trusts anything and is untouched.
+        var harEntries = harPath is not null ? new List<HarEntry>() : null;
         async Task<ApiResponse> Send(ApiRequest request, CancellationToken ct)
         {
             var reqHeaders = request.Headers.ToList();
@@ -182,9 +202,13 @@ public static class FuzzCommand
             var probe = request with { Headers = reqHeaders, Timeout = TimeSpan.FromSeconds(timeout) };
             var response = await services.Client.SendAsync(probe, cert,
                 transport: transport,
+                trustServerCertificate: c => c is not null && TrustService.IsTrusted(state, TokenService.HostOf(request.Url), c.Thumbprint!),
                 cancellationToken: ct);
             if (!noAutoToken && response.Error is null)
                 lock (captureLock) TokenService.Capture(state, request.Url, response.Body, response.ContentType, response.Headers);
+            // Probes never follow redirects, so one entry per probe (no redirect hops to unfold).
+            if (harEntries is not null)
+                lock (captureLock) harEntries.Add(HarWriter.FromExchange(probe, response, harIncludeSecrets));
             return response;
         }
 
@@ -225,6 +249,12 @@ public static class FuzzCommand
             else
                 try { state.SaveTo(workspace ?? services.LiveStatePath); }
                 catch (Exception ex) { stderr.WriteLine($"warning: could not save: {ex.Message}"); }
+        }
+
+        if (harPath is not null && harEntries is not null)
+        {
+            File.WriteAllText(harPath, HarWriter.Write(harEntries, HarCreatorVersion()));
+            if (!quiet) stderr.WriteLine($"wrote HAR to {harPath} ({harEntries.Count} entr{(harEntries.Count == 1 ? "y" : "ies")})");
         }
 
         // ---- output ----
@@ -334,5 +364,16 @@ public static class FuzzCommand
         if (raw is null) return fallback;
         if (!int.TryParse(raw, out var n) || n < 0) throw new CliUsageException($"{opt} expects a non-negative number, got '{raw}'.");
         return n;
+    }
+
+    /// <summary>The creator version written into a captured HAR document — the same idiom as
+    /// <c>certapi --version</c>: the assembly's informational version with any <c>+build</c>
+    /// metadata stripped.</summary>
+    private static string HarCreatorVersion()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+        int plus = version.IndexOf('+');
+        return plus > 0 ? version[..plus] : version;
     }
 }

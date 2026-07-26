@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using ApiTester.Core;
@@ -11,11 +12,18 @@ public static class RunCommand
     public const string Help = """
         Usage: certapi run <Collection[/Folder][/Request]> [options]
                certapi run --all [options]
+               certapi run <file.har> [--cert <thumb|subject> | --cert-file <path>] [options]
 
         Runs saved requests. A folder or collection path runs everything beneath it as a
         suite; a request path runs that one request. A request passes when its assertions all
         pass (Status / Time / Header / Body / Body-text checks set on it in the app); a request
         with no assertions passes on any 2xx response. Failed assertions are listed on stderr.
+
+        A <file.har> positional (captured in a browser, or by certapi send/run --har) replays
+        its entries in file order as an ordered suite instead — WITH the client certificate you
+        name attached, so a session captured in Chrome DevTools replays authenticated. A HAR
+        entry carries no assertions, so it passes on any 2xx response. A HAR run never writes to
+        saved state (it isn't a saved collection), matching --workspace semantics.
 
         Options:
           --all                   Run every saved request in the workspace
@@ -30,6 +38,17 @@ public static class RunCommand
           --cookies               Keep a cookie jar for the run, so a login's Set-Cookie is sent
                                   on later requests (cookie-based sessions)
           --json                  JSON results instead of the table
+          --har <file>            Capture the whole suite (every request, and every redirect hop)
+                                  as one HAR file, written once when the run finishes
+          --har-include-secrets   Don't redact Authorization/Proxy-Authorization/Cookie/
+                                  Set-Cookie values in the captured HAR (redacted by default)
+
+        TLS / certificates (for a <file.har> replay only — a saved request carries its own):
+          --cert <thumb|subject>  Client certificate from the Windows store
+          --store <location>      CurrentUser (default); LocalMachine searches both stores
+          --cert-file <path>      Client certificate from a file (.pfx/.p12 or .pem/.crt) instead
+          --cert-password <pw>    Password for a .pfx/.p12 certificate file
+          --key-file <path>       Private-key file for a PEM cert whose key is separate
 
 
         """ + TransportFlags.Help + """
@@ -61,6 +80,12 @@ public static class RunCommand
           # Investigate a flaky suite with full diagnostics
           certapi run api --debug --log-file suite-debug.log
 
+          # Capture the whole suite as a HAR file for later replay or review
+          certapi run --all --har suite.har
+
+          # Replay a browser session's HAR through mutual TLS
+          certapi run session.har --cert "CN=Me"
+
         Exit codes: 0 all passed · 1 any failure · 2 usage · 3 data error.
         """;
 
@@ -78,10 +103,33 @@ public static class RunCommand
         string? dataFile = args.Value("--data");
         bool useCookies = args.Flag("--cookies");
         var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
+        string store = args.Value("--store") ?? "CurrentUser";
+        string? harPath = args.Value("--har");
+        bool harIncludeSecrets = args.Flag("--har-include-secrets");
+        // Resolved unconditionally so its options are consumed before Positionals() rejects
+        // anything option-shaped left over; only the <file.har> replay path below uses it — a
+        // normal collection run has no --cert of its own (a saved request carries its own).
+        var cert = CliCert.Resolve(args, store, services, stderr);
+
         var positionals = args.Positionals();
         if (positionals.Count > 1 || (positionals.Count == 0 && !all)) throw new CliUsageException(Help);
+        // --har's directory must exist before the first request, not merely before the write — a
+        // typo shouldn't surface after requests already went out over the wire.
+        if (harPath is not null)
+        {
+            var harDir = Path.GetDirectoryName(Path.GetFullPath(harPath));
+            if (!Directory.Exists(harDir)) throw new CliUsageException($"--har directory does not exist: {harDir}");
+        }
 
         var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+
+        // A <file.har> positional (versus a live collection/folder name) replays its entries as an
+        // ordered suite, with the selected client certificate attached — never falls through to the
+        // saved-collection path below.
+        if (positionals.Count == 1 && positionals[0].EndsWith(".har", StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(positionals[0]))
+            return RunHar(positionals[0], cert, state, transportOverrides, showRedirects, json, stdout, stderr, services);
+
         var targets = CliWorkspace.ResolveTargets(state, positionals.FirstOrDefault(), all);
 
         // Data-driven runs: one iteration per dataset row, its columns overriding the variables.
@@ -119,6 +167,9 @@ public static class RunCommand
         var jar = useCookies ? new System.Net.CookieContainer() : null;
         bool capturedAny = false;
         bool tokensCaptured = false;
+        // A CI job records exactly what it exercised: every request performed appends a HarEntry
+        // (including every redirect hop), written once at the end of the run.
+        var harEntries = harPath is not null ? new List<HarEntry>() : null;
         var results = new List<(string Path, RequestModel Model, ApiResponse Response)>();
         var clock = Stopwatch.StartNew();
         int rowIndex = 0;
@@ -131,7 +182,7 @@ public static class RunCommand
             {
                 string id = label + path;
                 var (response, url) = Execute(id, node.Request!, state, noAutoToken, vars, strictVars, jar,
-                                              transportOverrides, showRedirects, stderr, services);
+                                              transportOverrides, showRedirects, stderr, services, harEntries, harIncludeSecrets);
                 results.Add((id, node.Request!, response));
                 if (!noAutoToken && response.Error is null &&
                     TokenService.Capture(state, url, response.Body, response.ContentType, response.Headers) is { } captured)
@@ -168,6 +219,12 @@ public static class RunCommand
         else if ((capturedAny || tokensCaptured) && guiBlocksLiveWrite)
         {
             stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
+        }
+
+        if (harPath is not null && harEntries is not null)
+        {
+            File.WriteAllText(harPath, HarWriter.Write(harEntries, HarCreatorVersion()));
+            stderr.WriteLine($"wrote HAR to {harPath} ({harEntries.Count} entr{(harEntries.Count == 1 ? "y" : "ies")})");
         }
 
         int passed = results.Count(r => Passed(r.Model, r.Response));
@@ -222,7 +279,7 @@ public static class RunCommand
         string path, RequestModel m, AppState state, bool noAutoToken,
         Dictionary<string, string> vars, bool strictVars, System.Net.CookieContainer? cookies,
         TransportOverrides transportOverrides, bool showRedirects,
-        TextWriter stderr, CliServices services)
+        TextWriter stderr, CliServices services, List<HarEntry>? harEntries, bool harIncludeSecrets)
     {
         var unresolved = new List<string>();
         string R(string s)
@@ -250,6 +307,7 @@ public static class RunCommand
             ? WindowsAuthOptions.FromCredentials(R(m.AuthUser ?? ""), R(m.AuthSecret ?? ""))
             : null;
         string url = R(m.EffectiveUrl());
+        string host = TokenService.HostOf(url);
         string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
 
         if (!noAutoToken && m.AuthType == "Auto" &&
@@ -299,17 +357,119 @@ public static class RunCommand
         // shared --cookies jar (honors --no-auto-token and the workspace's AutoCookies switch).
         var effectiveJar = cookies ?? new System.Net.CookieContainer();
         if (!noAutoToken) CookieService.SeedContainer(state, url, effectiveJar);
+        // A pinned thumbprint for this host lets the request through even without the request's
+        // own IgnoreServerCert bypass (which trusts anything and is untouched above).
         var response = services.Client.SendAsync(request, cert,
             transport: transport,
+            trustServerCertificate: c => c is not null && TrustService.IsTrusted(state, host, c.Thumbprint!),
             cookies: effectiveJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug($"{path}: " + (response.Error is null
             ? $"{response.StatusCode} · {response.Elapsed.TotalMilliseconds:F0} ms"
             : $"[{response.Error.Kind}] {response.Error.Message}"));
+        if (response.Error is null && response.Connection?.ServerCertificateThumbprint is { } thumb &&
+            TrustService.IsTrusted(state, host, thumb))
+            stderr.WriteLine($"{path}: trusting pinned certificate for {host}");
+        harEntries?.AddRange(HarWriter.FromExchangeWithRedirects(request, response, harIncludeSecrets));
         // Each hop line already starts with two spaces, so the request path prefixes it the way the
         // other per-request notes on stderr do.
         if (showRedirects && response.Redirects.Count > 0)
             foreach (var line in OutputText.RedirectLines(response.Redirects).Split('\n'))
                 stderr.WriteLine($"{path}:{line}");
         return (response, url);
+    }
+
+    /// <summary>Replay a captured HAR's entries, in file order, as an ordered suite — WITH the
+    /// selected client certificate attached, which is the entire point: a session captured in a
+    /// browser replays authenticated. A HAR entry carries no assertions, so it passes on any 2xx
+    /// response. Never writes to saved state (it isn't a saved collection), matching --workspace
+    /// semantics.</summary>
+    private static int RunHar(
+        string path, System.Security.Cryptography.X509Certificates.X509Certificate2? cert, AppState state,
+        TransportOverrides transportOverrides, bool showRedirects, bool json,
+        TextWriter stdout, TextWriter stderr, CliServices services)
+    {
+        Har har;
+        try { har = HarReader.Parse(File.ReadAllText(path)); }
+        catch (HarFormatException ex) { throw new CliDataException(ex.Message); }
+        if (har.Log.Entries.Count == 0) throw new CliDataException("The HAR has no entries.");
+
+        var transport = transportOverrides.ApplyTo(new TransportOptions());
+        if (ApiClient.ValidateTransport(transport, har.Log.Entries[0].Request.Url) is { } transportProblem)
+            throw new CliUsageException(transportProblem);
+
+        var results = new List<(string Label, string Method, string Url, ApiResponse Response)>();
+        var clock = Stopwatch.StartNew();
+        int index = 0;
+        foreach (var entry in har.Log.Entries)
+        {
+            index++;
+            var pr = HarReader.ToParsedRequest(entry);
+            string label = $"entry {index}: {pr.Method} {pr.Url}";
+            var request = new ApiRequest
+            {
+                Method = new HttpMethod(pr.Method),
+                Url = pr.Url,
+                Headers = pr.Headers,
+                Body = pr.Body,
+                ContentType = pr.ContentType
+            };
+            string host = TokenService.HostOf(pr.Url);
+            var response = services.Client.SendAsync(request, cert,
+                transport: transport,
+                trustServerCertificate: c => c is not null && TrustService.IsTrusted(state, host, c.Thumbprint!),
+                cancellationToken: services.Cancel).GetAwaiter().GetResult();
+            results.Add((label, pr.Method, pr.Url, response));
+            if (showRedirects && response.Redirects.Count > 0)
+                foreach (var line in OutputText.RedirectLines(response.Redirects).Split('\n'))
+                    stderr.WriteLine($"{label}:{line}");
+        }
+        clock.Stop();
+
+        int passed = results.Count(r => r.Response.IsSuccess);
+        int failed = results.Count - passed;
+
+        if (json)
+        {
+            stdout.WriteLine(JsonSerializer.Serialize(new
+            {
+                results = results.Select(r => new
+                {
+                    path = r.Label,
+                    method = r.Method,
+                    url = r.Url,
+                    status = r.Response.StatusCode,
+                    elapsedMs = Math.Round(r.Response.Elapsed.TotalMilliseconds),
+                    sizeBytes = r.Response.Body.LongLength,
+                    passed = r.Response.IsSuccess,
+                    error = r.Response.Error?.Message
+                }),
+                summary = new { total = results.Count, passed, failed, elapsedMs = clock.ElapsedMilliseconds }
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else
+        {
+            foreach (var (label, _, _, r) in results)
+            {
+                string verdict = r.IsSuccess ? "PASS" : "FAIL";
+                string status = r.Error is not null ? "ERR" : r.StatusCode?.ToString() ?? "—";
+                string detail = r.Error is not null ? $"  ({r.Error.Message})" : "";
+                stdout.WriteLine(
+                    $"{verdict}  {status,4}  {r.Elapsed.TotalMilliseconds,6:F0} ms  {OutputText.Size(r.Body.LongLength),9}  {label}{detail}");
+            }
+            stdout.WriteLine($"----\n{results.Count} request{(results.Count == 1 ? "" : "s")} · {passed} passed · {failed} failed · {clock.Elapsed.TotalSeconds:F1} s");
+        }
+
+        return failed == 0 ? ExitCodes.Ok : ExitCodes.Failure;
+    }
+
+    /// <summary>The creator version written into a captured HAR document — the same idiom as
+    /// <c>certapi --version</c>: the assembly's informational version with any <c>+build</c>
+    /// metadata stripped.</summary>
+    private static string HarCreatorVersion()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+        int plus = version.IndexOf('+');
+        return plus > 0 ? version[..plus] : version;
     }
 }

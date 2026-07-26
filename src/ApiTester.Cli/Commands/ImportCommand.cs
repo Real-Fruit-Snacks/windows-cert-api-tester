@@ -7,6 +7,7 @@ public static class ImportCommand
     public const string Help = """
         Usage: certapi import curl "<curl command>" [--into <folder>] [--workspace <file>]
                certapi import openapi <file>        [--into <folder>] [--workspace <file>]
+               certapi import har <file>             [--into <folder>] [--workspace <file>]
 
         Adds requests to your collections — the live GUI state by default, or a workspace
         file. --into names a root-level folder (created if needed).
@@ -17,6 +18,7 @@ public static class ImportCommand
           certapi import curl "curl -X POST https://api.example.com/login -d '{}'"
           certapi import openapi .\petstore.json
           certapi import openapi .\petstore.json --workspace .\suite.json
+          certapi import har .\session.har
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
@@ -58,6 +60,19 @@ public static class ImportCommand
                 ParsedCollection pc;
                 try { pc = OpenApiImporter.Parse(File.ReadAllText(positionals[1])); }
                 catch (Exception ex) { throw new CliDataException($"Could not parse '{positionals[1]}': {ex.Message}"); }
+                var node = CollectionNode.FromParsed(pc);
+                add(node);
+                added = CountRequests(node); what = node.Name;
+                break;
+            }
+            case "har":
+            {
+                if (!File.Exists(positionals[1])) throw new CliDataException($"File not found: {positionals[1]}");
+                Har har;
+                try { har = HarReader.Parse(File.ReadAllText(positionals[1])); }
+                catch (HarFormatException ex) { throw new CliDataException(ex.Message); }
+                var pc = new ParsedCollection { Name = Path.GetFileNameWithoutExtension(positionals[1]) };
+                foreach (var entry in har.Log.Entries) pc.Requests.Add(HarReader.ToParsedRequest(entry));
                 var node = CollectionNode.FromParsed(pc);
                 add(node);
                 added = CountRequests(node); what = node.Name;

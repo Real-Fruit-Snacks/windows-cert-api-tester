@@ -62,6 +62,38 @@ public class StreamWindowSmokeTests
     }
 
     [Fact]
+    public void TrustedCertsWindow_loads_with_the_theme()
+    {
+        Exception? error = null;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                var app = Application.Current ?? new Application();
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("pack://application:,,,/ApiTester.App;component/Themes/TerminalWorkbench.xaml")
+                });
+
+                // Seeded with a pin so the populated branch of the list is exercised too, not just
+                // the empty state.
+                var state = new ApiTester.Core.AppState();
+                ApiTester.Core.TrustService.Trust(
+                    state, "internal.corp", "A8448F8E50F06E51750B0AAD31A960B84B04D03B", "CN=internal.corp");
+
+                var win = new ApiTester.App.TrustedCertsWindow(state);
+                win.Close();
+            }
+            catch (Exception ex) { error = ex; }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+
+        Assert.True(error is null, error?.ToString());
+    }
+
+    [Fact]
     public void MockServerWindow_loads_with_the_theme()
     {
         Exception? error = null;

@@ -15,6 +15,7 @@ public class HelpTextTests
         { "export", ExportCommand.Help },
         { "serve", ServeCommand.Help },
         { "mcp", McpCommand.Help },
+        { "trust", TrustCommand.Help },
     };
 
     [Theory]

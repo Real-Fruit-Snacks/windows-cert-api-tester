@@ -46,6 +46,7 @@ public static class CliApp
           mock              Run a local test server to fire requests at (http/tls/mtls)
           import            Import a cURL command or an OpenAPI file into collections
           export            Export collections as OpenAPI, or the whole workspace
+          trust             Manage per-site trusted (pinned) server certificates
           serve <upstream>  Run a local mTLS gateway that forwards to <upstream>
           mcp               Run an MCP server so AI agents can make mTLS calls
           help [command]    Show help (for one command, or this overview)
@@ -139,6 +140,7 @@ public static class CliApp
                 "mock" => Commands.MockCommand.Run(new Args(rest), stdout, err, services),
                 "import" => Commands.ImportCommand.Run(new Args(rest), stdout, err, services),
                 "export" => Commands.ExportCommand.Run(new Args(rest), stdout, err, services),
+                "trust" => Commands.TrustCommand.Run(new Args(rest), stdout, err, services),
                 "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, err, services),
                 _ => throw new CliUsageException($"Unknown command '{g.Remaining[0]}'.\n{Usage}")
             };
@@ -172,6 +174,7 @@ public static class CliApp
             "mock" => Commands.MockCommand.Help,
             "import" => Commands.ImportCommand.Help,
             "export" => Commands.ExportCommand.Help,
+            "trust" => Commands.TrustCommand.Help,
             "serve" => Commands.ServeCommand.Help,
             "mcp" => Commands.McpCommand.Help,
             _ => Usage

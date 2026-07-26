@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
@@ -984,6 +985,80 @@ public partial class MainWindow : Window
     private static int CountRequests(CollectionNode n) =>
         (n.IsFolder ? 0 : 1) + n.Children.Sum(CountRequests);
 
+    private void ImportHar_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import HAR file",
+            Filter = "HAR file (*.har)|*.har|All files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var har = HarReader.Parse(File.ReadAllText(dlg.FileName));
+            var pc = new ParsedCollection { Name = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName) };
+            foreach (var entry in har.Log.Entries) pc.Requests.Add(HarReader.ToParsedRequest(entry));
+            var node = CollectionNode.FromParsed(pc);
+            _collections.Add(node);
+            UpdateCollectionsHint();
+            SetSidebarMode(history: false);
+            StatusText.Text = $"Imported {CountRequests(node)} request(s) from HAR.";
+        }
+        catch (HarFormatException ex)
+        {
+            StatusText.Text = "Couldn't import that HAR: " + ex.Message;
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Couldn't read that file: " + ex.Message;
+        }
+    }
+
+    private void ExportNetworkHar_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = NetworkList.Items.OfType<NetworkEntry>().ToList();
+        if (entries.Count == 0)
+        {
+            StatusText.Text = "No network trace to export — send a request first.";
+            return;
+        }
+        var choice = ChoiceDialog.Show(this, "Export Network trace as HAR",
+            "Include Authorization/Cookie header values? They are redacted by default so the file is safe to share.",
+            "Redact (recommended)", "Include values");
+        if (choice == DialogChoice.Cancel) return;
+        bool includeSecrets = choice == DialogChoice.Secondary;
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = "network-trace.har",
+            Filter = "HAR file (*.har)|*.har|All files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            File.WriteAllText(dlg.FileName, HarNetworkExport.ToHar(entries, includeSecrets, AppVersion()));
+            StatusText.Text = $"Exported {entries.Count} call(s) to {System.IO.Path.GetFileName(dlg.FileName)}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Couldn't write that file: " + ex.Message;
+        }
+    }
+
+    private void ManageTrustedCerts_Click(object sender, RoutedEventArgs e)
+    {
+        new TrustedCertsWindow(_state) { Owner = this }.ShowDialog();
+    }
+
+    private static string AppVersion()
+    {
+        var asm = typeof(MainWindow).Assembly;
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var v = info ?? asm.GetName().Version?.ToString() ?? "";
+        int plus = v.IndexOf('+');
+        return plus >= 0 ? v[..plus] : v;
+    }
+
     // ---------- rendered website view ----------
 
     private void ResponseTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1864,13 +1939,15 @@ public partial class MainWindow : Window
         StatusText.Text = "Sending…";
         SendProgress.Visibility = Visibility.Visible;
         ShowWaitingHint();
+        ApiResponse? response = null;
         try
         {
             // Attach any browser-captured session cookies for this origin before sending.
             CookieService.SeedContainer(_state, request.Url, _cookieJar);
-            var response = await _apiClient.SendAsync(
+            response = await _apiClient.SendAsync(
                 request, cert,
                 transport: model.Transport.ToOptions(model.IgnoreServerCert),
+                trustServerCertificate: c => c is not null && TrustService.IsTrusted(_state, TokenService.HostOf(request.Url), c.Thumbprint!),
                 cookies: _cookieJar, cancellationToken: _cts.Token);
             RenderResponse(response);
             ShowAssertionResults(model, response);
@@ -1941,6 +2018,27 @@ public partial class MainWindow : Window
             SendProgress.Visibility = Visibility.Collapsed;
             _cts?.Dispose();
             _cts = null;
+        }
+
+        // The server presented a certificate the trust store doesn't recognize — offer to pin it
+        // for this host and retry once. The IsTrusted guard prevents a retry loop: after Trust()
+        // this thumbprint is trusted, so a second failure could only be a *different* certificate.
+        if (response?.Error?.Kind == ApiErrorKind.ServerCertificateUntrusted &&
+            response.Connection?.ServerCertificateThumbprint is { } thumb)
+        {
+            string host = TokenService.HostOf(request.Url);
+            if (!TrustService.IsTrusted(_state, host, thumb))
+            {
+                var c = ChoiceDialog.Show(this, "Untrusted server certificate",
+                    $"{host} presented a certificate that isn't trusted:\n{response.Connection.ServerCertificateSubject}\n{thumb}\n\nTrust it for this host and retry?",
+                    "Trust & retry", "Cancel");
+                if (c == DialogChoice.Primary)
+                {
+                    TrustService.Trust(_state, host, thumb, response.Connection.ServerCertificateSubject);
+                    _state.Save();
+                    await SendRequestAsync();
+                }
+            }
         }
     }
 

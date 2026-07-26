@@ -34,6 +34,11 @@ public sealed class AppState
     public List<SessionToken> SessionTokens { get; set; } = new();
     public List<SessionCookie> SessionCookies { get; set; } = new();
 
+    /// <summary>Thumbprint-pinned, per-host server-certificate trust: strictly narrower than the
+    /// blanket <see cref="IgnoreServerCertErrors"/> bypass. Additive: a state.json written before
+    /// this existed loads with an empty list.</summary>
+    public List<TrustedServerCert> TrustedServerCerts { get; set; } = new();
+
     /// <summary>Master switch for automatic token capture/attach. Detection results are still
     /// stored while off, so turning it back on works immediately.</summary>
     public bool AutoTokens { get; set; } = true;

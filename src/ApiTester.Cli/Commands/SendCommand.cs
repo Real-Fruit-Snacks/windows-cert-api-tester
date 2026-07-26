@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using ApiTester.Core;
@@ -73,6 +74,10 @@ public static class SendCommand
           --json                  Print a JSON result envelope instead of the raw body
           --fail                  Exit 1 when the HTTP status is 400 or higher
           -q, --quiet             No metadata line on stderr
+          --har <file>            Capture the request/response (and every redirect hop) as a
+                                  HAR file, written once when the command finishes
+          --har-include-secrets   Don't redact Authorization/Proxy-Authorization/Cookie/
+                                  Set-Cookie values in the captured HAR (redacted by default)
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -114,6 +119,9 @@ public static class SendCommand
 
           # Troubleshoot a failing endpoint with full diagnostics in a file
           certapi send https://api.example.com/broken --debug --log-file broken.log
+
+          # Capture the request/response (and every redirect hop) as a HAR file
+          certapi send https://api.example.com/health --har session.har
 
         The body goes to stdout; everything else goes to stderr. Exit 0 on a delivered
         response (any status unless --fail), 1 on transport errors, 2/3 on usage/data errors.
@@ -158,6 +166,8 @@ public static class SendCommand
         string? winPass = args.Value("--windows-password");
         var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
         bool allIps = args.Flag("--all-ips");
+        string? harPath = args.Value("--har");
+        bool harIncludeSecrets = args.Flag("--har-include-secrets");
         // Resolve the certificate here (Windows store or a file) so its options are consumed
         // before Positionals() rejects anything option-shaped that's left over.
         var cert = CliCert.Resolve(args, store, services, stderr);
@@ -205,6 +215,13 @@ public static class SendCommand
             throw new CliUsageException(
                 "--all-ips sends once per address, so it cannot be combined with --json, -o/--output, " +
                 "--capture, or --assert — each of those describes a single response.");
+        // --har's directory must exist before the first request, not merely before the write — a
+        // typo shouldn't surface after a request already went out over the wire.
+        if (harPath is not null)
+        {
+            var harDir = Path.GetDirectoryName(Path.GetFullPath(harPath));
+            if (!Directory.Exists(harDir)) throw new CliUsageException($"--har directory does not exist: {harDir}");
+        }
 
         // Multipart form parts: "name=value" (text) or "name=@path" (file, optionally ";type=<ct>").
         var parts = new List<MultipartPart>();
@@ -282,6 +299,13 @@ public static class SendCommand
         if (ApiClient.ValidateTransport(transport, url) is { } transportProblem)
             throw new CliUsageException(transportProblem);
 
+        // ---- per-site server-certificate trust ----
+        // A pinned thumbprint for this host lets the send through even without the blanket
+        // --insecure bypass; --insecure (above) already trusts anything and is untouched.
+        string host = TokenService.HostOf(url);
+        Func<System.Security.Cryptography.X509Certificates.X509Certificate2?, bool> trustCert = c =>
+            c is not null && TrustService.IsTrusted(state, host, c.Thumbprint!);
+
         // ---- automatic session token ----
         if (!noAutoToken)
         {
@@ -328,13 +352,17 @@ public static class SendCommand
         var cookieJar = new System.Net.CookieContainer();
         if (!noAutoToken) CookieService.SeedContainer(state, url, cookieJar);
 
+        string harVersion = HarCreatorVersion();
+
         // --all-ips is a comparison run, not a single send: it owns stdout from here on, and the
         // single-response output path below (capture, token capture, envelope) does not apply.
         if (allIps)
-            return SendToEveryAddress(request, cert, transport, cookieJar, showRedirects, fail, stdout, stderr, services);
+            return SendToEveryAddress(request, cert, transport, cookieJar, showRedirects, fail, stdout, stderr, services,
+                trustCert, harPath, harIncludeSecrets, harVersion, quiet);
 
         var response = services.Client.SendAsync(request, cert,
             transport: transport,
+            trustServerCertificate: trustCert,
             cookies: cookieJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
         services.Log.Debug("result: " + (response.Error is null
             ? $"{response.StatusCode} {response.ReasonPhrase}".Trim()
@@ -343,12 +371,18 @@ public static class SendCommand
         if (response.Connection is { } conn)
             services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {(conn.ViaProxy ? "yes" : "no")} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")}");
         LogErrorChain(response.Error, services);
+        List<HarEntry>? harEntries = harPath is not null
+            ? HarWriter.FromExchangeWithRedirects(request, response, harIncludeSecrets).ToList()
+            : null;
 
         // The hop chain goes to stderr even under --quiet: it was asked for explicitly, and the
         // body owns stdout.
         if (showRedirects && response.Redirects.Count > 0)
             stderr.WriteLine(OutputText.RedirectLines(response.Redirects));
         if (!quiet) stderr.WriteLine(OutputText.MetaLine(response));
+        if (!quiet && response.Error is null && response.Connection?.ServerCertificateThumbprint is { } thumb &&
+            TrustService.IsTrusted(state, host, thumb))
+            stderr.WriteLine($"note: trusting pinned certificate for {host}");
 
         bool stateDirty = false;
         if (captureRules.Count > 0 && response.Error is null)
@@ -390,6 +424,14 @@ public static class SendCommand
             if (outFile is not null) File.WriteAllBytes(outFile, response.Body);
             else if (pretty) stdout.WriteLine(new ResponseFormatter().Format(response).Text);
             else { stdout.Flush(); bodyOut.Write(response.Body); bodyOut.Flush(); }
+        }
+
+        // The archive is written once here — before any of the returns below — so it captures
+        // this send whether it succeeded, failed assertions, or came back with a transport error.
+        if (harPath is not null && harEntries is not null)
+        {
+            File.WriteAllText(harPath, HarWriter.Write(harEntries, harVersion));
+            if (!quiet) stderr.WriteLine($"wrote HAR to {harPath} ({harEntries.Count} entr{(harEntries.Count == 1 ? "y" : "ies")})");
         }
 
         if (response.Error is not null) return ExitCodes.Failure;
@@ -440,7 +482,9 @@ public static class SendCommand
     private static int SendToEveryAddress(
         ApiRequest request, System.Security.Cryptography.X509Certificates.X509Certificate2? cert,
         TransportOptions transport, System.Net.CookieContainer cookies, bool showRedirects, bool fail,
-        TextWriter stdout, TextWriter stderr, CliServices services)
+        TextWriter stdout, TextWriter stderr, CliServices services,
+        Func<System.Security.Cryptography.X509Certificates.X509Certificate2?, bool> trustServerCertificate,
+        string? harPath, bool harIncludeSecrets, string harVersion, bool quiet)
     {
         if (!Uri.TryCreate(request.Url, UriKind.Absolute, out var uri))
             throw new CliUsageException($"--all-ips needs an absolute URL, got '{request.Url}'.");
@@ -451,14 +495,18 @@ public static class SendCommand
         services.Log.Debug($"all-ips: {uri.Host} -> {string.Join(", ", addresses)}");
 
         var rows = new List<(string Address, ApiResponse Response)>();
+        // One entry-set per address — the honest record of what --all-ips actually performed.
+        var harEntries = harPath is not null ? new List<HarEntry>() : null;
         foreach (var address in addresses)
         {
             var pinned = literal
                 ? transport
                 : transport with { Resolve = new[] { new ResolveOverride(uri.Host, uri.Port, address) } };
             var response = services.Client.SendAsync(request, cert, transport: pinned,
+                trustServerCertificate: trustServerCertificate,
                 cookies: cookies, cancellationToken: services.Cancel).GetAwaiter().GetResult();
             rows.Add((address, response));
+            harEntries?.AddRange(HarWriter.FromExchangeWithRedirects(request, response, harIncludeSecrets));
             LogErrorChain(response.Error, services);
             if (showRedirects && response.Redirects.Count > 0)
                 stderr.WriteLine($"{address}:\n{OutputText.RedirectLines(response.Redirects)}");
@@ -474,10 +522,27 @@ public static class SendCommand
         stdout.WriteLine($"----\n{rows.Count} address{(rows.Count == 1 ? "" : "es")} · " +
                          $"{responded} responded · {rows.Count - responded} failed");
 
+        if (harPath is not null && harEntries is not null)
+        {
+            File.WriteAllText(harPath, HarWriter.Write(harEntries, harVersion));
+            if (!quiet) stderr.WriteLine($"wrote HAR to {harPath} ({harEntries.Count} entr{(harEntries.Count == 1 ? "y" : "ies")})");
+        }
+
         // A comparison run succeeds when any address answered; --fail keeps its own meaning on top.
         if (responded == 0) return ExitCodes.Failure;
         if (fail && rows.Any(r => r.Response.StatusCode is >= 400)) return ExitCodes.Failure;
         return ExitCodes.Ok;
+    }
+
+    /// <summary>The creator version written into a captured HAR document — the same idiom as
+    /// <c>certapi --version</c>: the assembly's informational version with any <c>+build</c>
+    /// metadata stripped.</summary>
+    private static string HarCreatorVersion()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+        int plus = version.IndexOf('+');
+        return plus > 0 ? version[..plus] : version;
     }
 
     private static IReadOnlyList<string> ResolveAll(string host)

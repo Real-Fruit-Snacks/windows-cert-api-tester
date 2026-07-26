@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.52.0] - 2026-07-26
+
+### Added
+- **HTTP Archive (HAR) capture** — `--har <file>` on `certapi send`, `run`, and `fuzz` records every
+  request the command performs as a well-formed HAR archive, written once at the end of the run —
+  including each redirect hop as its own entry, so a chain that changed origin is visible in the
+  file, not just on screen. Secret redaction is on by default: the *values* of `Authorization`,
+  `Proxy-Authorization`, `Cookie`, and `Set-Cookie` are written as `[redacted]`, so a trace is safe
+  to hand to a teammate or attach to a bug report; `--har-include-secrets` opts out when you need the
+  real values. In the app, Import ▾ → "Export Network trace as HAR…" writes the current tab's
+  Network trace to a `.har` file with the same redact-by-default choice.
+- **HAR replay, through mutual TLS** — `certapi import har <file>` turns a captured archive into a
+  collection alongside `import curl`/`import openapi`, and `certapi run <file.har>` detects a `.har`
+  positional directly and replays its entries as an ordered suite. The point of replay is what a
+  browser's own HAR export can never do: the request is resent with a client certificate attached
+  (`--cert`/`--cert-file`), so a session captured in a browser can be re-proven over mutual TLS
+  without hand-rebuilding it. A HAR run never writes live state — no known-good markers, no
+  captured tokens. A malformed HAR file is a one-line data error (exit 3); a well-formed HAR with
+  zero entries is also exit 3, since there is nothing to replay. In the app, Import ▾ → "HAR
+  file…" does the same import.
+- **Per-site server-certificate trust** — a narrower alternative to the blanket "ignore server cert
+  errors" toggle: `certapi trust add <host> [--thumbprint <t> | --from-url <https-url>]` pins one
+  specific server-certificate thumbprint to one host, `certapi trust list` shows the pins, and
+  `certapi trust remove <host> [--thumbprint <t>]` un-pins one or all of them. `--from-url` connects
+  once, captures the certificate the server actually presents, and pins that thumbprint without you
+  having to find it by hand. `send` and `run` consult the store automatically and note on stderr
+  when a pinned certificate is what let the request through. In the app, a
+  `ServerCertificateUntrusted` response offers a "Trust & retry" action, and a Trusted-certificates
+  manager (Import ▾ → "Trusted certificates…") lists and removes pins. The existing blanket
+  ignore-errors switch is unchanged and still available for cases pinning doesn't fit.
+
 ## [1.51.0] - 2026-07-25
 
 ### Added
@@ -727,7 +758,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.51.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.52.0...HEAD
+[1.52.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.51.0...v1.52.0
 [1.51.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.50.0...v1.51.0
 [1.50.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.49.0...v1.50.0
 [1.49.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.48.0...v1.49.0

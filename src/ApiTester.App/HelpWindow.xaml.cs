@@ -220,7 +220,20 @@ public partial class HelpWindow : Window
         Sub("DIAGNOSTICS"),
         P("The Diagnostics tab reports the negotiated TLS version and cipher, whether your client certificate was actually presented to the server, and the server's certificate — subject, issuer, thumbprint, expiry, and chain."),
         Sub("FAILURES"),
-        P("Errors are classified so you know what went wrong: the server refused the certificate, the server's own certificate isn't trusted, a network/DNS error, or a timeout."));
+        P("Errors are classified so you know what went wrong: the server refused the certificate, the server's own certificate isn't trusted, a network/DNS error, or a timeout."),
+        Sub("TRUSTED (PINNED) SERVER CERTIFICATES"),
+        P("“Ignore server cert errors” trusts every certificate a server presents — useful, but it's " +
+          "an all-or-nothing switch. Pinning is the narrower alternative: it trusts one specific " +
+          "server-certificate thumbprint for one host, and nothing else. When a request to that host " +
+          "hits ServerCertificateUntrusted, the app offers “Trust & retry” — accept the certificate " +
+          "the server just presented and resend, without turning off checking anywhere else."),
+        P("The Trusted-certificates manager (Import ▾ → “Trusted certificates…”) lists every pin and " +
+          "lets you remove one. Headless, certapi trust list shows the same pins; certapi trust add " +
+          "<host> --thumbprint <t> pins one you already know, or --from-url <https-url> connects once, " +
+          "captures whatever certificate the server presents, and pins that thumbprint for you; " +
+          "certapi trust remove <host> [--thumbprint <t>] un-pins one entry or all of them for that " +
+          "host. send and run consult the store automatically and note on stderr when a pinned " +
+          "certificate is what let the connection through."));
 
     private UIElement Collections() => Section("Collections & history",
         P("The sidebar has two modes, switched from HISTORY / COLLECTIONS at the top."),
@@ -344,6 +357,20 @@ public partial class HelpWindow : Window
         P("Paste a curl command and it opens a ready-to-send tab with the method, URL, query parameters, headers, body, and auth filled in. It understands -X, -H, -d / --data, -u (Basic auth), -k (insecure), an Authorization: Bearer header (mapped to the Bearer helper), quoting, and line continuations."),
         Sub("IMPORT OPENAPI / SWAGGER"),
         P("Choose a JSON OpenAPI 3.x or Swagger 2.0 file and it builds a collection of requests, grouped into folders by tag, with the server (OpenAPI) or host/basePath (Swagger) used as each request's website."),
+        Sub("CAPTURE & REPLAY HAR"),
+        P("Import ▾ → “Export Network trace as HAR…” writes the current tab's Network trace to an " +
+          "HTTP Archive (HAR) file — every request logged, with each redirect hop kept as its own " +
+          "entry. Secret values (Authorization, Cookie, Set-Cookie, and similar headers) are redacted " +
+          "by default, with a choice to keep the real values when you need them. “HAR file…” imports " +
+          "one back as a collection, the same way a curl command or OpenAPI file does."),
+        P("Replaying a HAR is where this earns its keep: a browser can capture a HAR of a session, " +
+          "but it can never resend those requests through mutual TLS, because a browser has no way to " +
+          "attach a client certificate on your behalf. certapi can. Headless, certapi run session.har " +
+          "detects the .har file directly and replays its entries as an ordered suite, with the " +
+          "client certificate you pass on --cert / --cert-file attached to every request."),
+        NoteBox("A HAR run never writes live state — no known-good markers, no captured tokens. A " +
+                "malformed HAR file is a one-line data error; a well-formed one with no entries to " +
+                "replay is a data error too, since there is nothing to run."),
         Sub("SAVE / LOAD A WORKSPACE"),
         P("“Export workspace…” in the Import ▾ menu saves everything — open tabs, collections (with their known-good results), environments, saved websites, and history — to a single JSON file. “Import workspace…” loads one back, either merging into what you have or replacing it. Use it to move between machines, keep named snapshots of a project, or hand a teammate a ready-to-use setup."),
         NoteBox("A workspace file includes request auth values, environment variables (including captured tokens), and response history — treat it as a private file."),
