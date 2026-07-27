@@ -6,6 +6,43 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.66.0] - 2026-07-27
+
+### Changed
+- **Nothing changes for a user in this release.** It is an assurance release: two parts of the
+  desktop application that no test could reach were moved behind seams a test can reach, and one
+  handbook page was finished. Behaviour is exactly what v1.65.0 shipped. The value is that a
+  *future* release breaking either of those two things now fails a test instead of reaching a user.
+- **The request editor's round trip — loading a saved request into the desktop editor's controls,
+  and capturing those controls back into a request — now runs through a user-interface-free record
+  instead of only inline inside the window.** `MainWindow.LoadIntoControls` and
+  `CaptureControlsInto` map a saved request onto the editor's controls and back, and a mismatch
+  between the two is invisible: a field the load side reads but the capture side never writes back
+  is silently discarded the next time the request is saved, and a drop-down whose index-to-value
+  mapping differs between the two silently rewrites the setting the user chose. That is not
+  hypothetical — during v1.64.0 the revocation drop-down's mapping had to be hand-verified in both
+  directions precisely because no test could reach it. A new record, `RequestEditorState`, now
+  carries that mapping as two functions, `From(RequestModel)` and `ApplyTo(RequestModel)`, that run
+  without a window, and it is tested against every field a request carries, every drop-down's full
+  range of modes in both directions, all five authentication types, and the parsing and clamping of
+  every numeric box — plus a coverage gate, so adding a field to a saved request or another mode to
+  a drop-down fails a test until the mapping is decided in both directions. Behaviour is unchanged,
+  including several long-standing quirks that were pinned by tests rather than fixed.
+- **Deciding what an imported workspace does to the one already open — which collections,
+  environments, saved websites, chains and history survive a merge or a replace — is now a pure
+  function instead of logic inline inside the window.** Getting that decision wrong destroys a
+  user's saved work, and nothing tested it before. `WorkspaceImport.Plan(current, incoming, merge)`
+  now makes the decision over two workspace values, with no window involved, and is tested in both
+  modes. The case that motivated pulling it out: an imported environment whose *name* collides with
+  an existing one is added alongside it rather than overwriting it, because environments are matched
+  by identifier and never by name; one whose *identifier* collides is skipped without overwriting the
+  existing values. Behaviour is unchanged.
+- **The local gateway handbook (`wiki/19-Local-Gateway.md`) gained rows for `--upstream`, for
+  mounting several upstreams behind one port, and for `--tls` / `--tls-trust` / `--tls-untrust`, for
+  serving the gateway itself over HTTPS (Hypertext Transfer Protocol Secure).** v1.65.0 back-filled
+  the four `--browser` accommodations and deliberately left these four out rather than absorb
+  unrelated debt into that release; this closes it.
+
 ## [1.65.0] - 2026-07-27
 
 ### Fixed
@@ -1523,7 +1560,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.65.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.0...HEAD
+[1.66.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.65.0...v1.66.0
 [1.65.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.64.0...v1.65.0
 [1.64.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.63.0...v1.64.0
 [1.63.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.62.0...v1.63.0

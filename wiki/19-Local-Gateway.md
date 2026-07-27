@@ -25,6 +25,7 @@ The gateway is **loopback only** (127.0.0.1) — it never listens on an external
 
 | Option | Purpose |
 |---|---|
+| `--upstream <prefix>=<url>` | Mount an upstream at a path prefix, repeatable — with `/api=https://api.internal` a `GET /api/orders` reaches `https://api.internal/orders`. Longest prefix wins, and a path under no prefix is a 404 that contacts nothing. The positional `<upstream>` above is the same thing written `/=<url>` |
 | `--port <n>` | Local port to listen on (127.0.0.1) |
 | `--cert <thumb\|subject>` | Client certificate from the Windows store |
 | `--cert-file <path>` / `--cert-password` / `--key-file` | Certificate from a file instead |
@@ -36,6 +37,9 @@ The gateway is **loopback only** (127.0.0.1) — it never listens on an external
 | `--timeout <seconds>` | Per-request upstream timeout (default 100) |
 | `--workspace <file>` | Resolve a saved-website `<upstream>` from a workspace file |
 | `-q, --quiet` | No startup banner or per-request log |
+| `--tls` | Serve the gateway itself over HTTPS (HTTP Secure) on 127.0.0.1 with a generated gateway certificate, so `Secure` and `__Host-`/`__Secure-` cookies work. Binding the port needs an elevated prompt the first time; the exact `netsh` command is printed if it isn't available |
+| `--tls-trust` | Also install that certificate into `CurrentUser\Root` so the browser accepts it silently — explicit, logged, and reversible. Only with `--tls` |
+| `--tls-untrust` | Remove a previously trusted gateway certificate and exit; a standalone action, run on its own |
 | `--browser` | Turn on all four browser accommodations below at once — each also works on its own |
 | `--cors [<origins>]` | Answer CORS (Cross-Origin Resource Sharing) preflights at the gateway and add the response headers a script needs to read the reply; echoes the caller's own `Origin` with no value, or takes a comma-separated allowlist |
 | `--cors-max-age <seconds>` | How long a browser may cache a CORS preflight answer (default 600). Only with `--cors` |
@@ -106,7 +110,7 @@ every other forwarded request is.
 Over the default plaintext loopback origin, a cookie named `__Host-…` or `__Secure-…` cannot work at
 all: it requires the `Secure` attribute, which no browser accepts over plaintext `http://127.0.0.1`.
 Rather than dropping such a cookie behind your back, the gateway still relays it and names it in a
-warning. `--tls` is the fix, because it serves the gateway itself over HTTPS (HTTP Secure).
+warning. `--tls` is the fix, because it serves the gateway itself over HTTPS.
 
 ## Browsers and Private Network Access
 

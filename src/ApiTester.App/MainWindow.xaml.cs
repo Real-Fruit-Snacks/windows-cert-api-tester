@@ -312,142 +312,97 @@ public partial class MainWindow : Window
             TabStrip.SelectedIndex = Math.Clamp(idx, 0, _tabs.Count - 1);
     }
 
-    /// <summary>Push a request model's values into the editor controls.</summary>
+    /// <summary>Push a request model's values into the editor controls, via the UI-free
+    /// <see cref="RequestEditorState"/> record.</summary>
     private void LoadIntoControls(RequestModel m)
     {
         _loading = true;
         try
         {
-            SelectMethod(m.Method);
-            BaseUrlBox.Text = m.BaseUrl ?? "";
-            UrlBox.Text = m.Path;
+            var s = RequestEditorState.From(m);
+            SelectMethod(s.Method);
+            BaseUrlBox.Text = s.BaseUrlText;
+            UrlBox.Text = s.UrlText;
             HeadersItems.ItemsSource = m.Headers;
             CaptureItems.ItemsSource = m.Captures;
             AssertItems.ItemsSource = m.Assertions;
             ParamsItems.ItemsSource = m.QueryParams;
-            BodyBox.Text = m.Body ?? "";
-            SelectContentType(m.ContentType);
+            BodyBox.Text = s.BodyText;
+            SelectContentType(s.ContentType);
             FormItems.ItemsSource = m.FormParts;
-            BodyModeForm.IsChecked = m.IsMultipart;
-            BodyModeText.IsChecked = !m.IsMultipart;
+            BodyModeForm.IsChecked = s.BodyModeForm;
+            BodyModeText.IsChecked = !s.BodyModeForm;
             UpdateBodyPanels();
-            AuthTypeCombo.SelectedIndex = m.AuthType switch { "Bearer" => 2, "Basic" => 3, "Windows" => 4, "None" => 1, _ => 0 };
-            BearerTokenBox.Text = m.AuthType == "Bearer" ? m.AuthSecret ?? "" : "";
-            BasicUserBox.Text = m.AuthType == "Basic" ? m.AuthUser ?? "" : "";
-            BasicPassBox.Text = m.AuthType == "Basic" ? m.AuthSecret ?? "" : "";
-            // Windows auth: an empty user means single sign-on; a value means explicit credentials.
-            WindowsDefaultCheck.IsChecked = m.AuthType != "Windows" || string.IsNullOrEmpty(m.AuthUser);
-            WindowsUserBox.Text = m.AuthType == "Windows" ? m.AuthUser ?? "" : "";
-            WindowsPassBox.Text = m.AuthType == "Windows" ? m.AuthSecret ?? "" : "";
-            IgnoreServerCertCheck.IsChecked = m.IgnoreServerCert;
-            TimeoutBox.Text = m.TimeoutSeconds.ToString();
-            SelectCertByThumbprint(m.CertThumbprint);
-            TransportProxyCombo.SelectedIndex = m.Transport.Proxy switch
-            {
-                ProxyMode.None => 1,
-                ProxyMode.Explicit => 2,
-                _ => 0
-            };
-            TransportProxyUrlBox.Text = m.Transport.ProxyUrl ?? "";
-            TransportProxyUserBox.Text = m.Transport.ProxyUser ?? "";
-            TransportProxyPassBox.Text = m.Transport.ProxyPassword ?? "";
-            TransportNoProxyBox.Text = m.Transport.NoProxy ?? "";
-            TransportRevocationCombo.SelectedIndex = m.Transport.Revocation switch
-            {
-                RevocationMode.Offline => 1,
-                RevocationMode.Online => 2,
-                _ => 0
-            };
-            TransportRevocationStrictCheck.IsChecked = m.Transport.RevocationStrict;
-            TransportFollowRedirectsCheck.IsChecked = m.Transport.FollowRedirects;
-            TransportMaxRedirsBox.Text = m.Transport.MaxRedirects.ToString();
-            TransportDecompressCheck.IsChecked = m.Transport.Decompress;
-            TransportVersionCombo.SelectedIndex = m.Transport.Version switch
-            {
-                HttpVersionMode.Http11 => 1,
-                HttpVersionMode.Http2 => 2,
-                _ => 0
-            };
-            TransportRetriesBox.Text = m.Transport.Retries.ToString();
-            TransportRetryOnBox.Text = m.Transport.RetryOn ?? "";
-            TransportRetryDelayBox.Text = m.Transport.RetryDelayMs.ToString();
-            TransportRetryUnsafeCheck.IsChecked = m.Transport.RetryUnsafeMethods;
-            TransportRetryTransportCheck.IsChecked = m.Transport.RetryOnTransportError;
+            AuthTypeCombo.SelectedIndex = s.AuthTypeIndex;
+            BearerTokenBox.Text = s.BearerTokenText;
+            BasicUserBox.Text = s.BasicUserText;
+            BasicPassBox.Text = s.BasicPassText;
+            WindowsDefaultCheck.IsChecked = s.WindowsDefault;
+            WindowsUserBox.Text = s.WindowsUserText;
+            WindowsPassBox.Text = s.WindowsPassText;
+            IgnoreServerCertCheck.IsChecked = s.IgnoreServerCert;
+            TimeoutBox.Text = s.TimeoutText;
+            SelectCertByThumbprint(s.CertThumbprint);
+            TransportProxyCombo.SelectedIndex = s.ProxyIndex;
+            TransportProxyUrlBox.Text = s.ProxyUrlText;
+            TransportProxyUserBox.Text = s.ProxyUserText;
+            TransportProxyPassBox.Text = s.ProxyPassText;
+            TransportNoProxyBox.Text = s.NoProxyText;
+            TransportRevocationCombo.SelectedIndex = s.RevocationIndex;
+            TransportRevocationStrictCheck.IsChecked = s.RevocationStrict;
+            TransportFollowRedirectsCheck.IsChecked = s.FollowRedirects;
+            TransportMaxRedirsBox.Text = s.MaxRedirectsText;
+            TransportDecompressCheck.IsChecked = s.Decompress;
+            TransportVersionCombo.SelectedIndex = s.VersionIndex;
+            TransportRetriesBox.Text = s.RetriesText;
+            TransportRetryOnBox.Text = s.RetryOnText;
+            TransportRetryDelayBox.Text = s.RetryDelayText;
+            TransportRetryUnsafeCheck.IsChecked = s.RetryUnsafeMethods;
+            TransportRetryTransportCheck.IsChecked = s.RetryOnTransportError;
             UpdateTransportPanels();
         }
         finally { _loading = false; }
     }
 
-    /// <summary>Read the editor controls back into a request model.</summary>
-    private void CaptureControlsInto(RequestModel m)
+    /// <summary>The editor's controls as a UI-free value, ready for <see cref="RequestEditorState.ApplyTo"/>.</summary>
+    private RequestEditorState CurrentEditorState() => new()
     {
-        m.Method = SelectedMethod();
-        m.BaseUrl = BaseUrlBox.Text;
+        Method = SelectedMethod(),
+        BaseUrlText = BaseUrlBox.Text,
+        UrlText = UrlBox.Text,
+        CertThumbprint = SelectedThumbprint(),
+        BodyText = BodyBox.Text,
+        ContentType = SelectedContentType(),
+        BodyModeForm = BodyModeForm.IsChecked == true,
+        AuthTypeIndex = AuthTypeCombo.SelectedIndex,
+        BearerTokenText = BearerTokenBox.Text,
+        BasicUserText = BasicUserBox.Text,
+        BasicPassText = BasicPassBox.Text,
+        WindowsDefault = WindowsDefaultCheck.IsChecked == true,
+        WindowsUserText = WindowsUserBox.Text,
+        WindowsPassText = WindowsPassBox.Text,
+        IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true,
+        TimeoutText = TimeoutBox.Text,
+        ProxyIndex = TransportProxyCombo.SelectedIndex,
+        ProxyUrlText = TransportProxyUrlBox.Text,
+        ProxyUserText = TransportProxyUserBox.Text,
+        ProxyPassText = TransportProxyPassBox.Text,
+        NoProxyText = TransportNoProxyBox.Text,
+        RevocationIndex = TransportRevocationCombo.SelectedIndex,
+        RevocationStrict = TransportRevocationStrictCheck.IsChecked == true,
+        FollowRedirects = TransportFollowRedirectsCheck.IsChecked == true,
+        MaxRedirectsText = TransportMaxRedirsBox.Text,
+        Decompress = TransportDecompressCheck.IsChecked == true,
+        VersionIndex = TransportVersionCombo.SelectedIndex,
+        RetriesText = TransportRetriesBox.Text,
+        RetryOnText = TransportRetryOnBox.Text,
+        RetryDelayText = TransportRetryDelayBox.Text,
+        RetryUnsafeMethods = TransportRetryUnsafeCheck.IsChecked == true,
+        RetryOnTransportError = TransportRetryTransportCheck.IsChecked == true
+    };
 
-        // Fold any query typed straight into the URL box into the parameter grid.
-        var (path, typedQuery) = RequestUrl.SplitForEditing(UrlBox.Text.Trim());
-        m.Path = path;
-        if (typedQuery.Count > 0)
-        {
-            m.QueryParams.Clear();
-            foreach (var kv in typedQuery) m.QueryParams.Add(new ParamRow { Key = kv.Key, Value = kv.Value });
-        }
-
-        m.Body = BodyBox.Text;
-        m.ContentType = SelectedContentType();
-        m.IsMultipart = BodyModeForm.IsChecked == true;
-        m.AuthType = AuthTypeCombo.SelectedIndex switch { 2 => "Bearer", 3 => "Basic", 4 => "Windows", 1 => "None", _ => "Auto" };
-        bool winSso = WindowsDefaultCheck.IsChecked == true;
-        m.AuthUser = AuthTypeCombo.SelectedIndex == 4 ? (winSso ? "" : WindowsUserBox.Text) : BasicUserBox.Text;
-        m.AuthSecret = AuthTypeCombo.SelectedIndex switch
-        {
-            2 => BearerTokenBox.Text,
-            4 => winSso ? "" : WindowsPassBox.Text,
-            _ => BasicPassBox.Text
-        };
-        m.CertThumbprint = SelectedThumbprint();
-        m.IgnoreServerCert = IgnoreServerCertCheck.IsChecked == true;
-        m.TimeoutSeconds = ParseTimeout();
-
-        // Transport settings are edited in place so the model instance the tab holds keeps its identity.
-        m.Transport.Proxy = TransportProxyCombo.SelectedIndex switch
-        {
-            1 => ProxyMode.None,
-            2 => ProxyMode.Explicit,
-            _ => ProxyMode.System
-        };
-        m.Transport.ProxyUrl = BlankToNull(TransportProxyUrlBox.Text);
-        m.Transport.ProxyUser = BlankToNull(TransportProxyUserBox.Text);
-        m.Transport.ProxyPassword = BlankToNull(TransportProxyPassBox.Text);
-        m.Transport.NoProxy = BlankToNull(TransportNoProxyBox.Text);
-        m.Transport.Revocation = TransportRevocationCombo.SelectedIndex switch
-        {
-            1 => RevocationMode.Offline,
-            2 => RevocationMode.Online,
-            _ => RevocationMode.None
-        };
-        m.Transport.RevocationStrict = TransportRevocationStrictCheck.IsChecked == true;
-        m.Transport.FollowRedirects = TransportFollowRedirectsCheck.IsChecked == true;
-        m.Transport.MaxRedirects = ParseMaxRedirects();
-        m.Transport.Decompress = TransportDecompressCheck.IsChecked == true;
-        m.Transport.Version = TransportVersionCombo.SelectedIndex switch
-        {
-            1 => HttpVersionMode.Http11,
-            2 => HttpVersionMode.Http2,
-            _ => HttpVersionMode.Auto
-        };
-        m.Transport.Retries = ParseCount(TransportRetriesBox.Text, fallback: 0, max: 20);
-        // An emptied box has not said "never retry on status", it has said nothing — so fall back to
-        // the default set, matching what TransportSettings.ToOptions() does for an unparseable string.
-        m.Transport.RetryOn = string.IsNullOrWhiteSpace(TransportRetryOnBox.Text)
-            ? "429,502,503,504" : TransportRetryOnBox.Text.Trim();
-        m.Transport.RetryDelayMs = ParseCount(TransportRetryDelayBox.Text, fallback: 500, max: 60000);
-        m.Transport.RetryUnsafeMethods = TransportRetryUnsafeCheck.IsChecked == true;
-        m.Transport.RetryOnTransportError = TransportRetryTransportCheck.IsChecked == true;
-        // Headers and QueryParams edited in the grids are the model's own collections — already current.
-    }
-
-    private static string? BlankToNull(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    /// <summary>Read the editor controls back into a request model.</summary>
+    private void CaptureControlsInto(RequestModel m) => CurrentEditorState().ApplyTo(m);
 
     private void TransportProxyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -942,39 +897,47 @@ public partial class MainWindow : Window
 
     private static int CountNodes(CollectionNode n) => n.IsFolder ? n.Children.Sum(CountNodes) : 1;
 
+    /// <summary>The workspace as it stands right now, as a plain value the pure merge can reason about.
+    /// The live collections are the window's own, so this is a snapshot, not a copy of their contents.</summary>
+    private AppState CurrentWorkspace() => new()
+    {
+        Tabs = _tabs.Select(t => t.Request).ToList(),
+        Collections = _collections.ToList(),
+        Environments = _environments.ToList(),
+        Chains = _chains.ToList(),
+        History = _state.History,
+        SavedBaseUrls = _state.SavedBaseUrls,
+        ActiveEnvironmentId = _state.ActiveEnvironmentId
+    };
+
     private void ApplyWorkspace(AppState ws, bool merge)
     {
-        if (!merge)
+        var plan = WorkspaceImport.Plan(CurrentWorkspace(), ws, merge);
+
+        if (plan.ClearExisting)
         {
             _loadedTab = null;
             _tabs.Clear();
             _collections.Clear();
             _environments.Clear();
             _chains.Clear();
-            _state.History.Clear();
-            _state.SavedBaseUrls.Clear();
-            _state.ActiveEnvironmentId = ws.ActiveEnvironmentId;
         }
 
-        foreach (var m in ws.Tabs) _tabs.Add(new RequestTab(m));
-        if (_tabs.Count == 0) AddNewTab();
-        else if (!merge) TabStrip.SelectedIndex = Math.Clamp(ws.ActiveTabIndex, 0, _tabs.Count - 1);
+        foreach (var m in plan.TabsToAdd) _tabs.Add(new RequestTab(m));
+        if (plan.NeedsBlankTab) AddNewTab();
+        else if (plan.SelectTabIndex is { } idx) TabStrip.SelectedIndex = idx;
 
-        foreach (var c in ws.Collections) _collections.Add(c);
-        foreach (var env in ws.Environments)
-            if (!merge || _environments.All(x => x.Id != env.Id)) _environments.Add(env);
-
+        foreach (var c in plan.CollectionsToAdd) _collections.Add(c);
+        foreach (var env in plan.EnvironmentsToAdd) _environments.Add(env);
         // Export writes chains, so import has to read them back or a workspace moved between machines
         // loses every chain silently.
-        foreach (var chain in ws.Chains)
-            if (!merge || _chains.All(x => x.Id != chain.Id)) _chains.Add(chain);
+        foreach (var chain in plan.ChainsToAdd) _chains.Add(chain);
 
-        foreach (var h in ws.History) _state.History.Add(h);
-        _state.History.Sort((a, b) => b.Timestamp.CompareTo(a.Timestamp));
-        if (_state.History.Count > 30) _state.History.RemoveRange(30, _state.History.Count - 30);
-
-        foreach (var b in ws.SavedBaseUrls)
-            if (!_state.SavedBaseUrls.Contains(b, StringComparer.OrdinalIgnoreCase)) _state.SavedBaseUrls.Add(b);
+        _state.History.Clear();
+        _state.History.AddRange(plan.History);
+        _state.SavedBaseUrls.Clear();
+        _state.SavedBaseUrls.AddRange(plan.SavedBaseUrls);
+        _state.ActiveEnvironmentId = plan.ActiveEnvironmentId;
 
         RefreshHistoryList();
         RefreshSavedBases();
@@ -2153,23 +2116,7 @@ public partial class MainWindow : Window
 
     // ---------- send ----------
 
-    private int ParseTimeout()
-    {
-        if (int.TryParse(TimeoutBox.Text, out var s) && s > 0) return Math.Min(s, 3600);
-        return 100;
-    }
-
-    /// <summary>The hop limit as typed, falling back to the default while the box is empty or nonsense.</summary>
-    private int ParseMaxRedirects()
-    {
-        if (int.TryParse(TransportMaxRedirsBox.Text, out var n) && n > 0) return Math.Min(n, 100);
-        return 20;
-    }
-
-    /// <summary>A non-negative number from a text box, clamped. A typo in a settings box must not be a
-    /// crash or a silent thirty-thousand-retry loop, so an unparseable value falls back to the default.</summary>
-    private static int ParseCount(string? text, int fallback, int max) =>
-        int.TryParse(text, out var n) && n >= 0 ? Math.Min(n, max) : fallback;
+    private int ParseTimeout() => RequestEditorState.ParseTimeoutSeconds(TimeoutBox.Text);
 
     private List<KeyValuePair<string, string>> BuildHeaders()
     {

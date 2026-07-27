@@ -300,8 +300,21 @@ public class ApiClientPoolingTests
     // handshake never completes, on both the client and server sides, while the first connection and
     // its request/response accounting look entirely normal. The product code is exonerated for now --
     // 26 out of 26 standalone runs were clean, and the failure has only ever been reproduced under the
-    // `dotnet test` host -- so the untested candidate that remains is certificate key-container
-    // behavior specific to that host. Until that is understood, every send in this test gets a bounded
+    // `dotnet test` host.
+    //
+    // A sixth investigation was run and is recorded here as INCONCLUSIVE rather than as a sixth
+    // elimination, because it never got the chance to discriminate: ten sends over one certificate
+    // (one handler, one pooled connection) versus ten over ten distinct certificates were compared in
+    // the same host, to separate "per-certificate" from "per-connection" as mechanisms. Both arms
+    // passed 8/8, and a concurrent control -- this very test, run 8 more times in the same session --
+    // also passed 8/8. The stall had simply stopped reproducing. It did not return under 24 CPU
+    // burners on a 28-core machine either (0/6), so raw processor contention is not the trigger.
+    //
+    // What the failing and non-failing periods actually differed by is concurrent *test-host* activity:
+    // every observed failure happened while a Stryker.NET mutation run and several parallel build
+    // agents were active, each spawning its own `dotnet test` host with the assembly loading and disk
+    // traffic that implies. That -- not CPU load, and not certificate key containers -- is the most
+    // promising remaining lead, and it is untested. Until it is understood, every send in this test gets a bounded
     // per-request timeout instead of the framework default: StallTimeout is 15 seconds, roughly 18x the
     // ~800ms this test takes when it passes, which is generous enough that the bound itself can never
     // become a flake, while still turning a 100-second silent stall into a 15-second one that fails
