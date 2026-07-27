@@ -48,7 +48,11 @@ The connection never reached TLS — DNS (Domain Name System) failure, wrong hos
 the service is down.
 Verify the URL, and remember the app **honors your machine proxy** (WPAD/PAC — Web Proxy
 Auto-Discovery / proxy auto-configuration) using your Windows
-credentials; a misconfigured proxy shows up here.
+credentials; a misconfigured proxy shows up here. If a host should be reached directly instead —
+an internal service the proxy can't route to, say — list it with `--noproxy` (or set `NO_PROXY`)
+rather than turning the proxy off for everything. To tell whether a request went direct because a
+bypass rule matched or because there was no proxy at all, check Diagnostics or `--debug`: a matched
+rule prints `Bypassed by` naming it.
 
 ## A timeout
 

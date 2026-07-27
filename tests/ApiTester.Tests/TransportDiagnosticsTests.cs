@@ -36,6 +36,50 @@ public class TransportDiagnosticsTests
     }
 
     [Fact]
+    public void Format_names_the_rule_that_bypassed_the_proxy()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                ViaProxy = false,
+                ProxyDisposition = ProxyDisposition.BypassedByRule,
+                ProxyBypassRule = ".corp"
+            }
+        });
+
+        Assert.Contains("Via proxy       : no", text);
+        Assert.Contains("Bypassed by     : .corp (--noproxy)", text);
+    }
+
+    [Fact]
+    public void Format_has_no_bypass_line_when_the_request_went_through_a_proxy()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                ViaProxy = true,
+                ProxyUri = "http://corp-proxy:8080",
+                ProxyDisposition = ProxyDisposition.Proxied
+            }
+        });
+
+        Assert.DoesNotContain("Bypassed by", text);
+    }
+
+    [Fact]
+    public void Format_has_no_bypass_line_on_a_plain_direct_connection()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo { ViaProxy = false }
+        });
+
+        Assert.DoesNotContain("Bypassed by", text);
+    }
+
+    [Fact]
     public void Format_lists_every_redirect_hop_with_its_dropped_authorization_and_scheme_downgrade()
     {
         var text = TransportDiagnostics.Format(new ApiResponse

@@ -77,6 +77,9 @@ public static class GrpcCommand
           --proxy <url>            Route through this proxy (e.g. http://proxy.corp:8080)
           --no-proxy               Ignore the system/PAC proxy
           --proxy-user <u:pass>    Proxy credentials
+          --noproxy <list>         Hosts that bypass the proxy, comma-separated, NO_PROXY-style
+                                   (internal.corp, .corp, *.corp, 10.0.0.0/8, *; :port pins a port);
+                                   defaults to the NO_PROXY environment variable
 
         Automatic tokens:
           A bearer token captured by an earlier certapi send to the same host is attached
@@ -133,6 +136,7 @@ public static class GrpcCommand
         string? proxyUrl = args.Value("--proxy");
         bool noProxy = args.Flag("--no-proxy");
         string? proxyUser = args.Value("--proxy-user");
+        string? noProxySpec = args.Value("--noproxy");
         string? timeoutRaw = args.Value("--timeout");
         string? workspace = args.Value("--workspace");
         bool noAutoToken = args.Flag("--no-auto-token");
@@ -157,6 +161,8 @@ public static class GrpcCommand
             proxyAuthUser = proxyUser[..userColon];
             proxyAuthPassword = proxyUser[(userColon + 1)..];
         }
+
+        var (noProxyFromFlag, noProxyFromEnvironment) = TransportFlags.ResolveNoProxy(noProxySpec, proxyOff: noProxy);
 
         int? maxMessages = null;
         if (maxMessagesRaw is not null)
@@ -263,7 +269,10 @@ public static class GrpcCommand
             Proxy = proxyUrl is not null ? ProxyMode.Explicit : noProxy ? ProxyMode.None : ProxyMode.System,
             ProxyUrl = proxyUrl,
             ProxyUser = proxyAuthUser,
-            ProxyPassword = proxyAuthPassword
+            ProxyPassword = proxyAuthPassword,
+            // Precedence: --noproxy wins when named, otherwise NO_PROXY from the environment — grpc
+            // has no saved request to consult, so there is no third source here.
+            NoProxy = noProxyFromFlag.Count > 0 ? noProxyFromFlag : noProxyFromEnvironment
         };
 
         services.Log.Debug($"grpc {sub} {address}");

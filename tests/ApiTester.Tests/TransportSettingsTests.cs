@@ -23,6 +23,7 @@ public class TransportSettingsTests
         Assert.Equal(HttpVersionMode.Auto, options.Version);
         Assert.False(options.IgnoreServerCertificateErrors);
         Assert.Empty(options.Resolve);
+        Assert.Empty(options.NoProxy);
     }
 
     [Theory]
@@ -208,6 +209,51 @@ public class TransportSettingsTests
             AssertPreFeatureDefaults(entry.Transport.ToOptions());
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void NoProxy_entries_bypass_matching_hosts_but_not_others()
+    {
+        var options = new TransportSettings { NoProxy = "internal.corp,.corp" }.ToOptions();
+
+        Assert.True(ProxyBypass.IsBypassed(options.NoProxy, new Uri("https://api.internal.corp/")));
+        Assert.True(ProxyBypass.IsBypassed(options.NoProxy, new Uri("https://x.corp/")));
+        Assert.False(ProxyBypass.IsBypassed(options.NoProxy, new Uri("https://example.com/")));
+    }
+
+    [Fact]
+    public void NoProxy_round_trips_through_options_and_an_empty_list_stays_null()
+    {
+        var withRules = new TransportSettings { NoProxy = "internal.corp" }.ToOptions();
+        var back = TransportSettings.From(withRules).ToOptions();
+
+        Assert.True(ProxyBypass.IsBypassed(back.NoProxy, new Uri("https://internal.corp/")));
+
+        var empty = TransportSettings.From(new TransportOptions());
+        Assert.Null(empty.NoProxy);
+    }
+
+    [Fact]
+    public void NoProxy_drops_an_unparseable_entry_but_keeps_the_good_ones()
+    {
+        var options = new TransportSettings { NoProxy = "internal.corp,not a valid entry,.corp" }.ToOptions();
+
+        Assert.True(ProxyBypass.IsBypassed(options.NoProxy, new Uri("https://internal.corp/")));
+        Assert.True(ProxyBypass.IsBypassed(options.NoProxy, new Uri("https://x.corp/")));
+    }
+
+    [Fact]
+    public void CopyFrom_carries_NoProxy_and_a_clone_is_independent_of_later_edits()
+    {
+        var original = new TransportSettings { NoProxy = "internal.corp" };
+        var target = new TransportSettings();
+        target.CopyFrom(original);
+        Assert.Equal("internal.corp", target.NoProxy);
+
+        var clone = original.Clone();
+        clone.NoProxy = "changed.example";
+
+        Assert.Equal("internal.corp", original.NoProxy);
     }
 
     [Fact]

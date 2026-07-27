@@ -579,6 +579,14 @@
                                          VerticalContentAlignment="Center" Tag="optional"/>
                             </StackPanel>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="BYPASS" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                            <TextBox x:Name="TransportNoProxyBox" Width="320" Height="26" Padding="7,0"
+                                     VerticalContentAlignment="Center" Tag="internal.corp, .corp, 10.0.0.0/8"
+                                     ToolTip="Comma-separated: a bare host, a leading-dot/wildcard suffix for it and its subdomains, an address, an address range, or * for everything. Add :port to pin one port."/>
+                        </StackPanel>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,8"
+                                   Text="Hosts listed here skip the proxy and are reached directly — comma-separated, matching a host and its subdomains (internal.corp, .corp, *.corp), an address or range (10.0.0.0/8), or * for everything, with :port to pin one port. It narrows the system proxy or a specific proxy; it needs a proxy to narrow, so it cannot be combined with No proxy (direct)."/>
                         <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,12,0,0">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">

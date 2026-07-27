@@ -162,7 +162,12 @@ public sealed class ApiClient : IDisposable
         // Always false when this send turns out to be direct.
         bool serverUntrusted = false;
 
-        bool viaProxy = ProxyWillBeUsed(request.Url, transport);
+        // Decided once, up front, from the initial URL. The handler this send ends up using also
+        // carries the bypass list in its own IWebProxy (see ProxyConfiguration.Apply), so a redirect
+        // hop that lands on a differently-dispositioned host is still routed correctly on the wire —
+        // this decision only chooses which of the two send paths below runs and what gets reported.
+        var (disposition, bypassRule) = DecideProxy(request.Url, transport);
+        bool viaProxy = disposition == ProxyDisposition.Proxied;
 
         // The two paths differ only in which handler answers the send, whether this call owns it
         // outright, and where its handshake diagnostics can be found. Everything else below — the
@@ -265,6 +270,8 @@ public sealed class ApiClient : IDisposable
             {
                 ViaProxy = viaProxy,
                 ProxyUri = viaProxy ? ProxyUriFor(request.Url, transport) : null,
+                ProxyDisposition = disposition,
+                ProxyBypassRule = bypassRule,
                 TlsProtocol = info?.TlsProtocol,
                 CipherSuite = info?.CipherSuite,
                 ClientCertificateSent = info?.ClientCertificateSent ?? false,
@@ -514,23 +521,7 @@ public sealed class ApiClient : IDisposable
             // authenticating with the signed-in user's Windows credentials when required.
             DefaultProxyCredentials = CredentialCache.DefaultCredentials
         };
-        switch (transport.Proxy)
-        {
-            case ProxyMode.None:
-                // Bypassing the proxy also restores the ConnectCallback path, which is the only
-                // place the TLS details can be read.
-                handler.UseProxy = false;
-                break;
-            case ProxyMode.Explicit:
-                handler.Proxy = new WebProxy(transport.ProxyUrl)
-                {
-                    Credentials = transport.ProxyUser is null
-                        ? CredentialCache.DefaultCredentials
-                        : new NetworkCredential(transport.ProxyUser, transport.ProxyPassword)
-                };
-                handler.UseProxy = true;
-                break;
-        }
+        ProxyConfiguration.Apply(handler, transport);
         // Never let the handler follow redirects: it does so internally, so the intermediate
         // responses — and with them every hop, its status, and where the client certificate was
         // presented — are unobservable. SendAsync runs the chain itself instead.
@@ -777,29 +768,58 @@ public sealed class ApiClient : IDisposable
                    $"through {ProxyUriFor(url, transport) ?? "a proxy"}, so the address cannot be " +
                    $"pinned). Use --no-proxy to bypass it.";
 
+        // A bypass list narrows a proxy that is actually in play; with the proxy off entirely there
+        // is nothing left for it to narrow, so the combination is a usage error rather than a
+        // silently ignored flag. The command line reports this exact sentence too, off the same
+        // shared constant, so the two can never drift apart.
+        if (transport.Proxy is ProxyMode.None && transport.NoProxy.Count > 0)
+            return ProxyBypass.NoProxyWithProxyOffMessage;
+
         return null;
+    }
+
+    /// <summary>Where this request will actually go, and why: whether it is tunnelled through a
+    /// proxy, sent direct because no proxy applies, or sent direct because a bypass rule overrode a
+    /// proxy that otherwise would have applied — and, in that last case, which rule. The disposition
+    /// decides whether the ConnectCallback path (and with it the TLS diagnostics and --resolve) is
+    /// available, and <see cref="BuildConnection"/>-style callers report it verbatim.</summary>
+    public static (ProxyDisposition Disposition, string? BypassRule) DecideProxy(string url, TransportOptions transport)
+    {
+        try
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return (ProxyDisposition.Direct, null);
+            if (uri.Scheme is not ("http" or "https")) return (ProxyDisposition.Direct, null);
+            if (transport.Proxy is ProxyMode.None) return (ProxyDisposition.Direct, null);
+
+            bool wouldProxy;
+            if (transport.Proxy is ProxyMode.Explicit)
+            {
+                wouldProxy = !string.IsNullOrWhiteSpace(transport.ProxyUrl) &&
+                             !new WebProxy(transport.ProxyUrl).IsBypassed(uri);
+            }
+            else
+            {
+                var proxy = HttpClient.DefaultProxy;
+                wouldProxy = proxy is not null && !proxy.IsBypassed(uri) && proxy.GetProxy(uri) is not null;
+            }
+            if (!wouldProxy) return (ProxyDisposition.Direct, null);
+
+            // Consulted only after establishing that a proxy would otherwise have been used:
+            // BypassedByRule is a claim that a rule changed the outcome, and on a machine with no
+            // proxy configured at all a matching rule changed nothing — the honest answer there is
+            // Direct, not a bypass that was never in play.
+            if (ProxyBypass.Match(transport.NoProxy, uri) is { } rule)
+                return (ProxyDisposition.BypassedByRule, rule.Text);
+
+            return (ProxyDisposition.Proxied, null);
+        }
+        catch { return (ProxyDisposition.Direct, null); }
     }
 
     /// <summary>Whether this request will actually be tunnelled through a proxy. The answer decides
     /// whether the ConnectCallback path (and with it the TLS diagnostics and --resolve) is available.</summary>
-    public static bool ProxyWillBeUsed(string url, TransportOptions transport)
-    {
-        try
-        {
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
-            if (uri.Scheme is not ("http" or "https")) return false;
-            if (transport.Proxy is ProxyMode.None) return false;
-            if (transport.Proxy is ProxyMode.Explicit)
-            {
-                if (string.IsNullOrWhiteSpace(transport.ProxyUrl)) return false;
-                var explicitProxy = new WebProxy(transport.ProxyUrl);
-                return !explicitProxy.IsBypassed(uri);
-            }
-            var proxy = HttpClient.DefaultProxy;
-            return proxy is not null && !proxy.IsBypassed(uri) && proxy.GetProxy(uri) is not null;
-        }
-        catch { return false; }
-    }
+    public static bool ProxyWillBeUsed(string url, TransportOptions transport) =>
+        DecideProxy(url, transport).Disposition == ProxyDisposition.Proxied;
 
     /// <summary>The proxy that was used, for the diagnostics panel. Only meaningful once
     /// <see cref="ProxyWillBeUsed"/> has said yes.</summary>

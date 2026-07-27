@@ -192,16 +192,21 @@ public partial class HelpWindow : Window
         Sub("THE TRANSPORT TAB"),
         P("Transport settings belong to the request and are saved with it. Proxy: use the machine's " +
           "configured proxy (the default), ignore it altogether, or give an explicit proxy URL with a " +
-          "username and password. Redirects: follow them or stop at the 3xx, with a limit on how many " +
-          "hops are allowed. You can also switch off automatic decompression — to keep the response " +
-          "bytes exactly as they arrived — and pin the HTTP version to 1.1 or 2 instead of letting it " +
-          "be negotiated."),
+          "username and password. A bypass list names hosts that skip whichever proxy is chosen and " +
+          "are reached directly instead — comma-separated in the NO_PROXY style the rest of the " +
+          "ecosystem uses: a host and its subdomains, an address or a range, or * for everything. It " +
+          "narrows the machine's proxy or an explicit one, so it needs a proxy to narrow and cannot be " +
+          "combined with ignoring the proxy entirely. Redirects: follow them or stop at the 3xx, with a " +
+          "limit on how many hops are allowed. You can also switch off automatic decompression — to " +
+          "keep the response bytes exactly as they arrived — and pin the HTTP version to 1.1 or 2 " +
+          "instead of letting it be negotiated."),
         P("Each redirect that is followed shows up as its own row in the Network trace, so you can see " +
           "where the request really ended up. A hop that crosses to another origin is flagged: that is " +
           "where the Authorization header is dropped, and where your client certificate would be " +
-          "presented to a host you didn't choose. The Diagnostics view names the proxy that was used — " +
-          "and remember that behind any proxy the TLS version, cipher, and “client certificate " +
-          "presented” are blank, so turning the proxy off is also how you get those back."),
+          "presented to a host you didn't choose. The Diagnostics view names the proxy that was used, " +
+          "and names the bypass rule when one sent the request direct instead — and remember that " +
+          "behind any proxy the TLS version, cipher, and “client certificate presented” are blank, so " +
+          "turning the proxy off is also how you get those back."),
         Sub("RETRIES"),
         P("The Retries group on the same tab handles an endpoint that fails intermittently. Set a " +
           "count (0, the default, means no retries), the statuses that earn one (429, 502, 503, and " +
@@ -461,7 +466,7 @@ public partial class HelpWindow : Window
             "certapi run <collection or folder> runs saved requests as a pass/fail suite (a request passes when its Tests all pass, or on any 2xx if it has none) and updates their known-good markers — automatically against your live workspace, or add --record when running from an exported workspace file (--workspace).",
             "certapi fuzz <base-url> discovers endpoints from a wordlist — pass -w <file>, or omit it for the built-in starter list — and reports which paths exist on an undocumented API.",
             "certapi bench <url or saved request> measures one endpoint under load — -n <count> requests at -c <concurrency> (100 and 10 by default), or --duration <seconds> for a wall-clock run, with --warmup <seconds> discarded first. It reports how many succeeded, the rate, and the min/p50/p90/p99/max latencies (--json for a machine-readable envelope). See the note below about what those latencies include.",
-            "send, run, and fuzz share the transport flags. --proxy <url> routes through a proxy you name (--proxy-user user:pass when it wants credentials); --no-proxy ignores the machine's configured proxy — which is also how you get the TLS version, cipher, and “certificate presented” back, since none of the handshake is visible through a proxy.",
+            "send, run, and fuzz share the transport flags. --proxy <url> routes through a proxy you name (--proxy-user user:pass when it wants credentials); --no-proxy ignores the machine's configured proxy — which is also how you get the TLS version, cipher, and “certificate presented” back, since none of the handshake is visible through a proxy. --noproxy <list> names the hosts that bypass whichever proxy is in effect — it narrows the proxy setting rather than replacing it, and defaults to the NO_PROXY environment variable, which an explicit --noproxy overrides.",
             "--no-redirect stops at the 3xx instead of following it, --max-redirs <n> changes the limit (20 by default), and --show-redirects prints every hop — flagging a hop that crosses to another origin, where the Authorization header is dropped and your client certificate would go to a host you didn't choose.",
             "--no-decompress relays the response bytes exactly as they arrived instead of decoding them, and --http1.1 / --http2 pin the HTTP version instead of negotiating it.",
             "--resolve host:port:ip connects to the address you name while the request still carries the original hostname — one node behind a load balancer, or a DNS cutover you want to check before it happens. Repeat it for more hosts; it needs a direct connection, so it can't be combined with a proxy. certapi send --all-ips does the sweep for you across every address the host resolves to and prints a per-address comparison.",

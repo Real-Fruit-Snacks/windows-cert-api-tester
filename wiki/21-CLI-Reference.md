@@ -120,6 +120,29 @@ stderr even under `-q`, and `--json` gains a `diff` object. A missing or unreada
 3, as is `known-good` with no recorded snapshot (it names the request to send once). The diff
 modifiers need `--diff`, and `--diff` can't be combined with `--all-ips` (exit 2 for either).
 
+**Proxy** (shared with [`run`](#run) and [`fuzz`](#fuzz))
+
+- `--proxy <url>` — send through a specific proxy instead of the machine's configured one.
+- `--no-proxy` — skip the proxy entirely for this request. Restores the TLS version, cipher, and
+  client-certificate-presented diagnostics a proxy hides, since none of them are visible through
+  one.
+- `--proxy-user <user:pass>` — credentials for the proxy named by `--proxy`, or the machine's, when
+  it requires authentication.
+- `--noproxy <list>` — a comma-separated bypass list that narrows whichever proxy is in play (the
+  machine's, or the one named by `--proxy`) rather than replacing it: a bare hostname
+  (`internal.corp`) matches that host and its subdomains but not a look-alike (`notinternal.corp`);
+  a leading-dot or wildcard suffix (`.corp`, `*.corp`) matches the domain and its subdomains and not
+  a domain that merely contains it (`internal.corp.evil.com`); an IP address literal (`10.1.2.3`,
+  `::1`) matches as an address, never as a suffix; a Classless Inter-Domain Routing (CIDR) range
+  (`10.0.0.0/8`, `fd00::/8`) is accepted, but one written with host bits set (`10.0.0.5/8`) is
+  refused rather than quietly masked; and `*` alone bypasses everything. Matching is
+  case-insensitive, and an optional `:port` (`internal.corp:8443`, `[::1]:8443`, `*:8080`) must also
+  match when present. An entry that can't be parsed is refused with a message naming it (exit 2),
+  and combining `--noproxy` with `--no-proxy` is exit 2 too — there is no proxy left to narrow. When
+  `--noproxy` isn't given, the `NO_PROXY` environment variable (falling back to `no_proxy`) is
+  honored instead; precedence is an explicit `--noproxy`, then a saved request's own bypass list,
+  then `NO_PROXY`.
+
 **Retries** (shared with [`run`](#run) and [`fuzz`](#fuzz))
 
 - `--retry <n>` — retry a failed request up to n times (default `0`, off). A negative count is exit 2.
@@ -363,9 +386,9 @@ A short service name resolves when it's unambiguous (`Echo/Unary` finds `certapi
 - `--timeout <seconds>` — default 100
 - cert flags (see [`send`](#send)) + `--insecure` — a host pinned with `certapi trust add` needs
   no `--insecure`, exactly as `send`
-- `--proxy <url>` / `--no-proxy` / `--proxy-user <u:pass>` — apply to the channel; HTTP-version
-  pinning, redirects, decompression, and retries do not apply to a gRPC channel and have no flags
-  here
+- `--proxy <url>` / `--no-proxy` / `--proxy-user <u:pass>` / `--noproxy <list>` — apply to the
+  channel; HTTP-version pinning, redirects, decompression, and retries do not apply to a gRPC
+  channel and have no flags here
 - `--no-auto-token` — don't attach a captured bearer token as metadata for this call (one is
   attached automatically otherwise; `certapi grpc` never captures a *new* token)
 - `--workspace <file>` — load pins and tokens from a workspace file instead of the live state

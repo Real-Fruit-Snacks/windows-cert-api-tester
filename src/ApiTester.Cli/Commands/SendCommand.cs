@@ -416,7 +416,17 @@ public static class SendCommand
             : $"[{response.Error.Kind}] {response.Error.Message}")
             + $" · {response.Elapsed.TotalMilliseconds:F0} ms · {response.Body.LongLength} bytes");
         if (response.Connection is { } conn)
-            services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {(conn.ViaProxy ? "yes" : "no")} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")}");
+        {
+            // BypassedByRule and Direct both mean "no proxy was used", but they must read differently:
+            // a rule-driven bypass is a decision, where Direct is simply "there was never a proxy here".
+            string proxyDebug = conn.ProxyDisposition switch
+            {
+                ProxyDisposition.Proxied => "yes",
+                ProxyDisposition.BypassedByRule => $"no (bypassed by '{conn.ProxyBypassRule}')",
+                _ => "no"
+            };
+            services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {proxyDebug} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")}");
+        }
         LogErrorChain(response.Error, services);
         List<HarEntry>? harEntries = harPath is not null
             ? HarWriter.FromExchangeWithRedirects(request, response, harIncludeSecrets).ToList()

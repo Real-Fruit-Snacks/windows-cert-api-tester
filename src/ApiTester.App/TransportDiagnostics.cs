@@ -30,6 +30,11 @@ public static class TransportDiagnostics
     {
         sb.AppendLine("CONNECTION");
         sb.AppendLine($"  Via proxy       : {(c.ViaProxy ? "yes" : "no")}");
+        // A request that went direct because a bypass rule matched has to be distinguishable from one
+        // that had no proxy at all, or "why did this go direct?" is guesswork — so this line only ever
+        // appears for ProxyDisposition.BypassedByRule, never for the plain-direct default.
+        if (c.ProxyDisposition == ProxyDisposition.BypassedByRule)
+            sb.AppendLine($"  Bypassed by     : {c.ProxyBypassRule} (--noproxy)");
         // Naming the proxy is what lets a user work out where a client certificate got stripped.
         if (!string.IsNullOrEmpty(c.ProxyUri)) sb.AppendLine($"  Proxy           : {c.ProxyUri}");
         sb.AppendLine($"  TLS protocol    : {c.TlsProtocol ?? "—"}");

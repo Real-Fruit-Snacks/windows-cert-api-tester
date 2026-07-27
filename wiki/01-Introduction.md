@@ -43,7 +43,8 @@ You can, and for public APIs they're fine. Where this app pulls ahead:
 - **mTLS everywhere** — every feature (send, run, fuzz, stream, OAuth, gateway, mock) can present a
   client certificate.
 - **Windows-native auth** — honors your machine proxy (WPAD/PAC — Web Proxy Auto-Discovery /
-  proxy auto-configuration) with your Windows credentials, and supports
+  proxy auto-configuration) with your Windows credentials, narrowed per host with a `--noproxy`
+  bypass list when only part of your traffic should skip it, and supports
   [Windows Integrated Auth](08-Authentication.md) (Negotiate/NTLM — NT LAN Manager).
 - **Connection diagnostics** — see the negotiated TLS version, cipher, whether your cert was actually
   presented, and the server's chain.

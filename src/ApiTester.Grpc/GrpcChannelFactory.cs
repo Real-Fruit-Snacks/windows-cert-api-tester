@@ -17,8 +17,9 @@ internal static class GrpcChannelFactory
     /// do not apply:
     /// <list type="bullet">
     /// <item><description><see cref="TransportOptions.Proxy"/>, <see cref="TransportOptions.ProxyUrl"/>,
-    /// <see cref="TransportOptions.ProxyUser"/>, <see cref="TransportOptions.ProxyPassword"/> — honored,
-    /// the same three-way switch <c>ApiClient</c> uses.</description></item>
+    /// <see cref="TransportOptions.ProxyUser"/>, <see cref="TransportOptions.ProxyPassword"/>, and
+    /// <see cref="TransportOptions.NoProxy"/> — honored, via <c>ProxyConfiguration.Apply</c>, literally
+    /// the same code <c>ApiClient</c> uses.</description></item>
     /// <item><description><see cref="TransportOptions.IgnoreServerCertificateErrors"/> — honored, via
     /// the same server-certificate validation callback shape <c>ApiClient</c> uses.</description></item>
     /// <item><description><see cref="TransportOptions.Version"/> — not honored. gRPC *is* HTTP/2;
@@ -65,25 +66,7 @@ internal static class GrpcChannelFactory
             // signed-in user's Windows credentials when required. Mirrors ApiClient exactly.
             DefaultProxyCredentials = CredentialCache.DefaultCredentials
         };
-        switch (transport.Proxy)
-        {
-            case ProxyMode.None:
-                handler.UseProxy = false;
-                break;
-            case ProxyMode.Explicit:
-                handler.Proxy = new WebProxy(transport.ProxyUrl)
-                {
-                    Credentials = transport.ProxyUser is null
-                        ? CredentialCache.DefaultCredentials
-                        : new NetworkCredential(transport.ProxyUser, transport.ProxyPassword)
-                };
-                handler.UseProxy = true;
-                break;
-            case ProxyMode.System:
-            default:
-                // Leave the handler's default (system-configured) proxy behavior in place.
-                break;
-        }
+        ProxyConfiguration.Apply(handler, transport);
 
         // Let the handler drive the TLS handshake (and, for https, ALPN h2 negotiation) itself. A
         // hand-driven SslStream — the way ApiClient reads TLS diagnostics for the direct-connection

@@ -6,6 +6,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.63.0] - 2026-07-27
+
+### Added
+- **A new `--noproxy <list>` flag lists hosts to reach directly instead of through the proxy**,
+  using the entry forms the widely-understood `NO_PROXY` environment-variable conventions already
+  establish, so existing knowledge transfers: a bare hostname (`internal.corp`) matches that host
+  and its subdomains but not a look-alike (`notinternal.corp`); a leading-dot or wildcard suffix
+  (`.corp`, `*.corp`) matches the domain and its subdomains and not a domain that merely contains it
+  (`internal.corp.evil.com`); an IP address literal (`10.1.2.3`, `::1`) is matched as an address,
+  never as a suffix; a Classless Inter-Domain Routing (CIDR) range (`10.0.0.0/8`, `fd00::/8`) is
+  accepted, but one written with host bits set (`10.0.0.5/8`) is refused rather than quietly masked;
+  `*` alone bypasses everything; matching is case-insensitive; and an optional `:port`
+  (`internal.corp:8443`, `[::1]:8443`, `*:8080`) must also match when present. An entry that cannot
+  be understood is refused with a message naming it (exit 2) rather than silently dropped, because a
+  dropped entry would leave internal traffic leaking through the proxy while the user believed it
+  was bypassed. It is shared by `send`, `run`, `fuzz`, `bench`, and `serve` (they share one
+  transport-flag parser), and is also accepted by `grpc`.
+- **The bypass list narrows an existing proxy rather than replacing it** — with the system proxy it
+  narrows the machine's proxy (including Web Proxy Auto-Discovery (WPAD) and a proxy
+  auto-configuration (PAC) script), and with `--proxy` it narrows the named proxy instead. Combining
+  `--noproxy` with `--no-proxy` is a usage error (exit 2): there is no proxy left for `--noproxy` to
+  narrow, so the combination is refused rather than one of the two flags being silently ignored.
+- **`NO_PROXY` (falling back to `no_proxy`) is honored when `--noproxy` is not given**, because that
+  is what the rest of the ecosystem does and a corporate machine often already sets it. Precedence
+  when more than one source could apply: an explicit `--noproxy` wins, then a saved request's own
+  bypass list, then `NO_PROXY`. The environment is not consulted at all when `--no-proxy` is given,
+  since the user named no bypass list in that case.
+- **A request that went direct because a bypass rule matched is now distinguishable from one that
+  never had a proxy at all.** `--debug` prints `proxy no (bypassed by '<rule>')`, and the app's
+  Diagnostics panel gains a `Bypassed by` line naming the rule. Going direct also restores the TLS
+  diagnostics a proxy hides — version, cipher, and “client certificate presented” — so a bypassed
+  host reports them where a tunnelled one cannot.
+- **The bypass applies everywhere the proxy applies**: `send`, `run`, `fuzz`, `bench`, `mcp`, the
+  app, `certapi serve`, and `certapi grpc` — all three of the places that configure an HTTP
+  handler's proxy now share one implementation, so the bypass cannot apply on one path and not
+  another.
+- **A BYPASS box on the request editor's Transport tab** lets the app set the same per-host list —
+  saved with the request and round-tripped through workspaces like the other transport settings.
+
 ## [1.62.0] - 2026-07-27
 
 ### Added
@@ -1397,7 +1436,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.62.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.63.0...HEAD
+[1.63.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.62.0...v1.63.0
 [1.62.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.1...v1.62.0
 [1.61.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.0...v1.61.1
 [1.61.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.60.0...v1.61.0

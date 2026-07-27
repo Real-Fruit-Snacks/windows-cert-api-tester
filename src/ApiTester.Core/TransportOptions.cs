@@ -13,6 +13,21 @@ public enum ProxyMode
     Explicit
 }
 
+/// <summary>How a request actually reached the server, once <see cref="ProxyMode"/> and
+/// <see cref="TransportOptions.NoProxy"/> have both had their say. <see cref="Direct"/> and
+/// <see cref="BypassedByRule"/> both mean "no proxy was used", but they must stay distinguishable:
+/// bypass rules are exactly the kind of thing people get subtly wrong — a typo'd suffix, a rule that
+/// matches more or less than intended — and "why did this go direct?" is otherwise guesswork.</summary>
+public enum ProxyDisposition
+{
+    /// <summary>No proxy was in play — either none is configured or the request asked for none.</summary>
+    Direct,
+    /// <summary>Tunnelled through a proxy.</summary>
+    Proxied,
+    /// <summary>A proxy was configured and a bypass rule sent this request direct instead.</summary>
+    BypassedByRule
+}
+
 /// <summary>Which HTTP version to insist on. Pinning is a diagnostic tool: a gateway that
 /// behaves differently on HTTP/1.1 and HTTP/2 is otherwise very hard to catch.</summary>
 public enum HttpVersionMode
@@ -51,6 +66,13 @@ public sealed record TransportOptions
     public bool IgnoreServerCertificateErrors { get; init; }
 
     public IReadOnlyList<ResolveOverride> Resolve { get; init; } = Array.Empty<ResolveOverride>();
+
+    /// <summary>Hosts that skip the proxy even when one is selected. Empty reproduces the behavior
+    /// this client had before a bypass list existed — every proxyable request goes through whatever
+    /// proxy <see cref="Proxy"/> selects. A rule here narrows <see cref="ProxyMode.System"/> and
+    /// <see cref="ProxyMode.Explicit"/> alike, but is meaningless with <see cref="ProxyMode.None"/>,
+    /// where there is no proxy to bypass in the first place.</summary>
+    public IReadOnlyList<ProxyBypassRule> NoProxy { get; init; } = ProxyBypass.None;
 
     /// <summary>How many times to retry a failed request. 0 = off, which is the behavior this client
     /// had before retry existed.</summary>

@@ -25,6 +25,10 @@ namespace ApiTester.Core;
 /// to the proxy itself), so a different user must not ride a connection authenticated as someone
 /// else.</param>
 /// <param name="ProxyPassword">See <see cref="ProxyUser"/>.</param>
+/// <param name="NoProxy">The pooled handler now carries the bypass list inside its own
+/// <c>IWebProxy</c> (see <see cref="ProxyConfiguration"/>), so two transports with different lists
+/// must never share one — a request would otherwise ride a connection configured by someone else's
+/// rules.</param>
 /// <param name="IgnoreServerCertificateErrors">Part of the trust decision made once, at handshake
 /// time, for the life of the connection — a caller who did not ask to skip validation must never
 /// end up on a connection where someone else's request did.</param>
@@ -48,6 +52,7 @@ internal sealed record HandlerKey(
     string? ProxyUrl,
     string? ProxyUser,
     string? ProxyPassword,
+    string NoProxy,
     bool IgnoreServerCertificateErrors,
     Func<X509Certificate2?, bool>? TrustServerCertificate,
     bool Decompress,
@@ -68,6 +73,7 @@ internal sealed record HandlerKey(
         transport.ProxyUrl,
         transport.ProxyUser,
         transport.ProxyPassword,
+        ProxyBypass.Format(transport.NoProxy),
         transport.IgnoreServerCertificateErrors,
         trustServerCertificate,
         transport.Decompress,

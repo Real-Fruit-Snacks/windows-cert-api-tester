@@ -19,6 +19,11 @@ public static class TransportFlags
           --no-decompress         Relay compressed bytes exactly as received
           --http1.1 / --http2     Pin the HTTP version
           --resolve <host:port:ip>  Pin a host to an address (repeatable; not valid with a proxy)
+          --noproxy <list>        Hosts that bypass the proxy, comma-separated, NO_PROXY-style:
+                                  internal.corp, .corp, *.corp, 10.0.0.0/8, or * for everything
+                                  (append :port to pin one port). Narrows --proxy or the system
+                                  proxy; not valid with --no-proxy. Defaults to the NO_PROXY
+                                  environment variable, which an explicit --noproxy overrides.
 
         Retries:
           --retry <n>             Retry a failed request up to n times (default 0 = off)
@@ -31,8 +36,11 @@ public static class TransportFlags
         """;
 
     /// <summary>Consume the shared transport flags. <paramref name="showRedirects"/> comes back
-    /// separately because printing the hop chain is an output choice, not a transport one.</summary>
-    public static TransportOverrides Parse(Args args, out bool showRedirects)
+    /// separately because printing the hop chain is an output choice, not a transport one.
+    /// <paramref name="environment"/> is how a test supplies NO_PROXY without touching the process's
+    /// own environment, which is global state a parallel test run must never mutate; every real call
+    /// site leaves it null and gets <see cref="Environment.GetEnvironmentVariable"/>.</summary>
+    public static TransportOverrides Parse(Args args, out bool showRedirects, Func<string, string?>? environment = null)
     {
         // Every option is consumed unconditionally, even when this command will not act on it:
         // Args.Positionals() rejects anything option-shaped that is left over.
@@ -45,6 +53,7 @@ public static class TransportFlags
         bool http11 = args.Flag("--http1.1");
         bool http2 = args.Flag("--http2");
         var resolveSpecs = args.Values("--resolve");
+        string? noProxySpec = args.Value("--noproxy");
         showRedirects = args.Flag("--show-redirects");
         string? retryRaw = args.Value("--retry");
         string? retryOnRaw = args.Value("--retry-on");
@@ -83,6 +92,8 @@ public static class TransportFlags
         var resolve = new List<ResolveOverride>();
         foreach (var raw in resolveSpecs) resolve.Add(ParseResolve(raw));
 
+        var (noProxyRules, noProxyFromEnvironment) = ResolveNoProxy(noProxySpec, noProxy, environment);
+
         int? retries = null;
         if (retryRaw is not null)
         {
@@ -112,12 +123,60 @@ public static class TransportFlags
             Decompress = noDecompress ? false : null,
             Version = http11 ? HttpVersionMode.Http11 : http2 ? HttpVersionMode.Http2 : null,
             Resolve = resolve,
+            NoProxy = noProxyRules,
+            NoProxyFromEnvironment = noProxyFromEnvironment,
             Retries = retries,
             RetryOn = retryOn,
             RetryDelayMs = retryDelayMs,
             RetryUnsafeMethods = retryUnsafe ? true : null,
             RetryOnTransportError = noRetryTransport ? false : null
         };
+    }
+
+    /// <summary>The bypass list a command line asks for, split by where it came from so a caller can
+    /// apply the right precedence: an explicit <paramref name="spec"/> (--noproxy) always wins over
+    /// the NO_PROXY environment variable, and the environment is not consulted at all when
+    /// <paramref name="proxyOff"/> (--no-proxy) is set. Shared by every command that binds this flag —
+    /// <see cref="Parse"/> for send/run/fuzz/serve, and <c>certapi grpc</c> directly, since it has no
+    /// saved request to consult and so builds its own <c>TransportOptions</c> — so the blank-value
+    /// check, the --no-proxy conflict, the strict parse, and the environment fallback can never drift
+    /// between them.</summary>
+    public static (IReadOnlyList<ProxyBypassRule> FromFlag, IReadOnlyList<ProxyBypassRule> FromEnvironment)
+        ResolveNoProxy(string? spec, bool proxyOff, Func<string, string?>? environment = null)
+    {
+        if (spec is not null && string.IsNullOrWhiteSpace(spec))
+            throw new CliUsageException($"--noproxy expects a comma-separated list of hosts, got '{spec}'.");
+
+        // --noproxy needs a proxy to bypass; --no-proxy turns the proxy off entirely, so together
+        // there is nothing left for a bypass list to narrow. ApiClient.ValidateTransport refuses the
+        // same combination when it arrives via a saved request instead of the command line, off the
+        // same shared message, so the two can never drift apart.
+        if (spec is not null && proxyOff)
+            throw new CliUsageException(ProxyBypass.NoProxyWithProxyOffMessage);
+
+        IReadOnlyList<ProxyBypassRule> fromFlag = ProxyBypass.None;
+        if (spec is not null)
+        {
+            // Strict, not lenient: a typo'd entry is refused rather than dropped, the same stance
+            // ParseRetryOn takes below — a silently dropped bypass entry leaves the user believing
+            // they configured a bypass they never got, and internal traffic then leaks through the proxy.
+            if (!ProxyBypass.TryParse(spec, out fromFlag, out var problem))
+                throw new CliUsageException($"--noproxy: {problem}.");
+        }
+
+        // The NO_PROXY environment fallback only applies when --noproxy was not named on this command
+        // line. It is also skipped entirely when --no-proxy was given: the user did not name a bypass
+        // list in that case, so an ambient NO_PROXY must not turn into the usage error above — it is
+        // simply not consulted.
+        IReadOnlyList<ProxyBypassRule> fromEnvironment = ProxyBypass.None;
+        if (spec is null && !proxyOff && ProxyBypass.EnvironmentSpec(environment) is { } envSpec)
+        {
+            if (!ProxyBypass.TryParse(envSpec, out fromEnvironment, out var envProblem))
+                throw new CliUsageException(
+                    $"NO_PROXY: {envProblem}. Fix the environment variable, or override it for this run with --noproxy.");
+        }
+
+        return (fromFlag, fromEnvironment);
     }
 
     /// <summary>The comma-separated status list for --retry-on. Every token has to be a status code:
@@ -170,6 +229,9 @@ public sealed record TransportOverrides
     public HttpVersionMode? Version { get; init; }
     public IReadOnlyList<ResolveOverride> Resolve { get; init; } = Array.Empty<ResolveOverride>();
 
+    public IReadOnlyList<ProxyBypassRule> NoProxy { get; init; } = ProxyBypass.None;
+    public IReadOnlyList<ProxyBypassRule> NoProxyFromEnvironment { get; init; } = ProxyBypass.None;
+
     public int? Retries { get; init; }
     public IReadOnlyList<int>? RetryOn { get; init; }
     public int? RetryDelayMs { get; init; }
@@ -189,6 +251,12 @@ public sealed record TransportOverrides
         if (Version is { } version) options = options with { Version = version };
         // An empty list means "not named", not "pin nothing" — the baseline keeps whatever it had.
         if (Resolve.Count > 0) options = options with { Resolve = Resolve };
+        // Precedence: an explicit --noproxy wins, then whatever a saved request carries (a stored setting
+        // is a choice someone made, where the environment is merely ambient), and NO_PROXY only when
+        // neither has said anything. An empty list means "not named", exactly as Resolve above.
+        if (NoProxy.Count > 0) options = options with { NoProxy = NoProxy };
+        else if (NoProxyFromEnvironment.Count > 0 && options.NoProxy.Count == 0)
+            options = options with { NoProxy = NoProxyFromEnvironment };
         if (Retries is { } retries) options = options with { Retries = retries };
         // RetryOn is nullable where Resolve above is an empty-list sentinel, and the two differ on
         // purpose: an empty pin list can only mean "not named", but an empty status list would be a

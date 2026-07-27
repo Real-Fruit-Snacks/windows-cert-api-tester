@@ -351,6 +351,7 @@ public partial class MainWindow : Window
             TransportProxyUrlBox.Text = m.Transport.ProxyUrl ?? "";
             TransportProxyUserBox.Text = m.Transport.ProxyUser ?? "";
             TransportProxyPassBox.Text = m.Transport.ProxyPassword ?? "";
+            TransportNoProxyBox.Text = m.Transport.NoProxy ?? "";
             TransportFollowRedirectsCheck.IsChecked = m.Transport.FollowRedirects;
             TransportMaxRedirsBox.Text = m.Transport.MaxRedirects.ToString();
             TransportDecompressCheck.IsChecked = m.Transport.Decompress;
@@ -411,6 +412,7 @@ public partial class MainWindow : Window
         m.Transport.ProxyUrl = BlankToNull(TransportProxyUrlBox.Text);
         m.Transport.ProxyUser = BlankToNull(TransportProxyUserBox.Text);
         m.Transport.ProxyPassword = BlankToNull(TransportProxyPassBox.Text);
+        m.Transport.NoProxy = BlankToNull(TransportNoProxyBox.Text);
         m.Transport.FollowRedirects = TransportFollowRedirectsCheck.IsChecked == true;
         m.Transport.MaxRedirects = ParseMaxRedirects();
         m.Transport.Decompress = TransportDecompressCheck.IsChecked == true;

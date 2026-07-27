@@ -69,6 +69,17 @@ public sealed record ConnectionInfo
     /// <summary>The proxy the request actually went through, null when the connection was direct.
     /// Naming it is what lets a user work out where a client certificate got stripped.</summary>
     public string? ProxyUri { get; init; }
+
+    /// <summary>Where this request actually went, and why. Set together with <see cref="ViaProxy"/>
+    /// by <see cref="ApiClient"/> — <see cref="ViaProxy"/> is true exactly when this is
+    /// <see cref="ApiTester.Core.ProxyDisposition.Proxied"/>. Defaults to
+    /// <see cref="ApiTester.Core.ProxyDisposition.Direct"/> so every other construction site in the
+    /// repo stays truthful without change.</summary>
+    public ProxyDisposition ProxyDisposition { get; init; } = ProxyDisposition.Direct;
+
+    /// <summary>The bypass rule that sent this request direct, e.g. ".corp" — null unless
+    /// <see cref="ProxyDisposition"/> is <see cref="ApiTester.Core.ProxyDisposition.BypassedByRule"/>.</summary>
+    public string? ProxyBypassRule { get; init; }
     public string? TlsProtocol { get; init; }
     public string? CipherSuite { get; init; }
     public bool ClientCertificateSent { get; init; }

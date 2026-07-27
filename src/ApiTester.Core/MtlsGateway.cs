@@ -119,21 +119,7 @@ public sealed class MtlsGateway : IDisposable
     /// the bytes and the 3xx the upstream sent.</summary>
     private static void ApplyTransport(SocketsHttpHandler handler, TransportOptions transport)
     {
-        switch (transport.Proxy)
-        {
-            case ProxyMode.None:
-                handler.UseProxy = false;
-                break;
-            case ProxyMode.Explicit:
-                handler.Proxy = new WebProxy(transport.ProxyUrl)
-                {
-                    Credentials = transport.ProxyUser is null
-                        ? CredentialCache.DefaultCredentials
-                        : new NetworkCredential(transport.ProxyUser, transport.ProxyPassword)
-                };
-                handler.UseProxy = true;
-                break;
-        }
+        ProxyConfiguration.Apply(handler, transport);
 
         // Only install the callback when something is actually pinned, so the ordinary path stays
         // the handler's own connect logic.
