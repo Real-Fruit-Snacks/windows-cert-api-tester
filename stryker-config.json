@@ -1,0 +1,19 @@
+{
+  "stryker-config": {
+    "solution": "ApiTester.sln",
+    "project": "ApiTester.Core.csproj",
+    "test-projects": [ "tests/ApiTester.Tests/ApiTester.Tests.csproj" ],
+    "mutate": [
+      "**/RevocationCheck.cs",
+      "**/ProxyBypass.cs",
+      "**/HeaderRules.cs",
+      "**/TrustService.cs",
+      "**/SecretProtection.cs",
+      "**/BrowserRewriter.cs"
+    ],
+    "test-case-filter": "Category!=StoreRoundTrip",
+    "reporters": [ "progress", "html", "json" ],
+    "thresholds": { "high": 90, "low": 75, "break": 0 },
+    "concurrency": 4
+  }
+}

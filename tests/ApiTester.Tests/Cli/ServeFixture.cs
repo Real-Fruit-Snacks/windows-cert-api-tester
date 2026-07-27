@@ -68,9 +68,9 @@ internal sealed class ServeHost : IAsyncDisposable
     public int Port { get; }
     public string Origin => $"http://127.0.0.1:{Port}";
 
-    private ServeHost(X509Certificate2 clientCert, IEnumerable<string> extraArgs)
+    private ServeHost(X509Certificate2 clientCert, IEnumerable<string> extraArgs, int port)
     {
-        Port = ServeFixture.FreePort();
+        Port = port;
         var services = new CliServices
         {
             Cancel = _cts.Token,
@@ -90,8 +90,32 @@ internal sealed class ServeHost : IAsyncDisposable
         _run = Task.Run(() => CliApp.Run(args.ToArray(), TextWriter.Null, TextWriter.Null, services: services));
     }
 
-    public static ServeHost Start(X509Certificate2 clientCert, params string[] extraArgs) =>
-        new(clientCert, extraArgs);
+    /// <summary>Start the gateway, retrying on a fresh port if the chosen one was taken between
+    /// being probed and being bound.
+    ///
+    /// FreePort binds port 0, reads what the operating system assigned, then releases it — so the
+    /// port is free at the moment it is returned and anyone may take it before the gateway binds.
+    /// xUnit runs test classes in parallel, so the likeliest thief is another serve test in this
+    /// same assembly. Losing that race made `serve` exit with a bind error while the test polled a
+    /// port nothing was listening on, failing five seconds later with a bare socket error and a
+    /// different test name each run. It reproduced under Debug, whose slower startup widens the
+    /// window; Release simply won the race more often, which is the worst way for a flake to hide.</summary>
+    public static ServeHost Start(X509Certificate2 clientCert, params string[] extraArgs)
+    {
+        ServeHost? host = null;
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            host = new ServeHost(clientCert, extraArgs, ServeFixture.FreePort());
+
+            // A failed bind is not a hang: ServeCommand turns it into a data error and returns
+            // immediately, so a run task that has already finished means this port was taken.
+            if (!host._run.Wait(TimeSpan.FromMilliseconds(750)) || host._run.Result == ExitCodes.Ok)
+                return host;
+
+            host.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        return host!;   // give the caller the last attempt; its assertions are the verdict
+    }
 
     public async ValueTask DisposeAsync()
     {
