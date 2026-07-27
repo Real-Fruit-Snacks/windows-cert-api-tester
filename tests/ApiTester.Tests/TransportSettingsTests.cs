@@ -344,6 +344,84 @@ public class TransportSettingsTests
         AssertRetrySettings(back);
     }
 
+    [Fact]
+    public void Default_options_leave_revocation_checking_off()
+    {
+        var options = new TransportOptions();
+
+        Assert.Equal(RevocationMode.None, options.Revocation);
+        Assert.False(options.RevocationStrict);
+    }
+
+    [Fact]
+    public void Default_settings_leave_revocation_checking_off()
+    {
+        var options = new TransportSettings().ToOptions();
+
+        Assert.Equal(RevocationMode.None, options.Revocation);
+        Assert.False(options.RevocationStrict);
+    }
+
+    [Fact]
+    public void ToOptions_carries_a_non_default_revocation_mode_and_strict_switch()
+    {
+        var options = new TransportSettings { Revocation = RevocationMode.Online, RevocationStrict = true }.ToOptions();
+
+        Assert.Equal(RevocationMode.Online, options.Revocation);
+        Assert.True(options.RevocationStrict);
+    }
+
+    [Fact]
+    public void From_round_trips_the_revocation_mode_and_strict_switch()
+    {
+        var back = TransportSettings.From(new TransportOptions
+        {
+            Revocation = RevocationMode.Online,
+            RevocationStrict = true
+        });
+
+        Assert.Equal(RevocationMode.Online, back.Revocation);
+        Assert.True(back.RevocationStrict);
+    }
+
+    [Fact]
+    public void Revocation_settings_survive_a_round_trip_through_options()
+    {
+        var back = TransportSettings.From(new TransportOptions
+        {
+            Revocation = RevocationMode.Offline,
+            RevocationStrict = true
+        }).ToOptions();
+
+        Assert.Equal(RevocationMode.Offline, back.Revocation);
+        Assert.True(back.RevocationStrict);
+    }
+
+    [Fact]
+    public void CopyFrom_carries_the_revocation_mode_and_strict_switch()
+    {
+        var original = new TransportSettings { Revocation = RevocationMode.Online, RevocationStrict = true };
+        var target = new TransportSettings();
+
+        target.CopyFrom(original);
+
+        Assert.Equal(RevocationMode.Online, target.Revocation);
+        Assert.True(target.RevocationStrict);
+    }
+
+    [Fact]
+    public void A_clone_keeps_its_revocation_settings_when_the_original_is_edited_afterwards()
+    {
+        var original = new TransportSettings { Revocation = RevocationMode.Online, RevocationStrict = true };
+
+        var clone = original.Clone();
+        original.Revocation = RevocationMode.None;
+        original.RevocationStrict = false;
+
+        Assert.Equal(RevocationMode.Online, clone.Revocation);
+        Assert.True(clone.RevocationStrict);
+    }
+
     private static TransportSettings RetrySettings() => new()
     {
         Retries = 4,

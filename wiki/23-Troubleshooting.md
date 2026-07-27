@@ -42,6 +42,27 @@ Your machine doesn't trust the **server's** certificate (common with internal/pr
 separate from your client cert. Tick **Ignore server certificate errors** (app) or add `--insecure`
 (CLI) if you trust the server. To fix it properly, install the internal CA in your trust store.
 
+## "The server's certificate was revoked"
+
+This is a **different** finding from "isn't trusted" above: the chain built and would otherwise be
+trusted, but the issuer has since revoked the certificate — a compromised key, or someone who left, are
+the usual reasons. It only shows up when revocation checking is turned on (`--revocation offline` or
+`--revocation online`; by default it's off — `--revocation none` — so this can't happen at all). A
+pinned thumbprint (`certapi trust add`) doesn't rescue it either: revocation is the issuer's later word
+against the pin's earlier one, and the later word wins. See
+[Certificates & mTLS](06-Certificates-and-mTLS.md#checking-for-revocation).
+
+## "Revocation status unknown"
+
+Expected on a corporate network — not a bug. With `--revocation online`, the endpoint that answers the
+check — the Online Certificate Status Protocol (OCSP) responder, or the certificate revocation list
+(CRL) distribution point — is commonly blocked or unreachable from inside a locked-down network, and
+certapi reports the status as **unknown** rather than treating it as a failure, because failing on it
+would make `--revocation online` unusable on exactly the networks it targets. If you need an
+indeterminate answer treated as a failure instead, add `--revocation-strict` — it only makes sense
+together with `--revocation offline` or `--revocation online`; using it with checking off (the default)
+is a usage error.
+
 ## A network / DNS error
 
 The connection never reached TLS — DNS (Domain Name System) failure, wrong host/port, firewall, or

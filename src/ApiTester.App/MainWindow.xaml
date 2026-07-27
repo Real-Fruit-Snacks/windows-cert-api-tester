@@ -587,6 +587,19 @@
                         </StackPanel>
                         <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,8"
                                    Text="Hosts listed here skip the proxy and are reached directly — comma-separated, matching a host and its subdomains (internal.corp, .corp, *.corp), an address or range (10.0.0.0/8), or * for everything, with :port to pin one port. It narrows the system proxy or a specific proxy; it needs a proxy to narrow, so it cannot be combined with No proxy (direct)."/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="REVOCATION" Style="{StaticResource Caption}" VerticalAlignment="Center" Width="92"/>
+                            <ComboBox x:Name="TransportRevocationCombo" Width="330" SelectedIndex="0"
+                                      ToolTip="Whether to check that the server's certificate has not been revoked by its issuer, and how hard to try.">
+                                <ComboBoxItem>No revocation checking (default)</ComboBoxItem>
+                                <ComboBoxItem>Offline — cached revocation lists only</ComboBoxItem>
+                                <ComboBoxItem>Online — may fetch a list or query the issuer</ComboBoxItem>
+                            </ComboBox>
+                            <CheckBox x:Name="TransportRevocationStrictCheck" Content="Fail when the status can't be determined"
+                                      VerticalAlignment="Center" Margin="16,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,8"
+                                   Text="A revoked certificate is refused even if you have trusted it here — a pin is your earlier statement, revocation is the issuer's later withdrawal, and the later one wins. A status that cannot be determined (a blocked or unreachable revocation endpoint) is reported but not treated as a failure by default, since that is the ordinary case on a corporate network; the checkbox makes it fatal instead."/>
                         <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,12,0,0">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">

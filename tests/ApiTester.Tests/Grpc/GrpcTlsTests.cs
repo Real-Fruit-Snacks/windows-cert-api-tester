@@ -100,6 +100,63 @@ public class GrpcTlsTests
     }
 
     [Fact]
+    public async Task Online_revocation_against_an_unreachable_crl_succeeds_by_default_but_is_fatal_when_strict()
+    {
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
+        using var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate(
+            "localhost", ca, true, false, new[] { "127.0.0.1" },
+            crlDistributionPoint: SelfSignedCertificateFactory.UnroutableCrlDistributionPoint);
+
+        await using var server = await GrpcTestServer.StartTlsAsync(serverCert, requireClientCertificate: false);
+
+        // The CA is self-signed and therefore untrusted on its own, so a pin matching the server
+        // certificate's own thumbprint is supplied on every call below — exactly as
+        // A_pinned_server_certificate_is_honored_without_the_blanket_insecure_bypass does. That holds
+        // trust constant so the revocation mode is the only thing that differs between the calls.
+        var state = new AppState();
+        TrustService.Trust(state, "127.0.0.1", serverCert);
+        bool TrustServerCertificate(X509Certificate2? presented) =>
+            presented is not null && TrustService.IsTrusted(state, "127.0.0.1", presented.Thumbprint!);
+
+        // An unreachable revocation endpoint yields an unknown status, and an unknown status must not
+        // be fatal by default (ruling 3) — the pin still covers the untrusted root, as it does today.
+        await using (var onlineCaller = new GrpcCaller(
+            server.Uri, clientCertificate: null,
+            new TransportOptions { Revocation = RevocationMode.Online }, TrustServerCertificate))
+        {
+            var result = await onlineCaller.InvokeAsync(
+                "certapi.test.Echo", "Unary", """{"text":"online"}""",
+                Array.Empty<KeyValuePair<string, string>>(), CancellationToken.None);
+            Assert.Equal(0, result.StatusCode);
+        }
+
+        // --revocation-strict makes an unknown status fatal, and a pin does not rescue it. This
+        // refusal is only possible if the platform genuinely attempted the revocation fetch and the
+        // shared table then judged the result — the proof the mode actually reached the TLS stack.
+        await using (var strictCaller = new GrpcCaller(
+            server.Uri, clientCertificate: null,
+            new TransportOptions { Revocation = RevocationMode.Online, RevocationStrict = true },
+            TrustServerCertificate))
+        {
+            await Assert.ThrowsAnyAsync<Exception>(async () =>
+                await strictCaller.InvokeAsync(
+                    "certapi.test.Echo", "Unary", """{"text":"strict"}""",
+                    Array.Empty<KeyValuePair<string, string>>(), CancellationToken.None));
+        }
+
+        // The default mode (RevocationMode.None) succeeds exactly as it does today, proving the
+        // unchanged default path.
+        await using (var defaultCaller = new GrpcCaller(
+            server.Uri, clientCertificate: null, new TransportOptions(), TrustServerCertificate))
+        {
+            var result = await defaultCaller.InvokeAsync(
+                "certapi.test.Echo", "Unary", """{"text":"default"}""",
+                Array.Empty<KeyValuePair<string, string>>(), CancellationToken.None);
+            Assert.Equal(0, result.StatusCode);
+        }
+    }
+
+    [Fact]
     public async Task An_unpinned_server_certificate_is_rejected_when_nothing_is_trusted()
     {
         using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");

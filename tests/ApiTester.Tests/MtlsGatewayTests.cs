@@ -224,6 +224,59 @@ public class MtlsGatewayTests
     }
 
     [Fact]
+    public async Task A_gateway_with_revocation_checking_still_forwards_when_certificate_errors_are_ignored()
+    {
+        // Ruling 5: --insecure (here, ignoreServerCertificateErrors: true) keeps overriding revocation
+        // exactly as it overrides every other chain problem, even with a revocation mode requested.
+        // The gateway has no pin seam at all, so this is the only way its harness can hold trust
+        // constant while asking for a revocation mode -- it does not by itself prove revocation was
+        // enforced (it deliberately never is here), only that requesting it does not break the
+        // insecure path.
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            using var gw = new MtlsGateway(
+                new GatewayRoutes(new[] { new GatewayRoute("/", new Uri(upstream.BaseUrl)) }),
+                client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30),
+                new TransportOptions { Revocation = RevocationMode.Online });
+
+            var resp = await gw.ForwardAsync(
+                new GatewayRequest("GET", "/", Array.Empty<KeyValuePair<string, string>>(), null, null), default);
+
+            using (resp.Lifetime)
+            {
+                Assert.Equal(200, resp.StatusCode);
+                Assert.Contains("ok", await ReadBody(resp));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_gateway_built_without_transport_options_still_forwards()
+    {
+        // The older four-argument constructor passes no TransportOptions at all; CreateClient must
+        // fall back to the defaults (RevocationMode.None) rather than throwing on a null transport --
+        // reproducing the behavior this gateway had before revocation checking existed.
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            using var gw = new MtlsGateway(
+                new Uri(upstream.BaseUrl), client, ignoreServerCertificateErrors: true, TimeSpan.FromSeconds(30));
+
+            var resp = await gw.ForwardAsync(
+                new GatewayRequest("GET", "/", Array.Empty<KeyValuePair<string, string>>(), null, null), default);
+
+            using (resp.Lifetime)
+            {
+                Assert.Equal(200, resp.StatusCode);
+                Assert.Contains("ok", await ReadBody(resp));
+            }
+        }
+    }
+
+    [Fact]
     public async Task Resolve_override_dials_the_pinned_address_while_the_upstream_keeps_its_hostname()
     {
         // A .invalid name can never resolve (RFC 2606), so reaching the upstream at all proves the

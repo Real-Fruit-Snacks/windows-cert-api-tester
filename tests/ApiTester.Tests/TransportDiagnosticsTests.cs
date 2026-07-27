@@ -198,6 +198,7 @@ public class TransportDiagnosticsTests
             "  Issuer          : CN=Example CA",
             "  Thumbprint      : ABCD1234",
             "  Expires         : 2030-01-02 03:04:05Z",
+            "  Revocation      : not checked (revocation checking is off)",
             "  Chain           :",
             "    • CN=Example CA",
             "    • CN=Example Root",
@@ -206,6 +207,97 @@ public class TransportDiagnosticsTests
 
         Assert.DoesNotContain("REDIRECTS", text);
         Assert.DoesNotContain("ERROR", text);
+    }
+
+    [Fact]
+    public void Format_reports_that_revocation_checking_was_not_performed_by_default()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo()
+        });
+
+        Assert.Contains("Revocation", text);
+        Assert.Contains("not checked", text);
+        Assert.Contains("revocation checking is off", text);
+    }
+
+    [Fact]
+    public void Format_reports_a_checked_certificate_as_not_revoked()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                RevocationMode = RevocationMode.Offline,
+                RevocationStatus = RevocationStatus.Checked
+            }
+        });
+
+        Assert.Contains("checked", text);
+        Assert.Contains("not revoked", text);
+    }
+
+    [Fact]
+    public void Format_says_plainly_when_the_certificate_was_revoked()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                RevocationMode = RevocationMode.Online,
+                RevocationStatus = RevocationStatus.Revoked
+            }
+        });
+
+        Assert.Contains("REVOKED", text);
+    }
+
+    [Fact]
+    public void Format_reports_an_undeterminable_revocation_status_as_not_fatal()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                RevocationMode = RevocationMode.Online,
+                RevocationStatus = RevocationStatus.Unknown
+            }
+        });
+
+        Assert.Contains("could not be determined", text);
+        Assert.Contains("not treated as fatal", text);
+    }
+
+    [Fact]
+    public void Format_says_revocation_was_requested_but_not_enforced_when_insecure_accepted_the_certificate()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                RevocationMode = RevocationMode.Online,
+                RevocationStatus = RevocationStatus.NotEnforced
+            }
+        });
+
+        Assert.Contains("NOT ENFORCED", text);
+        Assert.Contains("Ignore server certificate errors", text);
+    }
+
+    [Fact]
+    public void Format_shows_the_requested_revocation_mode_when_it_is_not_the_default()
+    {
+        var text = TransportDiagnostics.Format(new ApiResponse
+        {
+            Connection = new ConnectionInfo
+            {
+                RevocationMode = RevocationMode.Online,
+                RevocationStatus = RevocationStatus.Checked
+            }
+        });
+
+        Assert.Contains("online", text);
     }
 
     [Fact]

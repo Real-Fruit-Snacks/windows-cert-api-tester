@@ -143,6 +143,27 @@ modifiers need `--diff`, and `--diff` can't be combined with `--all-ips` (exit 2
   honored instead; precedence is an explicit `--noproxy`, then a saved request's own bypass list,
   then `NO_PROXY`.
 
+**Revocation** (shared with [`run`](#run), [`fuzz`](#fuzz), [`bench`](#bench), and [`serve`](#serve);
+also accepted by [`grpc`](#grpc))
+
+- `--revocation none|offline|online` — check whether the server's certificate has been revoked by its
+  issuer (default `none`, matching every release before this one, so nothing changes unless you opt
+  in). `offline` consults cached certificate revocation lists (CRLs) only and never reaches the
+  network; `online` may fetch a fresh CRL or query an Online Certificate Status Protocol (OCSP)
+  responder.
+- `--revocation-strict` — treat an undeterminable revocation status as fatal instead of merely
+  reported. Requires `--revocation offline` or `--revocation online`; passing it with checking off
+  (the default) is a usage error (exit 2), since there is no unknown status for it to make fatal.
+
+A certificate the issuer has revoked is refused even past a pin from `certapi trust add` — revocation
+is the issuer's later word against the pin's earlier one, and it wins; under the default `none` this
+never triggers, and `--revocation-strict` is likewise not rescued by a pin. The outcome
+(checked-and-good, revoked, unknown, or not checked) is always reported: `--debug` prints a
+`revocation …` term on both the transport line and the connection line, and `--json` carries
+`revocationMode` and `revocationStatus`. `--insecure` still overrides a revoked or unknown result, the
+same as it always overrode "not trusted" — but now the diagnostics say so rather than implying a clean
+check happened.
+
 **Retries** (shared with [`run`](#run) and [`fuzz`](#fuzz))
 
 - `--retry <n>` — retry a failed request up to n times (default `0`, off). A negative count is exit 2.
@@ -267,7 +288,8 @@ exactly one request.
 
 - `-X, --method <m>`, `-H, --header "k: v"`, `-d, --data <body>`, `--content-type <ct>`,
   `--bearer <token>`, `--timeout <seconds>`
-- cert flags + `--insecure`; `--env <name>` / `--var k=v` / `--workspace <file>`
+- cert flags + `--insecure`; the [revocation flags](#send) (`--revocation`, `--revocation-strict`)
+  apply too; `--env <name>` / `--var k=v` / `--workspace <file>`
 
 On a saved request these override or add to what it already carries; everything else about it (its own
 auth, headers, body, and transport settings) is used as saved. A multipart request can't be benched.
@@ -352,6 +374,9 @@ the client-certificate path end to end.
   the request before it reaches the upstream (repeatable)
 - `--response-header "Name: value"` / `--remove-response-header <name>` — set or strip a header on
   the response before it reaches the caller (repeatable; applied after `--browser`'s own rewrites)
+- `--revocation none|offline|online` / `--revocation-strict` — the [same revocation
+  checking](#send) as `send`, enforced on the gateway's connection to the upstream (default `none`;
+  see [Local Gateway](19-Local-Gateway.md))
 
 ## grpc
 
@@ -389,6 +414,8 @@ A short service name resolves when it's unambiguous (`Echo/Unary` finds `certapi
 - `--proxy <url>` / `--no-proxy` / `--proxy-user <u:pass>` / `--noproxy <list>` — apply to the
   channel; HTTP-version pinning, redirects, decompression, and retries do not apply to a gRPC
   channel and have no flags here
+- `--revocation none|offline|online` / `--revocation-strict` — the [same revocation
+  checking](#send) as `send`, enforced on the gRPC channel's TLS connection (default `none`)
 - `--no-auto-token` — don't attach a captured bearer token as metadata for this call (one is
   attached automatically otherwise; `certapi grpc` never captures a *new* token)
 - `--workspace <file>` — load pins and tokens from a workspace file instead of the live state

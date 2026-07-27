@@ -352,6 +352,13 @@ public partial class MainWindow : Window
             TransportProxyUserBox.Text = m.Transport.ProxyUser ?? "";
             TransportProxyPassBox.Text = m.Transport.ProxyPassword ?? "";
             TransportNoProxyBox.Text = m.Transport.NoProxy ?? "";
+            TransportRevocationCombo.SelectedIndex = m.Transport.Revocation switch
+            {
+                RevocationMode.Offline => 1,
+                RevocationMode.Online => 2,
+                _ => 0
+            };
+            TransportRevocationStrictCheck.IsChecked = m.Transport.RevocationStrict;
             TransportFollowRedirectsCheck.IsChecked = m.Transport.FollowRedirects;
             TransportMaxRedirsBox.Text = m.Transport.MaxRedirects.ToString();
             TransportDecompressCheck.IsChecked = m.Transport.Decompress;
@@ -413,6 +420,13 @@ public partial class MainWindow : Window
         m.Transport.ProxyUser = BlankToNull(TransportProxyUserBox.Text);
         m.Transport.ProxyPassword = BlankToNull(TransportProxyPassBox.Text);
         m.Transport.NoProxy = BlankToNull(TransportNoProxyBox.Text);
+        m.Transport.Revocation = TransportRevocationCombo.SelectedIndex switch
+        {
+            1 => RevocationMode.Offline,
+            2 => RevocationMode.Online,
+            _ => RevocationMode.None
+        };
+        m.Transport.RevocationStrict = TransportRevocationStrictCheck.IsChecked == true;
         m.Transport.FollowRedirects = TransportFollowRedirectsCheck.IsChecked == true;
         m.Transport.MaxRedirects = ParseMaxRedirects();
         m.Transport.Decompress = TransportDecompressCheck.IsChecked == true;

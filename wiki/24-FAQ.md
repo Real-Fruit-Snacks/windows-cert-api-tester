@@ -77,6 +77,13 @@ Run `certapi serve <upstream> --cert …` and point the tool at the local port. 
 It skips **server** certificate validation, so only use it for internal/self-signed servers you trust.
 It has nothing to do with your client certificate, which is still presented.
 
+**Does it check certificate revocation?**
+Only if you ask: `--revocation none|offline|online` defaults to `none`, exactly the previous behavior.
+`offline` checks cached certificate revocation lists (CRLs) only; `online` may also query an Online
+Certificate Status Protocol (OCSP) responder. A revoked certificate is refused even past a pinned
+thumbprint; an unreachable or blocked check (common on a corporate network) is reported but not fatal
+unless you add `--revocation-strict`. See [Certificates & mTLS](06-Certificates-and-mTLS.md#checking-for-revocation).
+
 **Where do I report a bug or ask for a feature?**
 Open an issue on the repository.
 

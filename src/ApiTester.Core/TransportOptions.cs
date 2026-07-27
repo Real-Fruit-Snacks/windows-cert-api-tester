@@ -95,4 +95,20 @@ public sealed record TransportOptions
     /// <summary>Also retry POST and PATCH. Off by default: re-sending a POST nobody confirmed can
     /// charge a card twice, and a client cannot tell a lost response from a lost request.</summary>
     public bool RetryUnsafeMethods { get; init; }
+
+    /// <summary>Whether to check that the server's certificate has not been revoked by its issuer,
+    /// and how hard to look. <see cref="RevocationMode.None"/> is the default and reproduces the
+    /// behavior this client had before revocation checking existed: SslStream does not check
+    /// revocation unless it is asked to, so it was never asked. An operator opts in with
+    /// <c>--revocation offline</c> or <c>--revocation online</c> once they have a public-key
+    /// infrastructure that can actually answer the question.</summary>
+    public RevocationMode Revocation { get; init; } = RevocationMode.None;
+
+    /// <summary>Whether a revocation status that could not be determined is fatal. Off by default,
+    /// and deliberately so: on a locked-down corporate network a blocked or unreachable certificate
+    /// revocation list (CRL) or Online Certificate Status Protocol (OCSP) endpoint is the ordinary
+    /// state of affairs, and failing on it would make this tool unusable on exactly the networks it
+    /// exists to test. Meaningless with <see cref="RevocationMode.None"/>, where nothing was checked
+    /// and so nothing can come back unknown.</summary>
+    public bool RevocationStrict { get; init; }
 }

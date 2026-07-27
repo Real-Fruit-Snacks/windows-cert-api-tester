@@ -1,7 +1,7 @@
 # 6. Certificates & mTLS
 
 The signature feature. This chapter covers picking a certificate, loading one from a file, ignoring
-server-cert errors, and reading the connection diagnostics.
+server-cert errors, checking for revocation, and reading the connection diagnostics.
 
 ## Picking a certificate from the Windows store
 
@@ -66,6 +66,41 @@ machine may not trust, which fails the handshake with
 
 Use it for internal/self-signed servers you already trust — not the public internet.
 
+## Checking for revocation
+
+Trusting the server's certificate and checking whether it has been **revoked** are two more separate
+questions. By default certapi does neither kind of revocation check — `--revocation none`, matching
+every release before this one, so nothing changes unless you opt in:
+
+- **`--revocation offline`** consults cached certificate revocation lists (CRLs) only, never reaching
+  the network.
+- **`--revocation online`** may fetch a fresh CRL or query an Online Certificate Status Protocol (OCSP)
+  responder.
+
+A certificate the issuer has actually revoked is refused either way — as its **own** outcome, distinct
+from "the server's own certificate isn't trusted" above, because in a corporate public-key
+infrastructure (PKI) the two findings mean very different things: a compromised key or a departed
+employee, versus usually just a missing root. **Revocation wins over a pin**, too: if you've pinned a
+host's thumbprint with `certapi trust add` and its certificate is later revoked, the connection is
+refused anyway — a pin is your earlier statement that the certificate was fine, revocation is the
+issuer's later word that it isn't, and the later word wins. Under the default `--revocation none` this
+can never come up.
+
+A revocation check can come back **unknown** rather than good or bad — a blocked or unreachable
+responder is the common case on a locked-down corporate network — and that is **not treated as a
+failure by default**, because failing on it would make `--revocation online` unusable on exactly the
+networks it targets. Add **`--revocation-strict`** to treat an undeterminable status as fatal instead;
+it's a usage error (exit 2) if you pass it without `--revocation offline` or `--revocation online`,
+since with checking off there's no unknown status for it to make fatal.
+
+`--insecure` still overrides all of this — it means "trust anything" — but the diagnostics say so
+plainly (a `note:` on stderr, `--debug`, `--json`, and the app's Diagnostics panel) rather than leaving
+you to assume a clean check happened.
+
+In the app, the request editor's **Transport** tab has a matching **REVOCATION** row: the same
+three-way mode choice, plus a **Fail when the status can't be determined** checkbox for
+`--revocation-strict`. See [Building Requests](07-Building-Requests.md#the-transport-tab).
+
 ## Reading the diagnostics
 
 After a send, the **Diagnostics** tab (app) shows what actually happened in the handshake:
@@ -74,6 +109,8 @@ After a send, the **Diagnostics** tab (app) shows what actually happened in the 
 - **Client certificate** — whether yours was *presented to the server* (the real test that mTLS —
   mutual TLS — worked), or whether the server didn't ask for one.
 - **Server certificate** — subject, issuer, thumbprint, expiry, and the chain.
+- **Revocation** — which mode was requested and what came back: checked-and-good, revoked, unknown, or
+  not checked. Always present, whether or not checking ran.
 
 Connections are pooled and reused, so these diagnostics describe the handshake that established the
 connection your request used, not necessarily a handshake that just happened — a second send to the

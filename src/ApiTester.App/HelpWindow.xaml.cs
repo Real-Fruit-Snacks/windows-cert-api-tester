@@ -188,7 +188,7 @@ public partial class HelpWindow : Window
             "Auth — Auto (use a captured token, the default), None, Bearer token, or Basic (username / password). The helper builds the Authorization header for you.",
             "Capture — save a value from the response into a {{variable}} for later requests (see Automatic tokens).",
             "Tests — assert on the response so a suite can pass/fail (see Testing responses).",
-            "Transport — how the request reaches the endpoint: proxy, redirects, decompression, HTTP version, and retries (below)."),
+            "Transport — how the request reaches the endpoint: proxy, redirects, decompression, HTTP version, retries, and revocation checking (below)."),
         Sub("THE TRANSPORT TAB"),
         P("Transport settings belong to the request and are saved with it. Proxy: use the machine's " +
           "configured proxy (the default), ignore it altogether, or give an explicit proxy URL with a " +
@@ -207,6 +207,28 @@ public partial class HelpWindow : Window
           "and names the bypass rule when one sent the request direct instead — and remember that " +
           "behind any proxy the TLS version, cipher, and “client certificate presented” are blank, so " +
           "turning the proxy off is also how you get those back."),
+        Sub("REVOCATION"),
+        P("The same tab also controls certificate revocation checking: whether the server's " +
+          "certificate is confirmed not to have been revoked by its issuer, and how hard to try. In a " +
+          "corporate public-key infrastructure (PKI), a revoked certificate usually means a private " +
+          "key was compromised or an employee left — a different finding from a merely untrusted " +
+          "certificate, and revocation is where it's caught. “No revocation checking” (the default) " +
+          "reproduces every earlier release's behavior exactly: nothing is asked. “Offline” consults " +
+          "only certificate revocation lists (CRLs) already cached on the machine and never reaches " +
+          "out to the network; “Online” may also fetch a fresh certificate revocation list (CRL) or " +
+          "query the issuer's Online Certificate Status Protocol (OCSP) responder."),
+        P("A status that can't be determined — an unreachable or blocked revocation endpoint — is " +
+          "reported in Diagnostics but not treated as a failure by default, because that's the " +
+          "ordinary state of affairs on a locked-down corporate network: failing on it would make the " +
+          "tool unusable on the networks it targets. Tick “Fail when the status can't be determined” " +
+          "to make that fatal instead. A certificate the issuer reports REVOKED is always refused, " +
+          "even for one you have trusted in this app via “Trust & retry” or the Trusted-certificates " +
+          "manager — a pin is your earlier statement, revocation is the issuer's later withdrawal, " +
+          "and the later one wins. “Ignore server cert errors” still overrides all of it and accepts " +
+          "the certificate regardless, but Diagnostics says so plainly — checking requested but not " +
+          "enforced — rather than letting you assume the check came back clean."),
+        NoteBox("Headless, the same setting is --revocation none|offline|online (default none), and " +
+                "--revocation-strict makes an undetermined status fatal."),
         Sub("RETRIES"),
         P("The Retries group on the same tab handles an endpoint that fails intermittently. Set a " +
           "count (0, the default, means no retries), the statuses that earn one (429, 502, 503, and " +

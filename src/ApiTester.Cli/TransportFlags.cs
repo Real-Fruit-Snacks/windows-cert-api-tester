@@ -24,6 +24,15 @@ public static class TransportFlags
                                   (append :port to pin one port). Narrows --proxy or the system
                                   proxy; not valid with --no-proxy. Defaults to the NO_PROXY
                                   environment variable, which an explicit --noproxy overrides.
+          --revocation <mode>     Check whether the server's certificate has been revoked by its
+                                  issuer: none (the default — no checking, as before), offline
+                                  (cached certificate revocation lists (CRLs) only), or online (may
+                                  fetch a fresh list or query an Online Certificate Status Protocol
+                                  (OCSP) responder). A status that cannot be determined is reported
+                                  and is not fatal, because a blocked revocation endpoint is the
+                                  ordinary case on a corporate network.
+          --revocation-strict     Make an undeterminable revocation status fatal (needs --revocation
+                                  offline or online). --insecure still overrides both, and says so.
 
         Retries:
           --retry <n>             Retry a failed request up to n times (default 0 = off)
@@ -60,6 +69,8 @@ public static class TransportFlags
         string? retryDelayRaw = args.Value("--retry-delay");
         bool retryUnsafe = args.Flag("--retry-unsafe");
         bool noRetryTransport = args.Flag("--no-retry-transport");
+        string? revocationRaw = args.Value("--revocation");
+        bool revocationStrict = args.Flag("--revocation-strict");
 
         if (proxyUrl is not null && noProxy)
             throw new CliUsageException("--proxy and --no-proxy are mutually exclusive.");
@@ -112,6 +123,15 @@ public static class TransportFlags
             retryDelayMs = ms;
         }
 
+        // Parsed strictly, the same stance --noproxy and --retry-on take above: a typo'd mode is
+        // refused by name rather than silently dropped, because a dropped --revocation would leave
+        // the user believing they asked for a check they never got. Note this does NOT also refuse
+        // --revocation-strict without a mode here — that combination is only invalid once a saved
+        // request's own baseline is accounted for (certapi run applies these overrides ON TOP of a
+        // saved request, so --revocation-strict alone is valid when the saved request already
+        // carries a mode), so ApiClient.ValidateTransport owns that check, after ApplyTo below.
+        RevocationMode? revocation = revocationRaw is null ? null : ParseRevocation(revocationRaw);
+
         return new TransportOverrides
         {
             Proxy = proxyUrl is not null ? ProxyMode.Explicit : noProxy ? ProxyMode.None : null,
@@ -129,9 +149,24 @@ public static class TransportFlags
             RetryOn = retryOn,
             RetryDelayMs = retryDelayMs,
             RetryUnsafeMethods = retryUnsafe ? true : null,
-            RetryOnTransportError = noRetryTransport ? false : null
+            RetryOnTransportError = noRetryTransport ? false : null,
+            Revocation = revocation,
+            RevocationStrict = revocationStrict ? true : null
         };
     }
+
+    /// <summary>Parses --revocation strictly — none/offline/online, case-insensitively, or a usage
+    /// error naming the offending value. Shared by <see cref="Parse"/> (send/run/fuzz/serve) and
+    /// <c>certapi grpc</c> directly, which builds its own <see cref="TransportOptions"/> and has no
+    /// saved request to consult, so the two entry points can never drift on what a mode string
+    /// means.</summary>
+    internal static RevocationMode ParseRevocation(string raw) => raw.Trim().ToLowerInvariant() switch
+    {
+        "none" => RevocationMode.None,
+        "offline" => RevocationMode.Offline,
+        "online" => RevocationMode.Online,
+        _ => throw new CliUsageException($"--revocation expects none, offline, or online, got '{raw}'.")
+    };
 
     /// <summary>The bypass list a command line asks for, split by where it came from so a caller can
     /// apply the right precedence: an explicit <paramref name="spec"/> (--noproxy) always wins over
@@ -238,6 +273,9 @@ public sealed record TransportOverrides
     public bool? RetryUnsafeMethods { get; init; }
     public bool? RetryOnTransportError { get; init; }
 
+    public RevocationMode? Revocation { get; init; }
+    public bool? RevocationStrict { get; init; }
+
     public TransportOptions ApplyTo(TransportOptions baseline)
     {
         var options = baseline;
@@ -265,6 +303,14 @@ public sealed record TransportOverrides
         if (RetryDelayMs is { } delayMs) options = options with { RetryDelay = TimeSpan.FromMilliseconds(delayMs) };
         if (RetryUnsafeMethods is { } retryUnsafe) options = options with { RetryUnsafeMethods = retryUnsafe };
         if (RetryOnTransportError is { } retryTransport) options = options with { RetryOnTransportError = retryTransport };
+        // Independent of each other, unlike the paired settings above: a saved request's own
+        // revocation mode and its own --revocation-strict survive independently unless the matching
+        // flag names that particular setting. This is exactly what lets `certapi run --revocation-
+        // strict` (with no --revocation) stay valid when the saved request already carries a mode —
+        // ApiClient.ValidateTransport enforces the strict-without-a-mode rule after both of these are
+        // applied, so it sees the combined result, not either override in isolation.
+        if (Revocation is { } revocation) options = options with { Revocation = revocation };
+        if (RevocationStrict is { } strict) options = options with { RevocationStrict = strict };
         return options;
     }
 }

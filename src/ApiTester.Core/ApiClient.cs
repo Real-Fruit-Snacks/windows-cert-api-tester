@@ -82,10 +82,12 @@ public sealed class ApiClient : IDisposable
         if (response.Error is not null)
         {
             if (!transport.RetryOnTransportError) return false;
-            // Only the failures a second attempt could plausibly survive. A refused or untrusted
-            // certificate will be refused again — retrying it just fails slower — a redirect loop is
-            // still a loop on the next pass, Unknown means the request itself was malformed rather
-            // than the connection, and None is the cancelled case, which must not be re-sent at all.
+            // Only the failures a second attempt could plausibly survive. A refused, untrusted, or
+            // revoked certificate will be refused again — retrying it just fails slower, and a
+            // revoked one even more emphatically so, since it is the issuer's own permanent
+            // withdrawal — a redirect loop is still a loop on the next pass, Unknown means the
+            // request itself was malformed rather than the connection, and None is the cancelled
+            // case, which must not be re-sent at all.
             return response.Error.Kind is ApiErrorKind.Network
                 or ApiErrorKind.Timeout
                 or ApiErrorKind.ConnectionRefused
@@ -162,6 +164,20 @@ public sealed class ApiClient : IDisposable
         // Always false when this send turns out to be direct.
         bool serverUntrusted = false;
 
+        // Also set only by the proxied path's own Validate callback: non-null exactly when
+        // revocation itself is what refused the connection (a genuine revocation, or a strict-mode
+        // unknown status), mirroring the direct path's own per-connection revocationRefusal local
+        // inside ConnectCallback below. Always null when this send turns out to be direct.
+        RevocationStatus? proxiedRefusal = null;
+
+        // What the revocation check reported on the connection this send actually used, whether or
+        // not it was accepted — set by the proxied path's own Validate callback on every validation,
+        // clean or not (ruling 6). Always NotChecked when this send turns out to be direct, since
+        // the direct path's per-connection state cannot write back into a field shared by every
+        // connection a cached handler might ever open; BuildConnection falls back to the recorded
+        // HandshakeInfo for that path instead.
+        RevocationStatus revocationStatus = RevocationStatus.NotChecked;
+
         // Decided once, up front, from the initial URL. The handler this send ends up using also
         // carries the bypass list in its own IWebProxy (see ProxyConfiguration.Apply), so a redirect
         // hop that lands on a differently-dispositioned host is still routed correctly on the wire —
@@ -206,13 +222,27 @@ public sealed class ApiClient : IDisposable
                 if (certChain is not null)
                     chain = certChain.ChainElements.Select(e => e.Certificate.Subject).ToList();
 
-                if (errors == SslPolicyErrors.None) return true;
-                if (transport.IgnoreServerCertificateErrors) return true;
-                if (trustServerCertificate is not null)
-                {
-                    using var c = cert is null ? null : new X509Certificate2(cert);
-                    if (trustServerCertificate(c)) return true;
-                }
+                // The shared table (RevocationCheck.Decide) replaces the hand-rolled "clean chain /
+                // insecure / pinned thumbprint" ladder that used to live here: it already reproduces
+                // that acceptance rule for RevocationMode.None byte for byte, plus the
+                // revocation-aware rules for Offline/Online, so this callback and the direct path's
+                // equivalent below can never drift on how a certificate is judged. Called on every
+                // validation, including a clean chain, so Checked/NotEnforced are ever reported at
+                // all (ruling 6).
+                var decision = RevocationCheck.Decide(
+                    transport.Revocation,
+                    transport.RevocationStrict,
+                    transport.IgnoreServerCertificateErrors,
+                    errors,
+                    RevocationCheck.ChainFlagsOf(certChain),
+                    trustServerCertificate is null ? null : () =>
+                    {
+                        using var c = cert is null ? null : new X509Certificate2(cert);
+                        return trustServerCertificate(c);
+                    });
+                revocationStatus = decision.Status;
+                if (decision.Accepted) return true;
+                proxiedRefusal = decision.RefusedByRevocation;
                 serverUntrusted = true;
                 return false;
             }
@@ -220,6 +250,7 @@ public sealed class ApiClient : IDisposable
             var handler = BuildCommonHandler(transport, request.WindowsAuth);
             // Let the handler drive the proxy CONNECT + TLS; capture the server cert in the callback.
             handler.SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate };
+            RevocationCheck.Apply(handler.SslOptions, transport.Revocation);
             if (clientCertificate is not null)
                 handler.SslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
 
@@ -229,7 +260,7 @@ public sealed class ApiClient : IDisposable
                 // The origin argument is meaningless here — there is exactly one handshake this call
                 // could ever have observed, the one Validate above just captured.
                 lookupHandshake: _ => new HandshakeInfo(
-                    null, null, false, srvSubject, srvIssuer, srvThumb, srvNotAfter, chain),
+                    null, null, false, srvSubject, srvIssuer, srvThumb, srvNotAfter, chain, revocationStatus),
                 release: null);
         }
         else
@@ -256,7 +287,11 @@ public sealed class ApiClient : IDisposable
         // carrying a cookie across the hops of one redirect chain but never into a later SendAsync.
         var jar = cookies ?? new System.Net.CookieContainer();
 
-        ConnectionInfo BuildConnection()
+        // observed overrides what a completed handshake recorded — used by the HttpRequestException
+        // catch below, where a server-certificate refusal means the handshake never completed and
+        // so never reached RecordHandshake at all; every other caller leaves it null and gets
+        // whatever the connection this response actually used recorded, or NotChecked if none did.
+        ConnectionInfo BuildConnection(RevocationStatus? observed = null)
         {
             // Scan backwards: the most recent visited origin that has a recorded handshake is the
             // one that established the connection this response actually came back over. Never an
@@ -280,7 +315,9 @@ public sealed class ApiClient : IDisposable
                 ServerCertificateIssuer = info?.ServerCertificateIssuer,
                 ServerCertificateThumbprint = info?.ServerCertificateThumbprint,
                 ServerCertificateNotAfter = info?.ServerCertificateNotAfter,
-                ServerCertificateChain = info?.ServerCertificateChain ?? Array.Empty<string>()
+                ServerCertificateChain = info?.ServerCertificateChain ?? Array.Empty<string>(),
+                RevocationMode = transport.Revocation,
+                RevocationStatus = observed ?? info?.RevocationStatus ?? RevocationStatus.NotChecked
             };
         }
 
@@ -434,14 +471,32 @@ public sealed class ApiClient : IDisposable
         {
             stopwatch.Stop();
             var socketError = FirstSocketError(ex);
+            // The shared direct-path handler has no per-request state to set a flag in, so it
+            // reports a server-certificate refusal through an exception instead — refusal is how
+            // that fact reaches this block. proxiedRefusal is the proxied path's own equivalent.
+            var refusal = FirstInner<IServerCertificateRefusal>(ex);
+            // Non-null exactly when revocation itself is what refused the connection (a genuine
+            // revocation, or a strict-mode unknown status) — null for an ordinary trust refusal,
+            // even one that also carries a (non-fatal) revocation status of its own.
+            var refusedByRevocation = proxiedRefusal ?? (refusal as ServerCertificateRevokedException)?.RevocationStatus;
+            // What to report on the failing response's Connection regardless of *why* it failed:
+            // the proxied path's Validate already recorded this in revocationStatus even on an
+            // ordinary trust refusal; the direct path's exception carries the same fact when there
+            // is one, and NotChecked (revocationStatus's untouched default for that path) otherwise.
+            var observedRevocation = refusal?.RevocationStatus ?? revocationStatus;
             var kind =
+                // Checked FIRST, before the ordinary server-certificate-refusal branch below: both
+                // ServerCertificateRevokedException and ServerCertificateUntrustedException derive
+                // from AuthenticationException on purpose (see their own remarks), so the
+                // AuthenticationException branch further down would otherwise misclassify a
+                // revocation refusal as a merely-refused client certificate — the same trap the
+                // comment there already warns about for an ordinary trust refusal.
+                refusedByRevocation == RevocationStatus.Revoked ? ApiErrorKind.ServerCertificateRevoked
                 // serverUntrusted is the proxied path's own per-request flag (always false on the
-                // direct path); ServerCertificateUntrustedException is how the shared direct-path
-                // handler reports the identical fact instead, since it has no per-request state to
-                // set a flag in. Checked first because the exception derives from
-                // AuthenticationException on purpose (see its own remarks), so the next branch would
-                // otherwise misclassify it as a merely-refused client certificate.
-                serverUntrusted || HasInner<ServerCertificateUntrustedException>(ex) ? ApiErrorKind.ServerCertificateUntrusted
+                // direct path); refusal is how the shared direct-path handler reports either kind of
+                // server-certificate refusal instead, including a strict-unknown refusal (ruling 2
+                // asks for exactly one new error kind, not two).
+                : serverUntrusted || refusal is not null ? ApiErrorKind.ServerCertificateUntrusted
                 : HasInner<AuthenticationException>(ex) ? ApiErrorKind.CertificateRefused
                 : socketError switch
                 {
@@ -453,12 +508,23 @@ public sealed class ApiClient : IDisposable
                         ? ApiErrorKind.ProxyFailure
                         : ApiErrorKind.Network
                 };
+            // The platform's wrapped text for a revocation refusal is not guaranteed to say
+            // anything about revocation at all, let alone stay stable across releases (ruling 9),
+            // so these two cases use the repo's own constants instead of ex.Message. Gated on kind
+            // (not merely on the observed status) so an unrelated failure that happens to follow a
+            // successful-but-Unknown/NotEnforced handshake on this same connection is never
+            // misreported as a strict-unknown refusal.
+            var message =
+                kind == ApiErrorKind.ServerCertificateRevoked ? RevocationCheck.RevokedMessage
+                : kind == ApiErrorKind.ServerCertificateUntrusted && refusedByRevocation == RevocationStatus.Unknown
+                    ? RevocationCheck.StrictUnknownMessage
+                : ex.Message;
             return new ApiResponse
             {
                 Elapsed = stopwatch.Elapsed,
-                Error = new ApiError(kind, ex.Message, Flatten(ex), socketError),
+                Error = new ApiError(kind, message, Flatten(ex), socketError),
                 Redirects = hops,
-                Connection = BuildConnection()
+                Connection = BuildConnection(observedRevocation)
             };
         }
         catch (IOException ex)   // a multipart file part that can't be read
@@ -599,6 +665,13 @@ public sealed class ApiClient : IDisposable
             DateTime? srvNotAfter = null;
             IReadOnlyList<string> chain = Array.Empty<string>();
             bool untrusted = false;
+            // What the revocation check reported on this one connection, recorded on every
+            // validation (clean or not, ruling 6) so a successful handshake's HandshakeInfo is
+            // truthful; and, separately, whether revocation itself is what refused it (non-null for
+            // a genuine revocation or a strict-mode unknown status, null for an ordinary trust
+            // refusal) — read by the catch below to decide which exception type to throw.
+            RevocationStatus revocationStatus = RevocationStatus.NotChecked;
+            RevocationStatus? revocationRefusal = null;
 
             bool Validate(object _, X509Certificate? cert, X509Chain? certChain, SslPolicyErrors errors)
             {
@@ -613,13 +686,24 @@ public sealed class ApiClient : IDisposable
                 if (certChain is not null)
                     chain = certChain.ChainElements.Select(e => e.Certificate.Subject).ToList();
 
-                if (errors == SslPolicyErrors.None) return true;
-                if (transport.IgnoreServerCertificateErrors) return true;
-                if (trustServerCertificate is not null)
-                {
-                    using var c = cert is null ? null : new X509Certificate2(cert);
-                    if (trustServerCertificate(c)) return true;
-                }
+                // As on the proxied path above: the shared table replaces the hand-rolled trust
+                // ladder that used to live here, so both callbacks can never drift on how a
+                // certificate is judged. Called on every validation, including a clean chain, so
+                // Checked/NotEnforced are ever reported at all (ruling 6).
+                var decision = RevocationCheck.Decide(
+                    transport.Revocation,
+                    transport.RevocationStrict,
+                    transport.IgnoreServerCertificateErrors,
+                    errors,
+                    RevocationCheck.ChainFlagsOf(certChain),
+                    trustServerCertificate is null ? null : () =>
+                    {
+                        using var c = cert is null ? null : new X509Certificate2(cert);
+                        return trustServerCertificate(c);
+                    });
+                revocationStatus = decision.Status;
+                if (decision.Accepted) return true;
+                revocationRefusal = decision.RefusedByRevocation;
                 untrusted = true;
                 return false;
             }
@@ -627,6 +711,7 @@ public sealed class ApiClient : IDisposable
             var ssl = new SslStream(network, leaveInnerStreamOpen: false, Validate);
             // TargetHost stays the requested hostname so SNI is unaffected by a --resolve override.
             var sslOptions = new SslClientAuthenticationOptions { TargetHost = context.DnsEndPoint.Host };
+            RevocationCheck.Apply(sslOptions, transport.Revocation);
             // Without ALPN a hand-driven TLS stream can never negotiate the pinned version.
             if (transport.Version is HttpVersionMode.Http2)
                 sslOptions.ApplicationProtocols = [SslApplicationProtocol.Http2];
@@ -643,9 +728,20 @@ public sealed class ApiClient : IDisposable
             catch (Exception ex)
             {
                 await ssl.DisposeAsync();
+                // Checked before the ordinary untrusted case: a genuine revocation or a strict-mode
+                // unknown status is revocation refusing the connection, not merely an untrusted
+                // chain, and ruling 4 requires that refusal even when a pinned thumbprint would
+                // otherwise have accepted it.
+                if (revocationRefusal is { } refusal)
+                    throw new ServerCertificateRevokedException(
+                        refusal,
+                        refusal == RevocationStatus.Revoked ? RevocationCheck.RevokedMessage : RevocationCheck.StrictUnknownMessage,
+                        ex);
                 // Only when *this* validation is what refused it: any other authentication failure
-                // (protocol mismatch, no certificate presented, and so on) keeps its own classification.
-                if (untrusted) throw new ServerCertificateUntrustedException(ex.Message, ex);
+                // (protocol mismatch, no certificate presented, and so on) keeps its own
+                // classification. The observed status travels with it either way, so a plain trust
+                // failure under e.g. --revocation online still reports what revocation found.
+                if (untrusted) throw new ServerCertificateUntrustedException(revocationStatus, ex.Message, ex);
                 throw;
             }
 
@@ -653,7 +749,7 @@ public sealed class ApiClient : IDisposable
                 FormatProtocol(ssl.SslProtocol),
                 CipherSuiteOf(ssl),
                 ssl.LocalCertificate is not null,
-                srvSubject, srvIssuer, srvThumb, srvNotAfter, chain);
+                srvSubject, srvIssuer, srvThumb, srvNotAfter, chain, revocationStatus);
             self!.RecordHandshake(OriginKey(context.InitialRequestMessage.RequestUri!), info);
 
             return ssl;
@@ -775,6 +871,13 @@ public sealed class ApiClient : IDisposable
         if (transport.Proxy is ProxyMode.None && transport.NoProxy.Count > 0)
             return ProxyBypass.NoProxyWithProxyOffMessage;
 
+        // --revocation-strict with checking off has no unknown status to make fatal in the first
+        // place, so the combination is a usage error rather than a silently ignored flag — the same
+        // shape as the NoProxy check just above. Shares its message constant with the command line
+        // (see RevocationCheck.StrictWithoutCheckingMessage's own remarks) so the two can never drift.
+        if (transport.RevocationStrict && transport.Revocation is RevocationMode.None)
+            return RevocationCheck.StrictWithoutCheckingMessage;
+
         return null;
     }
 
@@ -865,6 +968,17 @@ public sealed class ApiClient : IDisposable
         for (Exception? ex = exception; ex is not null; ex = ex.InnerException)
             if (ex is T) return true;
         return false;
+    }
+
+    /// <summary>The first exception in the chain implementing <typeparamref name="T"/>, or null.
+    /// Mirrors <see cref="HasInner{T}"/> but hands back the instance itself — used to read
+    /// <see cref="IServerCertificateRefusal.RevocationStatus"/> off whichever server-certificate
+    /// refusal, if any, is in this chain.</summary>
+    private static T? FirstInner<T>(Exception exception) where T : class
+    {
+        for (Exception? ex = exception; ex is not null; ex = ex.InnerException)
+            if (ex is T match) return match;
+        return null;
     }
 
     private static string? FormatProtocol(SslProtocols p) => p switch

@@ -53,11 +53,45 @@ public static class TransportDiagnostics
         sb.AppendLine($"  Issuer          : {c.ServerCertificateIssuer ?? "—"}");
         sb.AppendLine($"  Thumbprint      : {c.ServerCertificateThumbprint ?? "—"}");
         sb.AppendLine($"  Expires         : {c.ServerCertificateNotAfter?.ToString("u") ?? "—"}");
+        // Unlike "Bypassed by" above, this line has no plain-default case to omit: ruling 6 requires
+        // the outcome be reported whether or not checking ran, so a reader can always answer "was
+        // revocation actually verified?" without guessing.
+        sb.AppendLine($"  Revocation      : {RevocationText(c)}");
         if (c.ServerCertificateChain.Count > 0)
         {
             sb.AppendLine("  Chain           :");
             foreach (var s in c.ServerCertificateChain) sb.AppendLine($"    • {s}");
         }
+    }
+
+    /// <summary>Plain words for what revocation checking was asked for and what came back —
+    /// never the bare enum names, and never silent about the two cases ruling 5 and 6 call out:
+    /// an unknown status must not read as either a clean check or a failure, and "--insecure"
+    /// accepting a certificate without enforcing the check it was asked to run must say so rather
+    /// than let a reader assume the check was clean.</summary>
+    private static string RevocationText(ConnectionInfo c)
+    {
+        string mode = c.RevocationMode switch
+        {
+            RevocationMode.Offline => "offline",
+            RevocationMode.Online => "online",
+            _ => "none"
+        };
+
+        return c.RevocationStatus switch
+        {
+            RevocationStatus.NotChecked =>
+                "not checked (revocation checking is off)",
+            RevocationStatus.Checked =>
+                $"checked — not revoked (mode: {mode})",
+            RevocationStatus.Revoked =>
+                $"REVOKED by its issuer — connection refused, not merely untrusted (mode: {mode})",
+            RevocationStatus.Unknown =>
+                $"could not be determined (endpoint unreachable or blocked) — not treated as fatal (mode: {mode})",
+            RevocationStatus.NotEnforced =>
+                $"requested but NOT ENFORCED — \"Ignore server certificate errors\" is on (mode: {mode})",
+            _ => "—"
+        };
     }
 
     /// <summary>One Network-trace row per redirect hop, oldest first — each hop genuinely was a

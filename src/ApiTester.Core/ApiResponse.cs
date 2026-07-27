@@ -13,7 +13,13 @@ public enum ApiErrorKind
     ProxyFailure,
     NameResolution,
     ConnectionRefused,
-    ConnectionReset
+    ConnectionReset,
+    // A revoked certificate is a different finding than a merely untrusted one -- separating the
+    // two is the entire point of the revocation-checking feature that added this value -- so it
+    // gets its own kind rather than folding into ServerCertificateUntrusted above. Appended for the
+    // same reason as every value above it since the comment was written: the string already saved
+    // into a workspace must keep meaning what it meant when it was written.
+    ServerCertificateRevoked
 }
 
 /// <summary>One link of a failure's InnerException chain. The useful facts about a refused client
@@ -89,4 +95,21 @@ public sealed record ConnectionInfo
     public string? ServerCertificateThumbprint { get; init; }
     public DateTime? ServerCertificateNotAfter { get; init; }
     public IReadOnlyList<string> ServerCertificateChain { get; init; } = Array.Empty<string>();
+
+    /// <summary>Which revocation checking this send asked for: <see cref="ApiTester.Core.RevocationMode.None"/>
+    /// (the default), <see cref="ApiTester.Core.RevocationMode.Offline"/>, or
+    /// <see cref="ApiTester.Core.RevocationMode.Online"/>. Set together with
+    /// <see cref="RevocationStatus"/> by <see cref="ApiClient"/> — mirrors how <see cref="ViaProxy"/>
+    /// and <see cref="ProxyDisposition"/> are set together above. Defaults to
+    /// <see cref="ApiTester.Core.RevocationMode.None"/> so every other construction site in the
+    /// repo stays truthful without change.</summary>
+    public RevocationMode RevocationMode { get; init; } = RevocationMode.None;
+
+    /// <summary>What the check actually came back with — checked-and-good, revoked, unknown, or not
+    /// checked at all. Reported whether or not checking ran, because "was revocation actually
+    /// verified?" must be answerable without guessing rather than only ever appearing on a refusal.
+    /// Defaults to <see cref="ApiTester.Core.RevocationStatus.NotChecked"/>, matching
+    /// <see cref="RevocationMode"/>'s default of <see cref="ApiTester.Core.RevocationMode.None"/>,
+    /// so every other construction site in the repo stays truthful without change.</summary>
+    public RevocationStatus RevocationStatus { get; init; } = RevocationStatus.NotChecked;
 }

@@ -27,6 +27,8 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
     private bool _honorRetryAfter = true;
     private bool _retryUnsafeMethods;
     private string? _noProxy;
+    private RevocationMode _revocation = RevocationMode.None;
+    private bool _revocationStrict;
 
     public ProxyMode Proxy { get => _proxy; set { _proxy = value; Raise(nameof(Proxy)); } }
     public string? ProxyUrl { get => _proxyUrl; set { _proxyUrl = value; Raise(nameof(ProxyUrl)); } }
@@ -65,6 +67,17 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
     /// workspace file gains nothing new to look at.</summary>
     public string? NoProxy { get => _noProxy; set { _noProxy = value; Raise(nameof(NoProxy)); } }
 
+    /// <summary>How hard to check that the server's certificate has not been revoked by its issuer.
+    /// Unlike <see cref="RetryOn"/> and <see cref="NoProxy"/>, this is a typed enum rather than a
+    /// string: those two are strings only because the request editor binds them to free-text boxes,
+    /// while a three-way mode is the honest fit for a combo box, exactly like <see cref="Proxy"/>
+    /// and <see cref="Version"/>.</summary>
+    public RevocationMode Revocation { get => _revocation; set { _revocation = value; Raise(nameof(Revocation)); } }
+
+    /// <summary>Whether an indeterminate revocation status is fatal. A typed bool, not a string, for
+    /// the same reason as <see cref="Revocation"/>: this is a checkbox, not a text box.</summary>
+    public bool RevocationStrict { get => _revocationStrict; set { _revocationStrict = value; Raise(nameof(RevocationStrict)); } }
+
     /// <summary>Build the immutable per-send options, folding in the request's own
     /// ignore-certificate-errors switch (which lives on the request, not here).</summary>
     public TransportOptions ToOptions(bool ignoreServerCertificateErrors = false) => new()
@@ -87,7 +100,9 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
         // Lenient, not the strict TryParse: this value is bound to a text box in the app, so an
         // entry that is half-typed mid-keystroke must not throw. The strict, message-producing parse
         // belongs at the command line, where a typo can still be refused before anything is sent.
-        NoProxy = ProxyBypass.ParseLenient(NoProxy)
+        NoProxy = ProxyBypass.ParseLenient(NoProxy),
+        Revocation = Revocation,
+        RevocationStrict = RevocationStrict
     };
 
     /// <summary>The typed status list behind the text box. Anything that is not a number is skipped
@@ -124,7 +139,9 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
         RetryUnsafeMethods = options.RetryUnsafeMethods,
         // Null rather than "" for an empty list, so an untouched setting stays absent from the
         // workspace JSON exactly as it is today.
-        NoProxy = options.NoProxy.Count > 0 ? ProxyBypass.Format(options.NoProxy) : null
+        NoProxy = options.NoProxy.Count > 0 ? ProxyBypass.Format(options.NoProxy) : null,
+        Revocation = options.Revocation,
+        RevocationStrict = options.RevocationStrict
     };
 
     /// <summary>Copy another instance's values into this one — used when a history entry is loaded
@@ -146,6 +163,8 @@ public sealed class TransportSettings : System.ComponentModel.INotifyPropertyCha
         HonorRetryAfter = other.HonorRetryAfter;
         RetryUnsafeMethods = other.RetryUnsafeMethods;
         NoProxy = other.NoProxy;
+        Revocation = other.Revocation;
+        RevocationStrict = other.RevocationStrict;
     }
 
     /// <summary>An independent copy, so a stored history entry cannot be mutated by later editing.</summary>

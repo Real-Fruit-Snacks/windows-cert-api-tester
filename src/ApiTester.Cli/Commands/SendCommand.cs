@@ -425,7 +425,18 @@ public static class SendCommand
                 ProxyDisposition.BypassedByRule => $"no (bypassed by '{conn.ProxyBypassRule}')",
                 _ => "no"
             };
-            services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {proxyDebug} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")}");
+            // Plain words, not the bare enum name: a support log has to answer "was revocation
+            // actually verified?" without the reader needing to know what NotEnforced means.
+            string revocationDebug = conn.RevocationStatus switch
+            {
+                RevocationStatus.NotChecked => "not checked",
+                RevocationStatus.Checked => "checked, good",
+                RevocationStatus.Revoked => "REVOKED",
+                RevocationStatus.Unknown => "status unknown",
+                RevocationStatus.NotEnforced => "NOT ENFORCED (--insecure)",
+                _ => conn.RevocationStatus.ToString()
+            };
+            services.Log.Debug($"connection: tls {conn.TlsProtocol ?? "—"} · proxy {proxyDebug} · client cert sent {(conn.ClientCertificateSent ? "yes" : "no")} · revocation {revocationDebug}");
         }
         LogErrorChain(response.Error, services);
         List<HarEntry>? harEntries = harPath is not null
@@ -440,6 +451,16 @@ public static class SendCommand
         if (!quiet && response.Error is null && response.Connection?.ServerCertificateThumbprint is { } thumb &&
             TrustService.IsTrusted(state, host, thumb))
             stderr.WriteLine($"note: trusting pinned certificate for {host}");
+        // Ruling 5: --insecure keeps overriding revocation exactly as it overrides every other chain
+        // problem, but doing so silently would be the tool lying by omission — a user who passes
+        // --insecure is not necessarily reading --debug, so this goes to stderr unconditionally
+        // (under -q's usual gate) rather than only into the debug log above. This can only fire when
+        // revocation checking was actually asked for: RevocationCheck.Decide reports NotChecked, not
+        // NotEnforced, when --insecure is combined with the default --revocation none, so an existing
+        // user who has never touched --revocation can never see this note.
+        if (!quiet && response.Connection?.RevocationStatus == RevocationStatus.NotEnforced)
+            stderr.WriteLine(
+                "note: revocation checking was requested but not enforced, because --insecure accepts any certificate.");
 
         // ---- diff ----
         // Computed here so the JSON envelope below can carry it. A transport failure produced no
@@ -535,7 +556,8 @@ public static class SendCommand
         $"proxy {(t.Proxy switch { ProxyMode.None => "off", ProxyMode.Explicit => t.ProxyUrl ?? "explicit", _ => "system" })}"
         + $" · redirects {(t.FollowRedirects ? $"follow (max {t.MaxRedirects})" : "off")}"
         + $" · decompress {(t.Decompress ? "on" : "off")}"
-        + $" · http {(t.Version switch { HttpVersionMode.Http11 => "1.1", HttpVersionMode.Http2 => "2", _ => "auto" })}";
+        + $" · http {(t.Version switch { HttpVersionMode.Http11 => "1.1", HttpVersionMode.Http2 => "2", _ => "auto" })}"
+        + $" · revocation {(t.Revocation switch { RevocationMode.Offline => "offline", RevocationMode.Online => "online", _ => "off" })}{(t.RevocationStrict ? " (strict)" : "")}";
 
     /// <summary>The flattened InnerException chain on --debug. For a refused client certificate the
     /// AuthenticationException and the SChannel status code are several links down and never in the
@@ -685,6 +707,10 @@ public static class SendCommand
                     g => g.Count() == 1 ? (object)g.First().Value : g.Select(h => h.Value).ToArray()),
             ["tlsProtocol"] = r.Connection?.TlsProtocol,
             ["clientCertPresented"] = r.Connection?.ClientCertificateSent ?? false,
+            // Enum .ToString() here matches how error.kind is rendered above, so a consumer parses
+            // one consistent style rather than two.
+            ["revocationMode"] = r.Connection?.RevocationMode.ToString(),
+            ["revocationStatus"] = r.Connection?.RevocationStatus.ToString(),
             // kind/message keep the shape existing consumers already parse; socketError and the
             // flattened InnerException chain are additive, and null when the failure had neither.
             ["error"] = r.Error is null ? null : new

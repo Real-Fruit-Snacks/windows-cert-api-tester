@@ -22,6 +22,13 @@ internal static class GrpcChannelFactory
     /// the same code <c>ApiClient</c> uses.</description></item>
     /// <item><description><see cref="TransportOptions.IgnoreServerCertificateErrors"/> — honored, via
     /// the same server-certificate validation callback shape <c>ApiClient</c> uses.</description></item>
+    /// <item><description><see cref="TransportOptions.Revocation"/> and
+    /// <see cref="TransportOptions.RevocationStrict"/> — honored, via the same shared
+    /// <c>RevocationCheck</c> table <c>ApiClient</c> uses, so a mode honored on <c>send</c> cannot be
+    /// silently dropped on the gRPC path. Unlike <c>ApiClient</c>, this channel has no
+    /// <c>ConnectionInfo</c>-shaped place to report the resulting <c>RevocationStatus</c> back to a
+    /// caller — there is no per-call diagnostics object here at all — so this path only ENFORCES the
+    /// decision (accepting or refusing the certificate); it does not report a status.</description></item>
     /// <item><description><see cref="TransportOptions.Version"/> — not honored. gRPC *is* HTTP/2;
     /// pinning HTTP/1.1 would only break the call, and there is no lower version to negotiate up
     /// from.</description></item>
@@ -48,16 +55,23 @@ internal static class GrpcChannelFactory
                 nameof(address));
         }
 
+        // The same shared table ApiClient uses, for the same reason ProxyConfiguration is shared: a
+        // revocation setting honored on `send` but ignored on the gRPC path would be exactly the kind
+        // of drift the proxy unification (ProxyConfiguration) already fixed once for the proxy switch.
         bool Validate(object _, X509Certificate? cert, X509Chain? chain, SslPolicyErrors errors)
         {
-            if (errors == SslPolicyErrors.None) return true;
-            if (transport.IgnoreServerCertificateErrors) return true;
-            if (trustServerCertificate is not null)
-            {
-                using var c = cert is null ? null : new X509Certificate2(cert);
-                if (trustServerCertificate(c)) return true;
-            }
-            return false;
+            var decision = RevocationCheck.Decide(
+                transport.Revocation,
+                transport.RevocationStrict,
+                transport.IgnoreServerCertificateErrors,
+                errors,
+                RevocationCheck.ChainFlagsOf(chain),
+                trustServerCertificate is null ? null : () =>
+                {
+                    using var c = cert is null ? null : new X509Certificate2(cert);
+                    return trustServerCertificate(c);
+                });
+            return decision.Accepted;
         }
 
         var handler = new SocketsHttpHandler
@@ -73,6 +87,7 @@ internal static class GrpcChannelFactory
         // path — would have to negotiate ALPN on its own, which is needless risk here: unlike ApiClient,
         // nothing in this phase reads back negotiated-protocol/cipher details.
         handler.SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate };
+        RevocationCheck.Apply(handler.SslOptions, transport.Revocation);
         if (clientCertificate is not null)
             handler.SslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
 

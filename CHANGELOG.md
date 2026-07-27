@@ -6,6 +6,54 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.64.0] - 2026-07-27
+
+### Added
+- **A new `--revocation none|offline|online` flag adds certificate revocation checking, defaulting to
+  `none`** — exactly the previous behavior, so nothing changes for an existing user. `offline`
+  consults cached certificate revocation lists (CRLs) only and never reaches the network; `online` may
+  fetch a fresh CRL or query an Online Certificate Status Protocol (OCSP) responder. It is a
+  saved-with-the-request transport setting, round-tripped through workspaces exactly like the
+  `--noproxy` bypass list added in v1.63.0, shared by `send`, `run`, `fuzz`, `bench`, and `serve` (one
+  shared transport-flag parser), and also accepted by `grpc`.
+- **A revoked certificate is now its own outcome, `ServerCertificateRevoked`, separate from
+  `ServerCertificateUntrusted`** — separating the two is the entire point of the feature. In a
+  corporate public-key infrastructure (PKI), "this certificate was revoked" (a compromised key, or an
+  employee who left) and "this certificate isn't trusted" (usually a missing root) are completely
+  different findings, and reporting them identically left the tool unable to answer the question that
+  actually mattered. The new outcome's message says plainly that the certificate was revoked by its
+  issuer, rather than merely untrusted.
+- **An unknown revocation status is reported and is not fatal by default.** With `--revocation online`,
+  a blocked or unreachable revocation endpoint yields "revocation status unknown" — the *common* case
+  on a corporate network, where failing on it would make the tool unusable on exactly the networks it
+  targets. **`--revocation-strict`** makes an undeterminable status fatal for whoever needs that
+  guarantee; passing it without `--revocation offline` or `--revocation online` is a usage error (exit
+  2) rather than a silently ignored flag, since with checking off there is no unknown status for it to
+  make fatal.
+- **Revocation beats a pinned thumbprint.** When checking is enabled and a certificate is genuinely
+  revoked, the connection is refused even if the host has a pin from `certapi trust add`: a pin is an
+  operator's earlier statement, revocation is the issuer's later withdrawal, and the later statement
+  wins. Under the default `none` this can never trigger, so pinning behaves exactly as it always has —
+  and `--revocation-strict` is likewise not rescued by a pin, since the user explicitly asked for an
+  indeterminate answer to be fatal.
+- **`--insecure` still bypasses everything, but now says so.** It means "trust anything," so it keeps
+  overriding revocation — but the diagnostics now state that revocation was **not enforced**, rather
+  than leaving a reader to assume a clean check happened. `certapi send` prints a `note:` on stderr
+  saying so, and it appears in `--debug`, the `--json` envelope, and the app's Diagnostics panel.
+- **The outcome is reported whether or not checking ran.** Every response carries which mode was
+  requested and what came back — checked-and-good, revoked, status unknown, or not checked — so a user
+  can answer "was revocation actually verified?" without guessing. Surfaced in `--debug` (a
+  `revocation …` term on both the transport line and the connection line), the `--json` envelope (new
+  `revocationMode` and `revocationStatus` keys), and the app's Diagnostics panel (a new **Revocation**
+  line in the SERVER CERTIFICATE block, always present).
+- **The setting applies wherever server certificates are validated, consistently** — the `send` path,
+  `certapi serve`'s gateway, and the `grpc` path all now go through one shared decision table, the same
+  way v1.63.0 unified the three hand-rolled copies of the proxy switch. A revocation setting honored on
+  `send` but ignored on `serve` would be exactly the inconsistency that release fixed.
+- **A REVOCATION row on the request editor's Transport tab** adds a three-way mode combo box plus a
+  "Fail when the status can't be determined" checkbox — saved with the request and round-tripped
+  through workspaces like the other transport settings. The in-app Help window documents it.
+
 ## [1.63.0] - 2026-07-27
 
 ### Added
@@ -1436,7 +1484,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.63.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.64.0...HEAD
+[1.64.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.63.0...v1.64.0
 [1.63.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.62.0...v1.63.0
 [1.62.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.1...v1.62.0
 [1.61.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.0...v1.61.1

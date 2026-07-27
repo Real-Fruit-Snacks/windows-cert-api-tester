@@ -33,7 +33,9 @@ often behind a private CA your machine doesn't trust, which normally fails the h
 **Ignore server certificate errors** toggle (`--insecure` on the CLI — command-line interface)
 bypasses that check. It's
 clearly labelled insecure because it is — use it for internal/self-signed servers you already trust,
-not the public internet.
+not the public internet. A separate, off-by-default check governs certificate **revocation** —
+whether the issuer has since withdrawn the certificate — and `--insecure` bypasses that too, but says
+so. See [Certificates & mTLS](06-Certificates-and-mTLS.md#checking-for-revocation).
 
 ## The workspace
 

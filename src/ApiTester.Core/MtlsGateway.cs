@@ -95,6 +95,10 @@ public sealed class MtlsGateway : IDisposable
     private static HttpClient CreateClient(X509Certificate2? clientCertificate,
         bool ignoreServerCertificateErrors, TimeSpan timeout, TransportOptions? transport)
     {
+        // A gateway built without transport options gets the defaults, which is RevocationMode.None —
+        // exactly the behavior this gateway had before revocation checking existed.
+        var options = transport ?? new TransportOptions();
+
         var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,                       // the caller's app decides on 3xx
@@ -102,10 +106,19 @@ public sealed class MtlsGateway : IDisposable
             DefaultProxyCredentials = CredentialCache.DefaultCredentials,
             SslOptions = new SslClientAuthenticationOptions
             {
-                RemoteCertificateValidationCallback = (_, _, _, errors) =>
-                    errors == SslPolicyErrors.None || ignoreServerCertificateErrors
+                // The same shared table ApiClient and GrpcChannelFactory use: a revocation setting
+                // honored on `send` but ignored on `serve` would be exactly the inconsistency the
+                // previous release's proxy unification (ProxyConfiguration) fixed for the proxy
+                // switch. The gateway relays bytes rather than reporting diagnostics, so it enforces
+                // the outcome without reporting a status — there is no pinned-thumbprint seam here,
+                // so pinnedThumbprintMatches is always null.
+                RemoteCertificateValidationCallback = (_, _, chain, errors) =>
+                    RevocationCheck.Decide(
+                        options.Revocation, options.RevocationStrict, ignoreServerCertificateErrors,
+                        errors, RevocationCheck.ChainFlagsOf(chain), pinnedThumbprintMatches: null).Accepted
             }
         };
+        RevocationCheck.Apply(handler.SslOptions, options.Revocation);
         if (clientCertificate is not null)
             handler.SslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
 

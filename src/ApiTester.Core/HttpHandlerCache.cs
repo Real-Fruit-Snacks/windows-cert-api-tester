@@ -32,6 +32,15 @@ namespace ApiTester.Core;
 /// <param name="IgnoreServerCertificateErrors">Part of the trust decision made once, at handshake
 /// time, for the life of the connection — a caller who did not ask to skip validation must never
 /// end up on a connection where someone else's request did.</param>
+/// <param name="Revocation">Revocation checking is also part of the trust decision made once, at
+/// handshake time, for the life of the connection: a request that asked for <c>online</c> checking
+/// must never ride a pooled connection that was established without it, and — just as
+/// important — a request that asked for no checking at all must never be silently upgraded by
+/// riding one that was. This is a security-relevant sharing key, not a performance detail.</param>
+/// <param name="RevocationStrict">Whether an indeterminate revocation answer was fatal is
+/// negotiated at the very same handshake as <see cref="Revocation"/> itself, so it must never
+/// diverge between two requests sharing a connection for the same reason <see cref="Revocation"/>
+/// must not.</param>
 /// <param name="TrustServerCertificate">Compared by the record's default equality, which for a
 /// delegate means same method and same target reference — behavioral identity. There is no sound
 /// way to fingerprint a delegate's behavior, so two independently-created closures are never equal
@@ -54,6 +63,8 @@ internal sealed record HandlerKey(
     string? ProxyPassword,
     string NoProxy,
     bool IgnoreServerCertificateErrors,
+    RevocationMode Revocation,
+    bool RevocationStrict,
     Func<X509Certificate2?, bool>? TrustServerCertificate,
     bool Decompress,
     HttpVersionMode Version,
@@ -75,6 +86,8 @@ internal sealed record HandlerKey(
         transport.ProxyPassword,
         ProxyBypass.Format(transport.NoProxy),
         transport.IgnoreServerCertificateErrors,
+        transport.Revocation,
+        transport.RevocationStrict,
         trustServerCertificate,
         transport.Decompress,
         transport.Version,
@@ -108,18 +121,57 @@ internal sealed record HandshakeInfo(
     string? ServerCertificateIssuer,
     string? ServerCertificateThumbprint,
     DateTime? ServerCertificateNotAfter,
-    IReadOnlyList<string> ServerCertificateChain);
+    IReadOnlyList<string> ServerCertificateChain,
+    RevocationStatus RevocationStatus);
+
+/// <summary>Carried by every server-certificate refusal so the classification in ApiClient's catch
+/// block can report what the revocation check found even though the handshake never completed and
+/// so recorded no <see cref="HandshakeInfo"/> of its own.</summary>
+internal interface IServerCertificateRefusal
+{
+    RevocationStatus RevocationStatus { get; }
+}
 
 /// <summary>Thrown from the connect callback when this client's own validation refused the server
-/// certificate. It derives from <see cref="AuthenticationException"/> on purpose: that is what the
-/// failing handshake would otherwise have thrown, so HttpClient wraps it, and reports it,
-/// identically — the only difference is that it also carries the fact that *this* was a trust
-/// refusal, for the classification in ApiClient's catch block.</summary>
-internal sealed class ServerCertificateUntrustedException : AuthenticationException
+/// certificate for an ordinary trust reason (expired, untrusted root, name mismatch — anything
+/// that is not revocation's business). It derives from <see cref="AuthenticationException"/> on
+/// purpose: that is what the failing handshake would otherwise have thrown, so HttpClient wraps it,
+/// and reports it, identically — the only difference is that it also carries the fact that *this*
+/// was a trust refusal, for the classification in ApiClient's catch block.</summary>
+internal sealed class ServerCertificateUntrustedException : AuthenticationException, IServerCertificateRefusal
 {
+    public RevocationStatus RevocationStatus { get; }
+
+    /// <summary>The revocation status is unknown at this call site — every caller from before
+    /// revocation checking existed reaches this overload, and none of them ever checked it.</summary>
     public ServerCertificateUntrustedException(string message, Exception innerException)
+        : this(RevocationStatus.NotChecked, message, innerException)
+    {
+    }
+
+    public ServerCertificateUntrustedException(RevocationStatus status, string message, Exception innerException)
         : base(message, innerException)
     {
+        RevocationStatus = status;
+    }
+}
+
+/// <summary>Thrown from the connect callback when revocation itself is what refused the server
+/// certificate — either a genuine revocation (<see cref="ApiTester.Core.RevocationStatus.Revoked"/>)
+/// or, under <c>--revocation-strict</c>, an indeterminate answer
+/// (<see cref="ApiTester.Core.RevocationStatus.Unknown"/>) — both of which are "revocation refused
+/// this", and the carried status is what tells them apart. It derives from
+/// <see cref="AuthenticationException"/> on purpose, for the same reason
+/// <see cref="ServerCertificateUntrustedException"/> does: that is what the failing handshake would
+/// otherwise have thrown, so HttpClient wraps it, and reports it, identically.</summary>
+internal sealed class ServerCertificateRevokedException : AuthenticationException, IServerCertificateRefusal
+{
+    public RevocationStatus RevocationStatus { get; }
+
+    public ServerCertificateRevokedException(RevocationStatus status, string message, Exception innerException)
+        : base(message, innerException)
+    {
+        RevocationStatus = status;
     }
 }
 

@@ -80,6 +80,15 @@ public static class GrpcCommand
           --noproxy <list>         Hosts that bypass the proxy, comma-separated, NO_PROXY-style
                                    (internal.corp, .corp, *.corp, 10.0.0.0/8, *; :port pins a port);
                                    defaults to the NO_PROXY environment variable
+          --revocation <mode>      Check whether the server's certificate has been revoked by its
+                                   issuer: none (default), offline (cached certificate revocation
+                                   lists (CRLs) only), or online (may fetch a fresh list or query an
+                                   Online Certificate Status Protocol (OCSP) responder). A status
+                                   that cannot be determined is reported and is not fatal unless
+                                   --revocation-strict is also given.
+          --revocation-strict      Make an undeterminable revocation status fatal (needs
+                                   --revocation offline or online). --insecure still overrides
+                                   both, and says so.
 
         Automatic tokens:
           A bearer token captured by an earlier certapi send to the same host is attached
@@ -137,6 +146,8 @@ public static class GrpcCommand
         bool noProxy = args.Flag("--no-proxy");
         string? proxyUser = args.Value("--proxy-user");
         string? noProxySpec = args.Value("--noproxy");
+        string? revocationRaw = args.Value("--revocation");
+        bool revocationStrict = args.Flag("--revocation-strict");
         string? timeoutRaw = args.Value("--timeout");
         string? workspace = args.Value("--workspace");
         bool noAutoToken = args.Flag("--no-auto-token");
@@ -163,6 +174,11 @@ public static class GrpcCommand
         }
 
         var (noProxyFromFlag, noProxyFromEnvironment) = TransportFlags.ResolveNoProxy(noProxySpec, proxyOff: noProxy);
+
+        // Reuses TransportFlags' own strict parse (none/offline/online, case-insensitive, or a usage
+        // error naming the offending value) rather than a second copy — two copies of this parse is
+        // exactly the drift this release is about.
+        RevocationMode revocation = revocationRaw is null ? RevocationMode.None : TransportFlags.ParseRevocation(revocationRaw);
 
         int? maxMessages = null;
         if (maxMessagesRaw is not null)
@@ -272,7 +288,9 @@ public static class GrpcCommand
             ProxyPassword = proxyAuthPassword,
             // Precedence: --noproxy wins when named, otherwise NO_PROXY from the environment — grpc
             // has no saved request to consult, so there is no third source here.
-            NoProxy = noProxyFromFlag.Count > 0 ? noProxyFromFlag : noProxyFromEnvironment
+            NoProxy = noProxyFromFlag.Count > 0 ? noProxyFromFlag : noProxyFromEnvironment,
+            Revocation = revocation,
+            RevocationStrict = revocationStrict
         };
 
         services.Log.Debug($"grpc {sub} {address}");

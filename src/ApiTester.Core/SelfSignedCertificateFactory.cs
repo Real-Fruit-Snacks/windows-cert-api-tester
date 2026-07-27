@@ -26,9 +26,28 @@ public static class SelfSignedCertificateFactory
             X509KeyStorageFlags.Exportable);
     }
 
+    /// <summary>Loopback port 1: nothing ever listens there, so a connection attempt is REFUSED
+    /// immediately by the operating system rather than left to time out. A test that hands a
+    /// certificate carrying this distribution point to a real revocation check therefore fails (or
+    /// passes) off an observable event — the refusal — not off the clock. Do not "helpfully" swap
+    /// this for a TEST-NET address (192.0.2.0/24) or an unresolvable hostname: both of those are
+    /// unreachable in a different way, by going silent, and silence is exactly what turns into a
+    /// wall-clock-raced test. This project has been bitten by that six releases running.</summary>
+    public const string UnroutableCrlDistributionPoint = "http://127.0.0.1:1/certapi-test.crl";
+
+    /// <param name="crlDistributionPoint">When non-null, a URL added to the certificate as a
+    /// certificate revocation list (CRL) distribution point extension. This exists for exactly one
+    /// reason: proving that a requested revocation mode actually reached the TLS stack rather than
+    /// being parsed and silently dropped. A platform can only report a "revocation status unknown"
+    /// chain flag if it genuinely attempted to fetch a CRL from this address and failed, so a
+    /// certificate advertising an unreachable endpoint (see <see cref="UnroutableCrlDistributionPoint"/>)
+    /// is the one artifact that turns "the flag was set" into proof the check actually ran. Left
+    /// null (the default), no such extension is added at all, and the certificate is byte-for-byte
+    /// the same shape it was before this parameter existed — every existing caller depends on that.</param>
     public static X509Certificate2 CreateSignedCertificate(
         string name, X509Certificate2 issuer, bool serverAuth, bool clientAuth,
-        IEnumerable<string>? dnsNames = null)
+        IEnumerable<string>? dnsNames = null,
+        string? crlDistributionPoint = null)
     {
         using var rsa = RSA.Create(2048);
         var req = new CertificateRequest($"CN={name}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -49,6 +68,13 @@ public static class SelfSignedCertificateFactory
             var san = new SubjectAlternativeNameBuilder();
             foreach (var d in dnsNames) san.AddDnsName(d);
             req.CertificateExtensions.Add(san.Build());
+        }
+
+        if (crlDistributionPoint is not null)
+        {
+            req.CertificateExtensions.Add(
+                CertificateRevocationListBuilder.BuildCrlDistributionPointExtension(
+                    new[] { crlDistributionPoint }));
         }
 
         var serial = new byte[16];

@@ -30,6 +30,8 @@ The gateway is **loopback only** (127.0.0.1) — it never listens on an external
 | `--cert-file <path>` / `--cert-password` / `--key-file` | Certificate from a file instead |
 | `--store <location>` | `CurrentUser` (default) or `LocalMachine` |
 | `--insecure` | Ignore the upstream's server-certificate errors (internal CAs — certificate authorities) |
+| `--revocation none\|offline\|online` | Check whether the upstream's certificate has been revoked by its issuer (default `none`, unchanged from every release before this one) |
+| `--revocation-strict` | Treat an undeterminable revocation status as fatal instead of merely enforced-and-logged; needs `--revocation offline` or `--revocation online` (usage error otherwise) |
 | `--token <value>` | Require callers to send `Authorization: Bearer <value>` — a shared secret so only your tools can use the gateway |
 | `--timeout <seconds>` | Per-request upstream timeout (default 100) |
 | `--workspace <file>` | Resolve a saved-website `<upstream>` from a workspace file |
@@ -39,6 +41,16 @@ The gateway is **loopback only** (127.0.0.1) — it never listens on an external
 | `--remove-request-header <name>` | Strip a header from the request before it reaches the upstream. Repeatable |
 | `--response-header "Name: value"` | Set a header on the response before it reaches the caller, same replace-or-add rule. Repeatable |
 | `--remove-response-header <name>` | Strip a header from the response before it reaches the caller. Repeatable |
+
+## Revocation checking
+
+`--revocation none|offline|online` (default `none`) and `--revocation-strict` apply to the gateway's
+own connection to the upstream, exactly as they do on [`certapi send`](21-CLI-Reference.md#send): a
+certificate the upstream's issuer has revoked is refused even past a pinned thumbprint, an
+indeterminate status is not fatal unless `--revocation-strict` asks for that, and `--insecure` still
+overrides both. The gateway **enforces** the setting on every forwarded call — it just has no per-call
+diagnostics object of its own to report a status back through, the way `send`'s `--json` envelope does.
+See [Certificates & mTLS](06-Certificates-and-mTLS.md#checking-for-revocation) for what the modes mean.
 
 ## Header rules
 

@@ -1,7 +1,7 @@
 # 7. Building Requests
 
 Method, URL (Uniform Resource Locator), query parameters, headers, and the body — plus multipart
-uploads and GraphQL.
+uploads, GraphQL, and the per-request Transport tab.
 
 ## Method and URL
 
@@ -93,5 +93,19 @@ rather than a silently broken URL. Handy for sharing a repro or moving a call in
 
 Set the per-request timeout (seconds) on the request line, or `--timeout <seconds>` on the CLI
 (default 100).
+
+## The Transport tab
+
+Per-request connection settings live on the request editor's **Transport** tab, saved with the request
+and round-tripped through workspaces: a proxy override or bypass (including a per-host **BYPASS**
+list), redirect following with your own hop limit, automatic decompression, HTTP version pinning, and
+a **Retries** group. The matching CLI (command-line interface) flags are shared across `send`, `run`,
+`fuzz`, `bench`, and `serve` — see the [CLI Reference](21-CLI-Reference.md).
+
+**REVOCATION** is a row on that tab: a three-way mode combo box (**None** / **Offline** / **Online**,
+default **None** — nothing changes unless you pick one) plus a **Fail when the status can't be
+determined** checkbox, the app's equivalent of `--revocation-strict`. See
+[Certificates & mTLS](06-Certificates-and-mTLS.md#checking-for-revocation) for what the modes mean and
+why an unknown status isn't fatal by default.
 
 Next: [Authentication](08-Authentication.md).
