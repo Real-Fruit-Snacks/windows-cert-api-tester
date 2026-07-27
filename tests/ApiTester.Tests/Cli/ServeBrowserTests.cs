@@ -6,6 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using ApiTester.Cli;
 using ApiTester.Core;
+using static ApiTester.Tests.Cli.ServeFixture;
 
 namespace ApiTester.Tests.Cli;
 
@@ -15,91 +16,19 @@ namespace ApiTester.Tests.Cli;
 /// http://127.0.0.1:&lt;port&gt; or on the raw request an echo upstream reports it was sent.</summary>
 public class ServeBrowserTests
 {
-    /// <summary>Every network wait is bounded, so a gateway that never answers fails the test rather
-    /// than hanging the suite.</summary>
-    private static readonly TimeSpan Limit = TimeSpan.FromSeconds(20);
-
-    private static int FreePort()
+    /// <summary>The preflight every CORS test here sends, stated once: OPTIONS on /orders carrying
+    /// the headers a browser actually puts on one. A fresh message per call, because an
+    /// HttpRequestMessage cannot be sent twice and several tests send two.</summary>
+    private static HttpRequestMessage Preflight(
+        string gateway, string origin, string method = "GET",
+        string? requestHeaders = null, bool privateNetwork = false)
     {
-        var l = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        l.Start();
-        int p = ((IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return p;
-    }
-
-    private static (X509Certificate2 ca, X509Certificate2 server, X509Certificate2 client) Certs()
-    {
-        var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");
-        var server = SelfSignedCertificateFactory.CreateSignedCertificate("localhost", ca, true, false, new[] { "localhost" });
-        var client = SelfSignedCertificateFactory.CreateSignedCertificate("GatewayClient", ca, false, true);
-        return (ca, server, client);
-    }
-
-    /// <summary>A client that leaves the gateway's answer alone: redirects are not followed and
-    /// cookies are not swallowed by a container, so Location and Set-Cookie can be asserted as sent.</summary>
-    private static HttpClient NewClient() =>
-        new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
-        { Timeout = Limit };
-
-    /// <summary>`serve` running on a background thread with its real gateway, so the routes and
-    /// browser options under test are the ones the command built from its own flags.</summary>
-    private sealed class ServeHost : IAsyncDisposable
-    {
-        private readonly CancellationTokenSource _cts = new();
-        private readonly Task<int> _run;
-
-        public int Port { get; }
-        public string Origin => $"http://127.0.0.1:{Port}";
-
-        private ServeHost(X509Certificate2 clientCert, IEnumerable<string> extraArgs)
-        {
-            Port = FreePort();
-            var services = new CliServices
-            {
-                Cancel = _cts.Token,
-                ListCertificates = _ => new[]
-                {
-                    new CertificateInfo
-                    {
-                        Subject = "CN=GatewayClient", Issuer = "CN=CA", Thumbprint = clientCert.Thumbprint!,
-                        NotBefore = DateTime.Now.AddDays(-1), NotAfter = DateTime.Now.AddDays(30),
-                        HasClientAuthEku = true, Certificate = clientCert
-                    }
-                }
-            };
-            var args = new List<string> { "serve", "--port", Port.ToString(),
-                                          "--cert", "GatewayClient", "--insecure", "-q" };
-            args.AddRange(extraArgs);
-            _run = Task.Run(() => CliApp.Run(args.ToArray(), TextWriter.Null, TextWriter.Null, services: services));
-        }
-
-        public static ServeHost Start(X509Certificate2 clientCert, params string[] extraArgs) =>
-            new(clientCert, extraArgs);
-
-        public async ValueTask DisposeAsync()
-        {
-            _cts.Cancel();
-            try { await _run.WaitAsync(Limit); } catch { /* the test's assertions are the verdict */ }
-            _cts.Dispose();
-        }
-    }
-
-    /// <summary>Every value of a response header, in order — the count matters as much as the value
-    /// when a duplicate is the browser-breaking failure.</summary>
-    private static string[] HeaderValues(HttpResponseMessage response, string name) =>
-        response.Headers.TryGetValues(name, out var values) ? values.ToArray() : Array.Empty<string>();
-
-    /// <summary>Retry while the listener finishes binding.</summary>
-    private static async Task<T> Poll<T>(Func<Task<T>> action)
-    {
-        Exception? last = null;
-        for (int i = 0; i < 50; i++)
-        {
-            try { return await action(); }
-            catch (Exception ex) { last = ex; await Task.Delay(100); }
-        }
-        throw last!;
+        var m = new HttpRequestMessage(HttpMethod.Options, $"{gateway}/orders");
+        m.Headers.Add("Origin", origin);
+        m.Headers.Add("Access-Control-Request-Method", method);
+        if (requestHeaders is not null) m.Headers.Add("Access-Control-Request-Headers", requestHeaders);
+        if (privateNetwork) m.Headers.Add("Access-Control-Request-Private-Network", "true");
+        return m;
     }
 
     [Fact]
@@ -158,15 +87,8 @@ public class ServeBrowserTests
             await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
 
             using var http = NewClient();
-            HttpRequestMessage Preflight()
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", "https://app.example");
-                m.Headers.Add("Access-Control-Request-Method", "PUT");
-                m.Headers.Add("Access-Control-Request-Headers", "authorization, x-trace");
-                return m;
-            }
-            var resp = await Poll(() => http.SendAsync(Preflight()));
+            var resp = await Poll(() => http.SendAsync(
+                Preflight(serve.Origin, "https://app.example", "PUT", "authorization, x-trace")));
 
             Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
             Assert.Equal(new[] { "https://app.example" }, HeaderValues(resp, "Access-Control-Allow-Origin"));
@@ -192,16 +114,8 @@ public class ServeBrowserTests
                 "--upstream", $"/={api.BaseUrl}", "--cors", "https://app.example");
 
             using var http = NewClient();
-            HttpRequestMessage Preflight(string origin)
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", origin);
-                m.Headers.Add("Access-Control-Request-Method", "GET");
-                return m;
-            }
-
-            var listed = await Poll(() => http.SendAsync(Preflight("https://app.example")));
-            var stranger = await http.SendAsync(Preflight("https://evil.example"));
+            var listed = await Poll(() => http.SendAsync(Preflight(serve.Origin, "https://app.example")));
+            var stranger = await http.SendAsync(Preflight(serve.Origin, "https://evil.example"));
 
             Assert.Equal(HttpStatusCode.NoContent, listed.StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, stranger.StatusCode);
@@ -221,15 +135,8 @@ public class ServeBrowserTests
             await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
 
             using var http = NewClient();
-            HttpRequestMessage Preflight()
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", "https://app.example");
-                m.Headers.Add("Access-Control-Request-Method", "GET");
-                m.Headers.Add("Access-Control-Request-Private-Network", "true");
-                return m;
-            }
-            var resp = await Poll(() => http.SendAsync(Preflight()));
+            var resp = await Poll(() => http.SendAsync(
+                Preflight(serve.Origin, "https://app.example", privateNetwork: true)));
 
             Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
             Assert.Equal(new[] { "https://app.example" }, HeaderValues(resp, "Access-Control-Allow-Origin"));
@@ -248,17 +155,10 @@ public class ServeBrowserTests
                 "--upstream", $"/={unreachable}", "--cors", "https://app.example");
 
             using var http = NewClient();
-            HttpRequestMessage Preflight(string origin)
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", origin);
-                m.Headers.Add("Access-Control-Request-Method", "GET");
-                m.Headers.Add("Access-Control-Request-Private-Network", "true");
-                return m;
-            }
-
-            var allowed = await Poll(() => http.SendAsync(Preflight("https://app.example")));
-            var stranger = await http.SendAsync(Preflight("https://evil.example"));
+            var allowed = await Poll(() => http.SendAsync(
+                Preflight(serve.Origin, "https://app.example", privateNetwork: true)));
+            var stranger = await http.SendAsync(
+                Preflight(serve.Origin, "https://evil.example", privateNetwork: true));
 
             // The allowlisted origin gets the same 204-plus-PNA answer as any other allowed
             // preflight, so this is the boundary the allowlist draws rather than PNA being refused
@@ -282,64 +182,31 @@ public class ServeBrowserTests
             await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
 
             using var http = NewClient();
-            HttpRequestMessage Preflight()
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", "https://app.example");
-                m.Headers.Add("Access-Control-Request-Method", "GET");
-                return m;
-            }
-            var resp = await Poll(() => http.SendAsync(Preflight()));
+            var resp = await Poll(() => http.SendAsync(Preflight(serve.Origin, "https://app.example")));
 
             Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
             Assert.Empty(HeaderValues(resp, "Access-Control-Allow-Private-Network"));
         }
     }
 
-    [Fact]
-    public async Task Cors_max_age_is_honored_when_set()
+    [Theory]
+    // --cors-max-age names the lifetime; without it the answer is the 600 seconds the gateway has
+    // always sent, so an existing user's preflight is cached exactly as long as it was before.
+    [InlineData(new[] { "--cors-max-age", "3600" }, "3600")]
+    [InlineData(new string[0], "600")]
+    public async Task A_preflight_carries_the_configured_max_age(string[] maxAgeArgs, string expected)
     {
         var (ca, server, client) = Certs();
         using (ca) using (server) using (client)
         {
             string unreachable = $"https://127.0.0.1:{FreePort()}";
             await using var serve = ServeHost.Start(client,
-                "--upstream", $"/={unreachable}", "--cors", "--cors-max-age", "3600");
+                new[] { "--upstream", $"/={unreachable}", "--cors" }.Concat(maxAgeArgs).ToArray());
 
             using var http = NewClient();
-            HttpRequestMessage Preflight()
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", "https://app.example");
-                m.Headers.Add("Access-Control-Request-Method", "GET");
-                return m;
-            }
-            var resp = await Poll(() => http.SendAsync(Preflight()));
+            var resp = await Poll(() => http.SendAsync(Preflight(serve.Origin, "https://app.example")));
 
-            Assert.Equal(new[] { "3600" }, HeaderValues(resp, "Access-Control-Max-Age"));
-        }
-    }
-
-    [Fact]
-    public async Task Cors_max_age_defaults_to_600_seconds_when_not_set()
-    {
-        var (ca, server, client) = Certs();
-        using (ca) using (server) using (client)
-        {
-            string unreachable = $"https://127.0.0.1:{FreePort()}";
-            await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
-
-            using var http = NewClient();
-            HttpRequestMessage Preflight()
-            {
-                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
-                m.Headers.Add("Origin", "https://app.example");
-                m.Headers.Add("Access-Control-Request-Method", "GET");
-                return m;
-            }
-            var resp = await Poll(() => http.SendAsync(Preflight()));
-
-            Assert.Equal(new[] { "600" }, HeaderValues(resp, "Access-Control-Max-Age"));
+            Assert.Equal(new[] { expected }, HeaderValues(resp, "Access-Control-Max-Age"));
         }
     }
 

@@ -185,7 +185,7 @@ public static class ServeCommand
         if (timeoutRaw is not null && (!int.TryParse(timeoutRaw, out timeoutSeconds) || timeoutSeconds <= 0))
             throw new CliUsageException($"--timeout expects a positive number of seconds, got '{timeoutRaw}'.");
 
-        int corsMaxAge = 600;
+        int corsMaxAge = BrowserOptions.DefaultCorsMaxAgeSeconds;
         if (corsMaxAgeRaw is not null)
         {
             if (!int.TryParse(corsMaxAgeRaw, out corsMaxAge) || corsMaxAge < 0)

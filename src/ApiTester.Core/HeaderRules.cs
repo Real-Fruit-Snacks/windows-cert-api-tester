@@ -23,10 +23,8 @@ public sealed class HeaderRules
         "Upgrade", "Proxy-Authenticate", "Proxy-Authorization", "Host"
     };
 
-    private readonly IReadOnlyList<KeyValuePair<string, string>> _setRequest;
-    private readonly IReadOnlyList<string> _removeRequest;
-    private readonly IReadOnlyList<KeyValuePair<string, string>> _setResponse;
-    private readonly IReadOnlyList<string> _removeResponse;
+    private readonly Direction _request;
+    private readonly Direction _response;
 
     private HeaderRules(
         IReadOnlyList<KeyValuePair<string, string>> setRequest,
@@ -34,22 +32,9 @@ public sealed class HeaderRules
         IReadOnlyList<KeyValuePair<string, string>> setResponse,
         IReadOnlyList<string> removeResponse)
     {
-        _setRequest = setRequest;
-        _removeRequest = removeRequest;
-        _setResponse = setResponse;
-        _removeResponse = removeResponse;
+        _request = new Direction(setRequest, removeRequest);
+        _response = new Direction(setResponse, removeResponse);
     }
-
-    /// <summary>The rule set that changes nothing: every Apply hands back the list it was given.</summary>
-    public static HeaderRules Empty { get; } = new(
-        Array.Empty<KeyValuePair<string, string>>(), Array.Empty<string>(),
-        Array.Empty<KeyValuePair<string, string>>(), Array.Empty<string>());
-
-    /// <summary>True when no rule was configured at all — the default relay, which must stay
-    /// byte-faithful.</summary>
-    public bool IsEmpty =>
-        _setRequest.Count == 0 && _removeRequest.Count == 0 &&
-        _setResponse.Count == 0 && _removeResponse.Count == 0;
 
     /// <summary>The rules named on the command line, or null with <paramref name="problem"/> set to
     /// the usage error when a rule names a header the gateway refuses to let a user manage.</summary>
@@ -96,59 +81,95 @@ public sealed class HeaderRules
     /// very same list instance when there are no request rules, so the default relay is provably
     /// byte-faithful; otherwise a new list, and the input is never mutated.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> ApplyToRequest(
-        IReadOnlyList<KeyValuePair<string, string>> headers) =>
-        Apply(headers, _setRequest, _removeRequest);
+        IReadOnlyList<KeyValuePair<string, string>> headers) => Apply(headers, _request);
 
     /// <summary>The response headers with this rule set's response-side rules applied. Returns the
     /// very same list instance when there are no response rules; otherwise a new list, and the
     /// input is never mutated.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> ApplyToResponse(
-        IReadOnlyList<KeyValuePair<string, string>> headers) =>
-        Apply(headers, _setResponse, _removeResponse);
+        IReadOnlyList<KeyValuePair<string, string>> headers) => Apply(headers, _response);
 
     private static IReadOnlyList<KeyValuePair<string, string>> Apply(
-        IReadOnlyList<KeyValuePair<string, string>> headers,
-        IReadOnlyList<KeyValuePair<string, string>> set,
-        IReadOnlyList<string> remove)
+        IReadOnlyList<KeyValuePair<string, string>> headers, Direction rules)
     {
         // Nothing to do for this direction: handing back the exact instance we were given (rather
         // than an equal copy) is what lets a caller prove the default relay never touches a header
         // at all, not merely that it produces the same values.
-        if (set.Count == 0 && remove.Count == 0) return headers;
+        if (!rules.HasRules) return headers;
 
-        // A name set more than once keeps only the last rule — it is the last thing the user said —
-        // so every lookup below by name sees just that final value.
-        var setByName = new Dictionary<string, KeyValuePair<string, string>>(
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var rule in set) setByName[rule.Key] = rule;
-
-        var removeNames = new HashSet<string>(remove, StringComparer.OrdinalIgnoreCase);
-
-        var result = new List<KeyValuePair<string, string>>(headers.Count + set.Count);
-        // Names already written to the result — whether by replacing an original occurrence in
-        // place or by appending below — so a repeated original occurrence of a set name collapses
-        // to one, and a set rule already satisfied by an original header is not appended again.
-        var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sets = rules.Sets;
+        var result = new List<KeyValuePair<string, string>>(headers.Count + sets.Length);
+        // Which set rules have already been written — whether by replacing an original occurrence
+        // in place or by appending below — so a repeated original occurrence of a set name
+        // collapses to one, and a set rule already satisfied by an original header is not appended
+        // again. Indexed by rule rather than keyed by name, because Direction has already reduced
+        // the rules to one entry per name.
+        var written = new bool[sets.Length];
 
         foreach (var h in headers)
         {
-            if (removeNames.Contains(h.Key)) continue;   // removal wins over setting
-            if (setByName.TryGetValue(h.Key, out var rule))
+            if (rules.Removals.Contains(h.Key)) continue;   // removal already beat any set rule
+            if (rules.IndexByName.TryGetValue(h.Key, out int at))
             {
                 // The first occurrence keeps its position but takes the rule's value and the rule's
                 // spelling of the name — the user asked for that header, so that is what is written.
-                if (written.Add(h.Key)) result.Add(rule);
+                if (!written[at])
+                {
+                    written[at] = true;
+                    result.Add(sets[at]);
+                }
                 continue;   // every later occurrence of this name is dropped
             }
             result.Add(h);
         }
 
-        // Any set rule whose name was not already satisfied above — because it was removed, or
-        // simply never present — is new and is appended, in the order the rules were given.
-        foreach (var rule in set)
-            if (!removeNames.Contains(rule.Key) && written.Add(rule.Key))
-                result.Add(setByName[rule.Key]);
+        // Any set rule not already satisfied above — the header was simply never present — is new
+        // and is appended, in the order the rules were given.
+        for (int i = 0; i < sets.Length; i++)
+            if (!written[i]) result.Add(sets[i]);
 
         return result;
+    }
+
+    /// <summary>One direction's rules reduced, once, to the form <see cref="Apply"/> wants. Both
+    /// precedence decisions are settled here rather than per call: removal beats setting, so a name
+    /// on both lists never reaches <see cref="Sets"/> at all, and a name set more than once keeps
+    /// only the last rule, because that is the last thing the user said. The rules cannot change
+    /// after construction, so rebuilding these lookups on every proxied request would be recomputing
+    /// a constant — the per-request work is then just the walk over the headers themselves.</summary>
+    private sealed class Direction
+    {
+        /// <summary>The surviving set rules, one per name, each at the position of that name's first
+        /// mention and carrying the last value given for it.</summary>
+        public readonly KeyValuePair<string, string>[] Sets;
+
+        /// <summary>Where each set name sits in <see cref="Sets"/>, matched case-insensitively.</summary>
+        public readonly Dictionary<string, int> IndexByName;
+
+        /// <summary>The names to strip, matched case-insensitively.</summary>
+        public readonly HashSet<string> Removals;
+
+        public Direction(IReadOnlyList<KeyValuePair<string, string>> set, IReadOnlyList<string> remove)
+        {
+            Removals = new HashSet<string>(remove, StringComparer.OrdinalIgnoreCase);
+            IndexByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            var sets = new List<KeyValuePair<string, string>>(set.Count);
+            foreach (var rule in set)
+            {
+                if (Removals.Contains(rule.Key)) continue;               // removal wins over setting
+                if (IndexByName.TryGetValue(rule.Key, out int at)) sets[at] = rule;   // last value wins
+                else
+                {
+                    IndexByName[rule.Key] = sets.Count;                  // first mention fixes the position
+                    sets.Add(rule);
+                }
+            }
+            Sets = sets.ToArray();
+        }
+
+        /// <summary>False when this direction carries no rule at all, which is what lets Apply hand
+        /// its input straight back.</summary>
+        public bool HasRules => Sets.Length > 0 || Removals.Count > 0;
     }
 }

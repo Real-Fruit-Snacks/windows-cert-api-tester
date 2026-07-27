@@ -20,10 +20,14 @@ public sealed record BrowserOptions(
     /// False — today's plaintext loopback behavior — unless the caller asks for it.</summary>
     public bool SecureOrigin { get; init; }
 
+    /// <summary>What Access-Control-Max-Age has always been, so a gateway nobody has configured
+    /// answers exactly as it did before. Stated once, here, because the `serve` command needs the
+    /// same number to describe its own default.</summary>
+    public const int DefaultCorsMaxAgeSeconds = 600;
+
     /// <summary>How long a browser may cache a preflight answer, in seconds — `serve --cors-max-age`.
-    /// 600 unless the caller asked otherwise, which is what Access-Control-Max-Age has always been, so
-    /// an existing user's gateway answers exactly as it did before.</summary>
-    public int CorsMaxAgeSeconds { get; init; } = 600;
+    /// <see cref="DefaultCorsMaxAgeSeconds"/> unless the caller asked otherwise.</summary>
+    public int CorsMaxAgeSeconds { get; init; } = DefaultCorsMaxAgeSeconds;
 }
 
 /// <summary>The policy seam that makes an upstream usable from a browser through the gateway:

@@ -141,7 +141,7 @@ public class HeaderRulesTests
     {
         var input = Headers(("Accept", "*/*"));
 
-        Assert.Same(input, HeaderRules.Empty.ApplyToRequest(input));
+        Assert.Same(input, Rules().ApplyToRequest(input));
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class HeaderRulesTests
     {
         var input = Headers(("Accept", "*/*"));
 
-        Assert.Same(input, HeaderRules.Empty.ApplyToResponse(input));
+        Assert.Same(input, Rules().ApplyToResponse(input));
     }
 
     [Fact]
@@ -207,29 +207,6 @@ public class HeaderRulesTests
         var result = rules.ApplyToRequest(input);
 
         Assert.Equal(new[] { "second" }, Values(result, "X-Api-Key"));
-    }
-
-    [Fact]
-    public void Is_empty_is_true_for_empty_and_for_four_empty_lists()
-    {
-        Assert.True(HeaderRules.Empty.IsEmpty);
-
-        var rules = HeaderRules.TryCreate(
-            Array.Empty<KeyValuePair<string, string>>(), Array.Empty<string>(),
-            Array.Empty<KeyValuePair<string, string>>(), Array.Empty<string>(), out var problem);
-
-        Assert.NotNull(rules);
-        Assert.Null(problem);
-        Assert.True(rules!.IsEmpty);
-    }
-
-    [Fact]
-    public void Is_empty_is_false_when_any_one_of_the_four_rule_lists_has_a_rule()
-    {
-        Assert.False(Rules(setRequest: new[] { ("X-Api-Key", "v") }).IsEmpty);
-        Assert.False(Rules(removeRequest: new[] { "X-Api-Key" }).IsEmpty);
-        Assert.False(Rules(setResponse: new[] { ("X-Api-Key", "v") }).IsEmpty);
-        Assert.False(Rules(removeResponse: new[] { "X-Api-Key" }).IsEmpty);
     }
 
     [Theory]
