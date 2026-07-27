@@ -364,7 +364,7 @@ public class GrpcCliTests
     }
 
     [Fact]
-    public async Task Calling_a_client_streaming_method_is_a_usage_error()
+    public async Task Calling_a_client_streaming_method_with_no_messages_sends_an_empty_stream()
     {
         await using var server = await GrpcTestServer.StartAsync();
         string live = TempLive();
@@ -376,7 +376,12 @@ public class GrpcCliTests
                 new[] { "grpc", "call", server.Address, "certapi.test.Echo/ClientStream" },
                 stdout, stderr, services: Services(live));
 
-            Assert.Equal(2, code);
+            Assert.Equal(0, code);
+            using var doc = JsonDocument.Parse(stdout.ToString());
+            // proto3 omits a field holding its type's default, so count == 0 is simply absent
+            // rather than present-and-zero.
+            int count = doc.RootElement.TryGetProperty("count", out var value) ? value.GetInt32() : 0;
+            Assert.Equal(0, count);
         }
         finally { if (File.Exists(live)) File.Delete(live); }
     }

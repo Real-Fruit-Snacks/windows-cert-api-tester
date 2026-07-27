@@ -7,7 +7,8 @@ public sealed class GrpcReflectionUnavailableException(string message) : Excepti
 /// <summary>The named service or method is not in what the server advertises → exit 3.</summary>
 public sealed class GrpcMethodNotFoundException(string message) : Exception(message);
 
-/// <summary>The method exists but its kind is out of scope (client-streaming or bidirectional) → exit 2.</summary>
+/// <summary>The method exists, but its kind does not match the entry point being used (e.g. a
+/// server-streaming method passed to InvokeAsync) → exit 2.</summary>
 public sealed class GrpcUnsupportedMethodException(string message) : Exception(message);
 
 /// <summary>The request JSON does not match the discovered input type; the message names the

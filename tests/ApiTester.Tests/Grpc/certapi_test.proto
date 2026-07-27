@@ -109,9 +109,19 @@ service Echo {
   rpc Unary(EchoRequest) returns (EchoReply);
   rpc ServerStream(EchoRequest) returns (stream EchoReply);
   rpc Failing(EchoRequest) returns (EchoReply);
-  // Exists only so "this method kind is out of scope" is testable against a real server.
+  // The client-streaming fixture: its reply's `count` is the number of messages the server
+  // actually received, so a test can key off server-side receipt rather than a clock.
   rpc ClientStream(stream EchoRequest) returns (EchoReply);
   // Streams a few messages and then fails, so a client can be tested on seeing both the partial
   // stream and the status that ended it.
   rpc StreamThenFail(EchoRequest) returns (stream EchoReply);
+  // Echoes each request message as it arrives — the fixture that makes "sending does not block
+  // receiving" provable rather than assumed.
+  rpc BidiStream(stream EchoRequest) returns (stream EchoReply);
+  // Fails as soon as the first message arrives, so a client-streaming caller can be tested on
+  // reporting the status even when it is still writing.
+  rpc ClientStreamThenFail(stream EchoRequest) returns (EchoReply);
+  // Writes one reply and then fails, so a bidirectional caller can be tested on seeing both the
+  // partial stream and the status that ended it.
+  rpc BidiStreamThenFail(stream EchoRequest) returns (stream EchoReply);
 }

@@ -49,7 +49,7 @@ public static class CliApp
           export            Export collections as OpenAPI, or the whole workspace
           trust             Manage per-site trusted (pinned) server certificates
           serve <upstream>  Run a local mTLS gateway that forwards to <upstream>
-          grpc              Discover and call a gRPC service (unary/server-streaming)
+          grpc              Discover and call a gRPC service (all four method kinds)
           mcp               Run an MCP server so AI agents can make mTLS calls
           help [command]    Show help (for one command, or this overview)
 
@@ -76,8 +76,8 @@ public static class CliApp
                           Stream? bodyOut = null, CliServices? services = null)
     {
         services ??= new CliServices();
-        // Commands that read stdin (mcp/fuzz/ws) or stream to stdout (sse) run through here so they
-        // get the reader; everything else falls through to the reader-less overload below.
+        // Commands that read stdin (mcp/fuzz/ws/grpc) or stream to stdout (sse) run through here so
+        // they get the reader; everything else falls through to the reader-less overload below.
         if (args.Length > 0 && IsStreamingCommand(args[0]))
         {
             string cmd = args[0].ToLowerInvariant();
@@ -96,6 +96,7 @@ public static class CliApp
                     "fuzz" => Commands.FuzzCommand.Run(new Args(g.Remaining), input, stdout, err, services),
                     "ws"   => Commands.WsCommand.Run(new Args(g.Remaining), input, stdout, err, services),
                     "sse"  => Commands.SseCommand.Run(new Args(g.Remaining), stdout, err, services),
+                    "grpc" => Commands.GrpcCommand.Run(new Args(g.Remaining), input, stdout, err, services),
                     _      => throw new CliUsageException($"Unknown command '{args[0]}'.\n{Usage}")
                 };
             }
@@ -110,7 +111,8 @@ public static class CliApp
         arg.Equals("mcp", StringComparison.OrdinalIgnoreCase) ||
         arg.Equals("fuzz", StringComparison.OrdinalIgnoreCase) ||
         arg.Equals("ws", StringComparison.OrdinalIgnoreCase) ||
-        arg.Equals("sse", StringComparison.OrdinalIgnoreCase);
+        arg.Equals("sse", StringComparison.OrdinalIgnoreCase) ||
+        arg.Equals("grpc", StringComparison.OrdinalIgnoreCase);
 
     public static int Run(string[] args, TextWriter stdout, TextWriter stderr,
                           Stream? bodyOut = null, CliServices? services = null)
@@ -146,7 +148,7 @@ public static class CliApp
                 "export" => Commands.ExportCommand.Run(new Args(rest), stdout, err, services),
                 "trust" => Commands.TrustCommand.Run(new Args(rest), stdout, err, services),
                 "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, err, services),
-                "grpc" => Commands.GrpcCommand.Run(new Args(rest), stdout, err, services),
+                "grpc" => Commands.GrpcCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
                 _ => throw new CliUsageException($"Unknown command '{g.Remaining[0]}'.\n{Usage}")
             };
         }

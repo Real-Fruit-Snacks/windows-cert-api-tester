@@ -331,18 +331,24 @@ Calls a gRPC service (HTTP/2) that requires a client certificate, using the same
 certificate handling as the rest of certapi. `list` shows the services and methods a server
 advertises via server reflection (`grpc.reflection.v1alpha.ServerReflection`) — or, for a server that
 doesn't implement reflection, the services and methods declared by a compiled descriptor set supplied
-with `--protoset` (below); `call` invokes one — unary, or server-streaming (messages print as they
-arrive). A short service name resolves when it's unambiguous (`Echo/Unary` finds `certapi.test.Echo`).
+with `--protoset` (below); `call` invokes one — unary, server-streaming, client-streaming, or
+bidirectional — with the kind discovered from the method's own definition, never chosen with a flag.
+A short service name resolves when it's unambiguous (`Echo/Unary` finds `certapi.test.Echo`).
 
-- `-d, --data <json>` — the request message as JSON (default `{}`); `--data-file <path>` reads it
-  from a file instead
+- `-d, --data <json>` — the request message as JSON (default `{}`); repeatable — for a
+  client-streaming or bidirectional method, each `-d` value and each line read from standard input
+  (one JSON object per line) is sent as one message, in order; standard input is read only for those
+  two kinds. `--data-file <path>` reads one message from a file instead, the same as a single `-d`.
+  No messages at all (no `-d`, no `--data-file`, empty or absent standard input) is legal for a
+  client-streaming or bidirectional method — it sends an empty stream, not an error
 - `--protoset <file>` — read services and methods from a compiled `FileDescriptorSet` instead of
   server reflection. Produce one with `protoc --descriptor_set_out=<file> --include_imports <proto>`
   — `--include_imports` isn't optional, or the set is missing the types it imports. Wins over server
   reflection when both are available (the two are never merged); `grpc list --protoset` needs no
   address and opens no connection at all
 - `-H, --header "k: v"` — request metadata (repeatable)
-- `--max-messages <n>` — stop a server-streaming call after n messages (exit 0, not a failure)
+- `--max-messages <n>` — stop a server-streaming or bidirectional call after n messages (exit 0, not
+  a failure)
 - `--timeout <seconds>` — default 100
 - cert flags (see [`send`](#send)) + `--insecure` — a host pinned with `certapi trust add` needs
   no `--insecure`, exactly as `send`
@@ -356,13 +362,13 @@ arrive). A short service name resolves when it's unambiguous (`Echo/Unary` finds
   stderr
 
 `list` prints services to stdout, one per line, indented with their methods (`stream` marks a
-streaming request or response); `call` prints the response — or, for a server-streaming method, one
-compact JSON object per line as each message arrives — to stdout.
+streaming request or response); `call` prints the response — or, for a server-streaming or
+bidirectional method, one compact JSON object per line as each message arrives — to stdout.
 
 Exit codes: `0` on success (including a stream stopped early by `--max-messages`) · `1` when the
 gRPC status returned is not OK (`--json` carries `{status, statusName, detail}`) · `2` on a bad
-command line — an address whose scheme isn't `http`/`https`, a malformed `Service/Method`, or a
-client-streaming/bidirectional method (out of scope for this version) · `3` on a data problem —
+command line — an address whose scheme isn't `http`/`https`, a malformed `Service/Method`, or several
+`-d`/`--data` values against a method that takes a single request message · `3` on a data problem —
 server reflection unavailable, an unknown service/method/field naming the offending one, or a
 `--protoset` file that's missing, unreadable, not a compiled `FileDescriptorSet`, or missing part of
 its dependency closure (e.g. `protoc` was run without `--include_imports`).

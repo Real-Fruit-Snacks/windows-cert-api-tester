@@ -110,6 +110,92 @@ public class GrpcTestServerTests
     }
 
     [Fact]
+    public async Task BidiStream_echoes_each_message_as_it_arrives()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        using var channel = CreatePlaintextChannel(server.Address);
+        var client = new Echo.EchoClient(channel);
+
+        // A hang-guard only (ruling 10): if the server ever buffered every request before
+        // replying, the awaits below would never complete and this bounds how long that takes to
+        // observe, rather than asserting anything about elapsed time.
+        using var hang = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        using var call = client.BidiStream();
+
+        await call.RequestStream.WriteAsync(new EchoRequest { Text = "a" });
+        Assert.True(await call.ResponseStream.MoveNext(hang.Token));
+        var first = call.ResponseStream.Current;
+
+        // Only now, after the first response has arrived, is the second request written. If the
+        // server buffered requests instead of echoing as they arrive, this line would never be
+        // reached because the MoveNext above would hang until the hang-guard fires.
+        await call.RequestStream.WriteAsync(new EchoRequest { Text = "b" });
+        Assert.True(await call.ResponseStream.MoveNext(hang.Token));
+        var second = call.ResponseStream.Current;
+
+        await call.RequestStream.CompleteAsync();
+        Assert.False(await call.ResponseStream.MoveNext(hang.Token));
+
+        Assert.Equal(new[] { "a", "b" }, new[] { first.Text, second.Text });
+        Assert.Equal(0, first.MessageIndex);
+        Assert.Equal(1, second.MessageIndex);
+    }
+
+    [Fact]
+    public async Task ClientStreamThenFail_surfaces_the_servers_non_ok_status()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        using var channel = CreatePlaintextChannel(server.Address);
+        var client = new Echo.EchoClient(channel);
+
+        using var call = client.ClientStreamThenFail();
+
+        // The server ends the call as soon as its first message arrives, so a write can race the
+        // server's failure and throw RpcException itself; that race is exactly what the later
+        // client-streaming slice must tolerate, so it is caught and ignored here too.
+        try
+        {
+            await call.RequestStream.WriteAsync(new EchoRequest { Text = "one" });
+            await call.RequestStream.WriteAsync(new EchoRequest { Text = "two" });
+        }
+        catch (RpcException)
+        {
+        }
+
+        var ex = await Assert.ThrowsAsync<RpcException>(() => call.ResponseAsync);
+
+        Assert.Equal(StatusCode.PermissionDenied, ex.Status.StatusCode);
+        Assert.Equal("client stream refused", ex.Status.Detail);
+    }
+
+    [Fact]
+    public async Task BidiStreamThenFail_writes_one_reply_then_fails()
+    {
+        await using var server = await GrpcTestServer.StartAsync();
+        using var channel = CreatePlaintextChannel(server.Address);
+        var client = new Echo.EchoClient(channel);
+
+        using var call = client.BidiStreamThenFail();
+
+        await call.RequestStream.WriteAsync(new EchoRequest { Text = "only" });
+        await call.RequestStream.CompleteAsync();
+
+        var replies = new List<EchoReply>();
+        var ex = await Assert.ThrowsAsync<RpcException>(async () =>
+        {
+            while (await call.ResponseStream.MoveNext(CancellationToken.None))
+            {
+                replies.Add(call.ResponseStream.Current);
+            }
+        });
+
+        Assert.Single(replies);
+        Assert.Equal(StatusCode.ResourceExhausted, ex.Status.StatusCode);
+        Assert.Equal("duplex cut short", ex.Status.Detail);
+    }
+
+    [Fact]
     public async Task Server_reflection_lists_the_echo_service()
     {
         await using var server = await GrpcTestServer.StartAsync();

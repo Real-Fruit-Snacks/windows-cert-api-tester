@@ -9,11 +9,12 @@ namespace ApiTester.Cli.Commands;
 
 /// <summary>The CLI surface over <see cref="GrpcCaller"/>: <c>certapi grpc list</c> discovers the
 /// services and methods a server advertises via reflection, and <c>certapi grpc call</c> invokes
-/// one of them (unary or server-streaming), using the same Windows-store certificate handling as
-/// every other command. Either subcommand can take its services and methods from a compiled
-/// descriptor set (--protoset) instead of a live server, for a server that does not implement
-/// reflection at all. Every gRPC/Protobuf type stays inside ApiTester.Grpc — this class only
-/// ever sees the plain records ApiTester.Grpc exposes.</summary>
+/// one of them — unary, server-streaming, client-streaming, or bidirectional, whichever kind the
+/// method's own definition declares — using the same Windows-store certificate handling as every
+/// other command. Either subcommand can take its services and methods from a compiled descriptor
+/// set (--protoset) instead of a live server, for a server that does not implement reflection at
+/// all. Every gRPC/Protobuf type stays inside ApiTester.Grpc — this class only ever sees the plain
+/// records ApiTester.Grpc exposes.</summary>
 public static class GrpcCommand
 {
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -26,22 +27,35 @@ public static class GrpcCommand
         Calls a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-
         store certificate handling as the rest of certapi. list shows the services and methods a
         server advertises via server reflection (or a compiled descriptor set — see --protoset
-        below); call invokes one of them — unary, or server-streaming (messages print as they
-        arrive).
+        below); call invokes one of them — unary, server-streaming, client-streaming, or
+        bidirectional. Which of the four it is comes from the method's own definition, not from a
+        flag: certapi discovers the kind and dispatches accordingly.
 
         Descriptors come from server reflection (grpc.reflection.v1alpha.ServerReflection) by
         default. A server that does not implement reflection — often deliberately, in production —
         can still be listed and called by supplying a compiled descriptor set with --protoset.
-        Client-streaming and bidirectional methods are out of scope for this version. certapi serve
-        does not proxy gRPC — HttpListener is HTTP/1.1-only — so certapi grpc reaches the service
-        directly with your certificate rather than going through the gateway.
+        certapi serve does not proxy gRPC — HttpListener is HTTP/1.1-only — so certapi grpc reaches
+        the service directly with your certificate rather than going through the gateway.
 
         Request:
-          -d, --data <json>       The request message as JSON (default {}, an empty message)
-          --data-file <path>      Read the request JSON from a file instead of -d
+          -d, --data <json>       The request message as JSON (default {}, an empty message).
+                                    Repeatable: for a client-streaming or bidirectional method, each
+                                    -d value is sent as one message, in order; several -d values
+                                    against a unary or server-streaming method (which take a single
+                                    request message) is a usage error.
+          --data-file <path>      Read the request JSON from a file instead of -d; supplies one
+                                    message, the same as a single -d
           -H, --header "k: v"     Request metadata (repeatable)
-          --max-messages <n>      Stop a server-streaming call after n messages
+          --max-messages <n>      Stop a server-streaming or bidirectional call after n messages
           --timeout <seconds>     Default 100
+
+        For a client-streaming or bidirectional method, each line read from standard input is also
+        sent as one message (one JSON object per line) — after every -d value and any --data-file
+        message, in that order. Standard input is read only for those two kinds; a unary or
+        server-streaming call never consults it, so piping something into one never hangs the call
+        or changes its request. Supplying no messages at all (no -d, no --data-file, empty or
+        absent stdin) is legal for a client-streaming or bidirectional method — it sends an empty
+        stream, not an error.
 
         Descriptors (for a server that does not implement reflection):
           --protoset <file>       Read the service definitions from a compiled descriptor set — a
@@ -92,22 +106,25 @@ public static class GrpcCommand
           certapi grpc call https://api.example.com:5001 my.pkg.Feed/Watch --max-messages 5
           certapi grpc list --protoset api.protoset
           certapi grpc call https://api.example.com:5001 my.pkg.Greeter/SayHello --protoset api.protoset
+          certapi grpc call https://api.example.com:5001 my.pkg.Uploader/Collect -d '{"item":"a"}' -d '{"item":"b"}' -d '{"item":"c"}'
+          Get-Content items.jsonl | certapi grpc call https://api.example.com:5001 my.pkg.Chat/Talk
 
         list prints services to stdout, one per line, indented with their methods (stream marks a
-        streaming request or response); call prints the response — or, for a server-streaming
-        method, one compact JSON object per line as each message arrives — to stdout. Everything
-        else goes to stderr. Exit 0 on success (including a stream stopped early by
-        --max-messages), 1 when the gRPC status is not OK, 2 on a bad command line (including an
-        unsupported method kind), 3 on a data problem (reflection unavailable, an unknown
-        service/method/field, or a descriptor set that is missing, unreadable, not a compiled
-        FileDescriptorSet, or missing part of its dependency closure).
+        streaming request or response); call prints the response — or, for a server-streaming or a
+        bidirectional method, one compact JSON object per line as each message arrives — to stdout.
+        Everything else goes to stderr. Exit 0 on success (including a stream stopped early by
+        --max-messages), 1 when the gRPC status is not OK, 2 on a bad command line (including
+        several -d/--data values against a method that takes a single request message), 3 on a data
+        problem (reflection unavailable, an unknown service/method/field, or a descriptor set that
+        is missing, unreadable, not a compiled FileDescriptorSet, or missing part of its dependency
+        closure).
         """;
 
-    public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
+    public static int Run(Args args, TextReader input, TextWriter stdout, TextWriter stderr, CliServices services)
     {
         // ---- bind options (every one, even those a given subcommand ignores — Positionals()
         // rejects anything option-shaped left over) ----
-        string? data = args.Value("-d", "--data");
+        var dataValues = args.Values("-d", "--data");
         string? dataFile = args.Value("--data-file");
         var headers = args.Values("-H", "--header");
         string? maxMessagesRaw = args.Value("--max-messages");
@@ -124,7 +141,7 @@ public static class GrpcCommand
         string? protoset = args.Value("--protoset");
         var cert = CliCert.Resolve(args, store, services, stderr);
 
-        if (data is not null && dataFile is not null)
+        if (dataValues.Count > 0 && dataFile is not null)
             throw new CliUsageException("-d/--data and --data-file are mutually exclusive.");
 
         if (proxyUrl is not null && noProxy)
@@ -212,9 +229,13 @@ public static class GrpcCommand
             metadata.Add(new(raw[..colon].Trim(), raw[(colon + 1)..].Trim()));
         }
 
-        string body = data ?? (dataFile is not null
-            ? File.Exists(dataFile) ? File.ReadAllText(dataFile) : throw new CliDataException($"Body file not found: {dataFile}")
-            : "{}");
+        // Read once, here, before the channel is built — a missing --data-file is a data error the
+        // user must see before any connection is even attempted. What this content means (the whole
+        // request, or one message among several) depends on the discovered method's kind, resolved
+        // later in RunCallAsync once methodInfo is known.
+        string? dataFileContent = dataFile is not null
+            ? (File.Exists(dataFile) ? File.ReadAllText(dataFile) : throw new CliDataException($"Body file not found: {dataFile}"))
+            : null;
 
         // ---- workspace, per-site trust, and the automatic session token (mirrors SendCommand) ----
         var state = LoadWorkspaceOrEmpty(workspace, services, stderr);
@@ -300,8 +321,8 @@ public static class GrpcCommand
 
             try
             {
-                return await RunCallAsync(caller, discovered, serviceMethodRaw!, sourceLabel, body, metadata,
-                    maxMessages, stdout, stderr, json, quiet, services, cts.Token);
+                return await RunCallAsync(caller, discovered, serviceMethodRaw!, sourceLabel, dataValues, dataFileContent,
+                    input, metadata, maxMessages, stdout, stderr, json, quiet, services, cts.Token);
             }
             catch (GrpcMethodNotFoundException ex) { throw new CliDataException(ex.Message); }
             catch (GrpcJsonException ex) { throw new CliDataException(ex.Message); }
@@ -374,12 +395,15 @@ public static class GrpcCommand
     }
 
     /// <summary>Splits Service/Method on the last '/', resolves the service name generously
-    /// against what reflection discovered, finds the method, and dispatches to the unary or
-    /// server-streaming path. A client-streaming (or bidirectional) method is out of scope for
-    /// this version — a usage error, since the user asked for something the tool does not do.</summary>
+    /// against what reflection discovered, finds the method, and dispatches on its discovered kind —
+    /// unary, server-streaming, client-streaming, or bidirectional. The kind comes from the
+    /// service's own definition; there is no flag to choose it. Several -d/--data values against a
+    /// method whose input is a single message (unary or server-streaming) is a usage error naming
+    /// the method and its actual kind.</summary>
     private static async Task<int> RunCallAsync(
         GrpcCaller caller, IReadOnlyList<GrpcServiceInfo> discovered, string serviceMethodRaw, string sourceLabel,
-        string body, IReadOnlyList<KeyValuePair<string, string>> metadata, int? maxMessages,
+        IReadOnlyList<string> dataValues, string? dataFileContent, TextReader input,
+        IReadOnlyList<KeyValuePair<string, string>> metadata, int? maxMessages,
         TextWriter stdout, TextWriter stderr, bool json, bool quiet, CliServices services, CancellationToken ct)
     {
         int slash = serviceMethodRaw.LastIndexOf('/');
@@ -400,17 +424,55 @@ public static class GrpcCommand
             throw new CliDataException(
                 $"Method '{methodName}' was not found on service '{service}'. Methods that do exist: {known}.");
         }
-        if (methodInfo.ClientStreaming)
-            throw new CliUsageException(
-                $"'{service}/{methodName}' is client-streaming; client-streaming and bidirectional " +
-                "methods are out of scope for this version.");
 
         services.Log.Debug($"resolved to {service}/{methodName}");
 
+        if (!methodInfo.ClientStreaming)
+        {
+            // Unary or server-streaming: the input is a single request message, exactly as today.
+            if (dataValues.Count > 1)
+            {
+                string kind = KindName(methodInfo.ClientStreaming, methodInfo.ServerStreaming);
+                throw new CliUsageException(
+                    $"'{service}/{methodName}' is {kind} and takes a single request message, but " +
+                    $"{dataValues.Count} -d/--data values were supplied. Only a client-streaming or " +
+                    "bidirectional method takes several messages.");
+            }
+            string body = dataValues.Count == 1 ? dataValues[0] : dataFileContent ?? "{}";
+
+            return methodInfo.ServerStreaming
+                ? await RunStreamingAsync(caller, service, methodName, body, metadata, maxMessages, stdout, stderr, json, quiet, services, ct)
+                : await RunUnaryAsync(caller, service, methodName, body, metadata, stdout, stderr, json, quiet, services, ct);
+        }
+
+        // Client-streaming or bidirectional: the input is a stream of messages. The messages sent
+        // are, in order: every -d/--data value; then --data-file's contents as one message, if
+        // given; then each non-blank line read from stdin — the same eager convention `certapi ws`
+        // uses. Stdin is consulted ONLY here: a unary or server-streaming call never reads it, so
+        // piping something into one of those can never hang the call or change its request.
+        var messages = new List<string>(dataValues);
+        if (dataFileContent is not null) messages.Add(dataFileContent);
+        string? line;
+        while ((line = input.ReadLine()) is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(line)) messages.Add(line);
+        }
+
         return methodInfo.ServerStreaming
-            ? await RunStreamingAsync(caller, service, methodName, body, metadata, maxMessages, stdout, stderr, json, quiet, services, ct)
-            : await RunUnaryAsync(caller, service, methodName, body, metadata, stdout, stderr, json, quiet, services, ct);
+            ? await RunDuplexAsync(caller, service, methodName, messages, metadata, maxMessages, stdout, stderr, json, quiet, services, ct)
+            : await RunClientStreamingAsync(caller, service, methodName, messages, metadata, stdout, stderr, json, quiet, services, ct);
     }
+
+    /// <summary>What each of the four method kinds is called — used both by the "several -d/--data
+    /// values against a single-message method" usage error and by debug logging.</summary>
+    private static string KindName(bool clientStreaming, bool serverStreaming) =>
+        (clientStreaming, serverStreaming) switch
+        {
+            (false, false) => "unary",
+            (false, true) => "server-streaming",
+            (true, false) => "client-streaming",
+            (true, true) => "bidirectional",
+        };
 
     /// <summary>Resolves a possibly-short service name against what was discovered — reflection, or
     /// a descriptor set when --protoset was given: an exact match wins; otherwise exactly one
@@ -440,7 +502,35 @@ public static class GrpcCommand
     {
         var result = await caller.InvokeAsync(service, method, body, metadata, ct);
         services.Log.Debug($"elapsed: {result.Elapsed.TotalMilliseconds:F0} ms");
+        return RenderCallResult(result, stdout, stderr, json, quiet, $"OK · {result.Elapsed.TotalMilliseconds:F0} ms");
+    }
 
+    /// <summary>Invokes a client-streaming method — every message in <paramref name="messages"/>,
+    /// in order (an empty list is a legal empty stream) — and renders the single reply exactly like
+    /// <see cref="RunUnaryAsync"/>'s: non-JSON prints the indented response, --json prints the
+    /// envelope with "message", and a non-OK status is exit 1. Only the non-quiet stderr summary
+    /// differs, naming how many messages were sent.</summary>
+    private static async Task<int> RunClientStreamingAsync(
+        GrpcCaller caller, string service, string method, IReadOnlyList<string> messages,
+        IReadOnlyList<KeyValuePair<string, string>> metadata,
+        TextWriter stdout, TextWriter stderr, bool json, bool quiet, CliServices services, CancellationToken ct)
+    {
+        var result = await caller.InvokeClientStreamingAsync(service, method, ToAsyncEnumerable(messages), metadata, ct);
+        services.Log.Debug($"elapsed: {result.Elapsed.TotalMilliseconds:F0} ms · sent {messages.Count} message(s)");
+        string plural = messages.Count == 1 ? "" : "s";
+        return RenderCallResult(
+            result, stdout, stderr, json, quiet,
+            $"OK · sent {messages.Count} message{plural} · {result.Elapsed.TotalMilliseconds:F0} ms");
+    }
+
+    /// <summary>Renders one <see cref="GrpcCallResult"/> the way a single-reply call does (unary or
+    /// client-streaming): non-JSON prints the indented response to stdout; --json prints the shared
+    /// envelope with "message"; a non-OK status prints the envelope (when --json) plus
+    /// "{StatusName} ({StatusCode}): {StatusDetail}" on stderr and returns exit 1; success prints
+    /// <paramref name="successSummary"/> on stderr (unless -q) and returns exit 0.</summary>
+    private static int RenderCallResult(
+        GrpcCallResult result, TextWriter stdout, TextWriter stderr, bool json, bool quiet, string successSummary)
+    {
         if (result.StatusCode != 0)
         {
             if (json)
@@ -458,8 +548,18 @@ public static class GrpcCommand
         else
             stdout.WriteLine(result.ResponseJson);
 
-        if (!quiet) stderr.WriteLine($"OK · {result.Elapsed.TotalMilliseconds:F0} ms");
+        if (!quiet) stderr.WriteLine(successSummary);
         return ExitCodes.Ok;
+    }
+
+    /// <summary>Wraps an already-collected list of messages as the <c>IAsyncEnumerable&lt;string&gt;</c>
+    /// GrpcCaller's client-streaming and bidirectional entry points need — the CLI reads -d/--data and
+    /// stdin eagerly (mirroring `certapi ws`), so there is never a genuinely asynchronous source of
+    /// messages here.</summary>
+    private static async IAsyncEnumerable<string> ToAsyncEnumerable(IReadOnlyList<string> messages)
+    {
+        await Task.Yield();
+        foreach (var message in messages) yield return message;
     }
 
     /// <summary>Non-JSON: one compact JSON object per line, flushed as each arrives, so a slow
@@ -514,6 +614,63 @@ public static class GrpcCommand
             stderr.WriteLine(truncated
                 ? $"stopped after {count} message{plural} (--max-messages) · {stopwatch.Elapsed.TotalMilliseconds:F0} ms"
                 : $"OK · {count} message{plural} · {stopwatch.Elapsed.TotalMilliseconds:F0} ms");
+        }
+        return ExitCodes.Ok;
+    }
+
+    /// <summary>Invokes a bidirectional-streaming method: <paramref name="messages"/> is sent while
+    /// responses print as they arrive, concurrently — the send and receive sides never wait on each
+    /// other (that concurrency is GrpcCaller.InvokeDuplexAsync's job, not this method's). The sink
+    /// mirrors <see cref="RunStreamingAsync"/>'s loop body: non-JSON writes each compact line to
+    /// stdout and flushes immediately; --json collects each message instead, rendered as the
+    /// envelope's "messages" array at the end. Reaching --max-messages stops the call early, which
+    /// is success (exit 0), exactly as it is for a server-streaming call; a non-OK status is exit 1,
+    /// with whatever already reached stdout left in place and, with --json, the envelope carrying
+    /// both the status and the partial "messages" array.</summary>
+    private static async Task<int> RunDuplexAsync(
+        GrpcCaller caller, string service, string method, IReadOnlyList<string> messages,
+        IReadOnlyList<KeyValuePair<string, string>> metadata, int? maxMessages,
+        TextWriter stdout, TextWriter stderr, bool json, bool quiet, CliServices services, CancellationToken ct)
+    {
+        List<JsonNode?>? collected = json ? new List<JsonNode?>() : null;
+        int count = 0;
+        bool truncated = false;
+
+        bool OnResponse(string message)
+        {
+            count++;
+            if (json) collected!.Add(JsonNode.Parse(message));
+            else { stdout.WriteLine(message); stdout.Flush(); }
+
+            if (maxMessages is int max && count >= max) { truncated = true; return false; }
+            return true;
+        }
+
+        var result = await caller.InvokeDuplexAsync(
+            service, method, ToAsyncEnumerable(messages), metadata, OnResponse, ct);
+        services.Log.Debug($"elapsed: {result.Elapsed.TotalMilliseconds:F0} ms · {count} message(s)");
+
+        if (result.StatusCode != 0)
+        {
+            if (json)
+                stdout.WriteLine(BuildCallEnvelope(
+                    result.StatusCode, result.StatusName, result.StatusDetail, result.Elapsed.TotalMilliseconds,
+                    result.Trailers, message: null, messages: collected));
+            if (!quiet) stderr.WriteLine($"{result.StatusName} ({result.StatusCode}): {result.StatusDetail}");
+            return ExitCodes.Failure;
+        }
+
+        if (json)
+            stdout.WriteLine(BuildCallEnvelope(
+                0, "OK", "", result.Elapsed.TotalMilliseconds, result.Trailers,
+                message: null, messages: collected));
+
+        if (!quiet)
+        {
+            string plural = count == 1 ? "" : "s";
+            stderr.WriteLine(truncated
+                ? $"stopped after {count} message{plural} (--max-messages) · {result.Elapsed.TotalMilliseconds:F0} ms"
+                : $"OK · {count} message{plural} · {result.Elapsed.TotalMilliseconds:F0} ms");
         }
         return ExitCodes.Ok;
     }

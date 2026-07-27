@@ -150,6 +150,45 @@ internal sealed class GrpcTestServer : IAsyncDisposable
             return new EchoReply { Count = count };
         }
 
+        public override async Task BidiStream(
+            IAsyncStreamReader<EchoRequest> requestStream, IServerStreamWriter<EchoReply> responseStream,
+            ServerCallContext context)
+        {
+            int index = 0;
+            while (await requestStream.MoveNext(context.CancellationToken))
+            {
+                var request = requestStream.Current;
+                // Reply to each request as it arrives instead of buffering the whole stream first
+                // — buffering would silently turn this into ServerStream-after-the-fact and defeat
+                // the fixture's entire purpose (proving sending never blocks receiving).
+                await responseStream.WriteAsync(BuildReply(request, context, index++, request.Text));
+            }
+        }
+
+        public override async Task<EchoReply> ClientStreamThenFail(
+            IAsyncStreamReader<EchoRequest> requestStream, ServerCallContext context)
+        {
+            // Ignore whether a message actually arrived: a zero-message stream fails identically,
+            // so the client-streaming caller can be tested on the failure path with or without data.
+            await requestStream.MoveNext(context.CancellationToken);
+            throw new RpcException(
+                new Status(StatusCode.PermissionDenied, "client stream refused"),
+                new Metadata { { "x-test-trailer", "trailed" } });
+        }
+
+        public override async Task BidiStreamThenFail(
+            IAsyncStreamReader<EchoRequest> requestStream, IServerStreamWriter<EchoReply> responseStream,
+            ServerCallContext context)
+        {
+            if (await requestStream.MoveNext(context.CancellationToken))
+            {
+                await responseStream.WriteAsync(BuildReply(requestStream.Current, context, 0, requestStream.Current.Text));
+            }
+            // Unconditional: even with no messages at all, the call still ends in this failure so
+            // a duplex caller always has a non-OK status to observe.
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, "duplex cut short"));
+        }
+
         private static EchoReply BuildReply(EchoRequest request, ServerCallContext context, int messageIndex, string text)
         {
             var reply = new EchoReply

@@ -6,6 +6,49 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.60.0] - 2026-07-27
+
+### Added
+- **`certapi grpc call` now handles all four gRPC method kinds — unary, server-streaming,
+  client-streaming, and bidirectional** — closing the one hole left after `--protoset` shipped in
+  1.58.0. Which of the four a method is comes from the service's own definition, discovered from its
+  descriptor (reflection-fetched or supplied with `--protoset`), never declared by the user with a
+  flag: a flag for it would just move the tool's own bug — guessing wrong — onto the user instead of
+  fixing it.
+- **Multi-message input mirrors `certapi ws`, which had already solved this problem**: `-d`/`--data`
+  is now repeatable, and for a client-streaming or bidirectional method each `-d` value, then a
+  `--data-file` message if given, then each line read from standard input (one JSON object per line,
+  a whitespace-only line skipped so a trailing newline in a pipe never becomes an empty message) is
+  sent as one message, in that order. Standard input is consulted only for those two kinds — a unary
+  or server-streaming call never reads it, so a single `-d` against a unary method behaves exactly as
+  it did before, and piping something into one can neither hang the call nor change its request.
+- **Two new rules at the command line make the four-kind dispatch honest rather than silently
+  wrong.** Supplying several `-d` values to a method that takes a single request message (unary or
+  server-streaming) is now a usage error — exit 2, naming the method and its actual kind — rather
+  than silently sending only the first. Supplying no messages at all to a client-streaming or
+  bidirectional method is legal: it sends an empty stream, not an error.
+- **A bidirectional call sends and receives concurrently — sending never blocks receiving.**
+  Responses print as they arrive, one compact JSON object per line, exactly like a server-streaming
+  call; the call ends when the server completes, `--max-messages` is reached (exit 0, not a
+  failure), or Ctrl+C. It is not an interactive read-eval loop. The interleaving is proved by an
+  assertion on the order of observed events — sent m0, received m0, sent m1, received m1 — rather
+  than by a clock, alongside failing variants of the two new kinds added to the test fixture.
+- **A non-OK gRPC status reaches exit code 1 on every one of the four kinds.** Under the hood: unary
+  and client-streaming return the status as data; server-streaming throws after yielding whatever
+  arrived; bidirectional returns the status as data after every message that did arrive has already
+  been printed. Exit codes are unchanged otherwise — 2 for a bad command line, 3 for a data problem,
+  never a stack trace.
+- **`--protoset` drives all four kinds identically to server reflection**, pinned by tests that call
+  a client-streaming and a bidirectional method against a server with no reflection service at all —
+  and the well-known Protobuf types keep their canonical JSON rendering through any of the new
+  streaming kinds (a `Timestamp` is still `"2023-11-14T22:13:20Z"`, never
+  `{"seconds":...,"nanos":...}`), whether the descriptors came from reflection or from `--protoset`.
+- **The one remaining true limit is unchanged**: `certapi serve` does not proxy gRPC, because
+  `HttpListener` (what the gateway is built on) is HTTP/1.1-only — `certapi grpc` reaches the service
+  directly with your certificate instead of going through the gateway. `--protoset` still only helps
+  if you already have, or can produce, the descriptor set yourself — certapi does not compile
+  `.proto` sources.
+
 ## [1.59.0] - 2026-07-26
 
 ### Added
@@ -1242,7 +1285,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.59.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.60.0...HEAD
+[1.60.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.59.0...v1.60.0
 [1.59.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.58.0...v1.59.0
 [1.58.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.56.0...v1.57.0
