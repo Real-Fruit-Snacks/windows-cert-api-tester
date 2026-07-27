@@ -21,13 +21,23 @@ public sealed class GatewayRouteNotFoundException(string target)
 /// plus Host/Content-Length which the HTTP client manages itself.</summary>
 public static class HopByHop
 {
-    private static readonly HashSet<string> Names = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly string[] AllNames =
     {
         "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
         "TE", "Trailer", "Transfer-Encoding", "Upgrade", "Host", "Content-Length"
     };
 
-    public static bool Is(string headerName) => Names.Contains(headerName);
+    private static readonly HashSet<string> Lookup = new(AllNames, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The same ten names <see cref="Is"/> matches, exposed read-only so a pinning test can
+    /// assert every one of them is also a name <see cref="HeaderRules"/> refuses to let a user
+    /// manage: <see cref="MtlsGateway"/>.ForwardAsync strips these names from the outgoing request
+    /// only after HeaderRules has already applied its rules, so a name added here but not to
+    /// HeaderRules' Refused set would be a rule `certapi serve` accepts on the command line and then
+    /// silently discards.</summary>
+    public static IReadOnlyCollection<string> Names { get; } = Array.AsReadOnly(AllNames);
+
+    public static bool Is(string headerName) => Lookup.Contains(headerName);
 }
 
 /// <summary>One incoming request to forward upstream.</summary>

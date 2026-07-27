@@ -326,4 +326,56 @@ public class ServeHeaderRulesTests
 
         Assert.Equal(2, code);
     }
+
+    public static IEnumerable<object[]> EmptyOrWhitespaceHeaderNameFlags()
+    {
+        yield return new object[] { "--request-header", " : v" };
+        yield return new object[] { "--response-header", " : v" };
+        yield return new object[] { "--remove-request-header", "   " };
+        yield return new object[] { "--remove-response-header", "   " };
+    }
+
+    [Theory]
+    [MemberData(nameof(EmptyOrWhitespaceHeaderNameFlags))]
+    public void An_empty_or_whitespace_only_header_name_is_a_usage_error_on_every_header_rule_flag(
+        string flag, string argument)
+    {
+        var stderr = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "serve", "--port", FreePort().ToString(),
+                    "--upstream", "/=https://api.internal", flag, argument },
+            TextWriter.Null, stderr, services: new CliServices());
+
+        Assert.Equal(2, code);
+        Assert.Contains(flag, stderr.ToString());
+    }
+
+    [Fact]
+    public void The_live_reported_defect_is_a_usage_error_instead_of_a_listener_that_drops_the_rule()
+    {
+        // This exact command line used to start a listener and log "listening" while the name parsed
+        // to the empty string: HeaderRules.TryCreate accepted it (empty was not in Refused) and at
+        // forward time TryAddWithoutValidation("", "v") silently dropped it, so the upstream never
+        // saw the header and the operator had no way to know the rule never applied.
+        var stderr = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "serve", "--port", FreePort().ToString(),
+                    "--upstream", "/=https://api.internal", "--request-header", " : v" },
+            TextWriter.Null, stderr, services: new CliServices());
+
+        Assert.Equal(2, code);
+    }
+
+    [Fact]
+    public void A_header_name_with_a_character_illegal_in_an_http_field_name_is_a_usage_error()
+    {
+        var stderr = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "serve", "--port", FreePort().ToString(),
+                    "--upstream", "/=https://api.internal", "--request-header", "X Y: v" },
+            TextWriter.Null, stderr, services: new CliServices());
+
+        Assert.Equal(2, code);
+        Assert.Contains("X Y", stderr.ToString());
+    }
 }

@@ -296,4 +296,95 @@ public class HeaderRulesTests
         Assert.Contains("Connection", problem);
         Assert.DoesNotContain("--remove-response-header", problem);
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_empty_or_whitespace_only_name_is_refused_on_every_one_of_the_four_lists(string name)
+    {
+        AssertMissingName(name, "--request-header", setRequest: Set((name, "v")));
+        AssertMissingName(name, "--remove-request-header", removeRequest: Remove(name));
+        AssertMissingName(name, "--response-header", setResponse: Set((name, "v")));
+        AssertMissingName(name, "--remove-response-header", removeResponse: Remove(name));
+    }
+
+    private static void AssertMissingName(
+        string name,
+        string flag,
+        IReadOnlyList<KeyValuePair<string, string>>? setRequest = null,
+        IReadOnlyList<string>? removeRequest = null,
+        IReadOnlyList<KeyValuePair<string, string>>? setResponse = null,
+        IReadOnlyList<string>? removeResponse = null)
+    {
+        var rules = HeaderRules.TryCreate(
+            setRequest ?? Set(),
+            removeRequest ?? Remove(),
+            setResponse ?? Set(),
+            removeResponse ?? Remove(),
+            out var problem);
+
+        Assert.Null(rules);
+        Assert.NotNull(problem);
+        Assert.Contains(flag, problem);
+    }
+
+    [Theory]
+    [InlineData("X Y")]
+    [InlineData("X:Y")]
+    public void A_name_with_a_character_illegal_in_an_http_field_name_is_refused_on_a_set_list(string name)
+    {
+        var rules = HeaderRules.TryCreate(Set((name, "v")), Remove(), Set(), Remove(), out var problem);
+
+        Assert.Null(rules);
+        Assert.NotNull(problem);
+        Assert.Contains(name, problem);
+        Assert.Contains("--request-header", problem);
+    }
+
+    [Theory]
+    [InlineData("X Y")]
+    [InlineData("X:Y")]
+    public void A_name_with_a_character_illegal_in_an_http_field_name_is_refused_on_a_remove_list(string name)
+    {
+        var rules = HeaderRules.TryCreate(Set(), Remove(name), Set(), Remove(), out var problem);
+
+        Assert.Null(rules);
+        Assert.NotNull(problem);
+        Assert.Contains(name, problem);
+        Assert.Contains("--remove-request-header", problem);
+    }
+
+    [Fact]
+    public void A_name_using_unusual_but_legal_token_characters_constructs_fine()
+    {
+        var rules = HeaderRules.TryCreate(
+            Set(("X-Api_Key.v1!", "k")), Remove(), Set(), Remove(), out var problem);
+
+        Assert.NotNull(rules);
+        Assert.Null(problem);
+    }
+
+    [Fact]
+    public void Every_hop_by_hop_name_is_also_one_a_user_may_not_manage()
+    {
+        // A set-flag rule is enough to prove membership in Refused: all four flags consult that one
+        // set, and Every_refused_header_is_refused_on_every_one_of_the_four_flags above already pins
+        // that the other three flags see the same set — this test is not forgetting them.
+        foreach (var name in HopByHop.Names)
+        {
+            var rules = HeaderRules.TryCreate(Set((name, "v")), Remove(), Set(), Remove(), out _);
+
+            Assert.True(rules is null,
+                $"HopByHop names '{name}' but HeaderRules accepts a rule for it. The two sets are " +
+                "deliberately separate — HopByHop answers \"never relay this through a proxy\", " +
+                "HeaderRules' Refused answers \"a user may not manage this on the command line\" — " +
+                "but they must not diverge in this direction: MtlsGateway.ForwardAsync strips " +
+                "HopByHop names *after* HeaderRules.ApplyToRequest has run, so a name in HopByHop " +
+                "that HeaderRules does not refuse is a rule `certapi serve` accepts on the command " +
+                "line and then silently throws away — no error, a gateway that starts normally, and " +
+                "an operator who believes a header is being managed when it is not. That is the " +
+                $"exact defect v1.61.1 fixed. Add '{name}' to HeaderRules.Refused as well, or take " +
+                "it out of HopByHop.");
+        }
+    }
 }

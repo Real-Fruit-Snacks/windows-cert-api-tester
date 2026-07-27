@@ -91,6 +91,10 @@ public static class ServeCommand
           them, and Host is set by the gateway's HTTP client from the upstream URI, so a rule here
           would only ever half-apply.
 
+          A missing header name, or one carrying a character an HTTP field name cannot hold — a
+          space, an embedded colon — is refused the same way: the header could never match, so the
+          rule would be dropped rather than applied.
+
           These rules act on forwarded HTTP traffic only: never on a CORS/PNA preflight the gateway
           answers itself, its own 404/400/502 error pages, or a relayed WebSocket upgrade. With
           none of the four flags the gateway stays the byte-faithful relay it has always been.

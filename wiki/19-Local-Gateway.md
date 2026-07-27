@@ -53,8 +53,11 @@ setting. On the response side these rules apply *after* `--browser`'s own rewrit
 `Proxy-Authenticate`, `Proxy-Authorization`, and `Host` are refused with a usage error naming the
 header and why, rather than silently ignored — the first nine frame the HTTP message and the HTTP
 stack manages them, and `Host` is set by the gateway's own HTTP client from the upstream URI, so a
-rule for it would only ever half-apply. These rules never touch a CORS or PNA (Private Network
-Access) preflight the gateway answers itself, its own error pages, or a relayed WebSocket upgrade.
+rule for it would only ever half-apply. A header name that is missing, or that carries a character
+an HTTP field name cannot hold — a space, an embedded colon — is a usage error too, for the same
+reason: the header could never match, so the rule would be dropped rather than applied. These rules
+never touch a CORS or PNA (Private Network Access) preflight the gateway answers itself, its own
+error pages, or a relayed WebSocket upgrade.
 
 ## Browsers and Private Network Access
 

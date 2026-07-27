@@ -16,7 +16,11 @@ public sealed class HeaderRules
     /// answers "never relay this through a proxy" and this one answers "a user may not manage this
     /// on the command line" — today the two judgements happen to name the same ten headers, but
     /// that is not a reason to couple them, since a future change to one must not silently change
-    /// the other.</summary>
+    /// the other. They must nonetheless not diverge in one direction: <c>MtlsGateway.ForwardAsync</c>
+    /// strips <c>HopByHop</c> names *after* these rules have already been applied, so a name in
+    /// <c>HopByHop</c> that is not refused here is a rule <c>serve</c> accepts on the command line
+    /// and then silently throws away. <c>HeaderRulesTests.Every_hop_by_hop_name_is_also_one_a_user_may_not_manage</c>
+    /// pins <c>HopByHop</c> as a subset of this set so that trap cannot reopen unnoticed.</summary>
     private static readonly HashSet<string> Refused = new(StringComparer.OrdinalIgnoreCase)
     {
         "Connection", "Keep-Alive", "Transfer-Encoding", "Content-Length", "TE", "Trailer",
@@ -48,21 +52,41 @@ public sealed class HeaderRules
         // Scanned in the order the flags are documented — request before response, set before
         // remove within each — so the first bad name a user would notice reading their own command
         // line back is the one named in the error.
-        problem = FirstRefusal(setRequest.Select(h => h.Key), "--request-header")
-                  ?? FirstRefusal(removeRequest, "--remove-request-header")
-                  ?? FirstRefusal(setResponse.Select(h => h.Key), "--response-header")
-                  ?? FirstRefusal(removeResponse, "--remove-response-header");
+        problem = FirstProblem(setRequest.Select(h => h.Key), "--request-header", "\"Name: value\"")
+                  ?? FirstProblem(removeRequest, "--remove-request-header", "<name>")
+                  ?? FirstProblem(setResponse.Select(h => h.Key), "--response-header", "\"Name: value\"")
+                  ?? FirstProblem(removeResponse, "--remove-response-header", "<name>");
         if (problem is not null) return null;
 
         return new HeaderRules(setRequest, removeRequest, setResponse, removeResponse);
     }
 
-    /// <summary>The usage error for the first refused name in <paramref name="names"/>, or null
-    /// when every name in this list is one the gateway lets a user manage.</summary>
-    private static string? FirstRefusal(IEnumerable<string> names, string flag)
+    /// <summary>The usage error for the first bad name in <paramref name="names"/>, or null when
+    /// every name in this list is one the gateway can actually apply a rule against. A name can be
+    /// bad three ways, checked in this order: missing (empty or whitespace-only), spelled with a
+    /// character an HTTP field name cannot carry, or naming a header this gateway refuses to let a
+    /// user manage. <paramref name="form"/> is how this flag's argument is written, so the "missing"
+    /// message can show the shape the user should have typed instead.</summary>
+    private static string? FirstProblem(IEnumerable<string> names, string flag, string form)
     {
         foreach (var name in names)
         {
+            // An empty or whitespace-only name used to be the one failure that slipped all the way
+            // through to the forwarding path, where TryAddWithoutValidation("", value) silently drops
+            // the header and leaves the operator believing their rule applied. Refusing it here, at
+            // the single gate every rule set passes through, keeps the promise the other refusals
+            // already make: a rule that is accepted is a rule that takes effect.
+            if (string.IsNullOrWhiteSpace(name))
+                return $"{flag} needs a header name: expected {form}.";
+
+            foreach (var c in name)
+            {
+                if (IsFieldNameChar(c)) continue;
+                return $"{flag} cannot name '{name}': '{c}' is not legal in an HTTP field name, so " +
+                       "the header could never match and the rule would be dropped rather than " +
+                       "applied. A name may hold letters, digits and !#$%&'*+-.^_`|~ only.";
+            }
+
             if (!Refused.Contains(name)) continue;
             // Host gets its own message: the other nine are refused because the HTTP stack frames
             // the message with them, but Host is refused for an unrelated reason — the client sets
@@ -76,6 +100,12 @@ public sealed class HeaderRules
         }
         return null;
     }
+
+    /// <summary>Whether <paramref name="c"/> is legal within an HTTP field name — the `token`
+    /// production of RFC 9110 §5.1 (https://www.rfc-editor.org/rfc/rfc9110#section-5.1), restricted
+    /// to ASCII since a header name is never anything else.</summary>
+    private static bool IsFieldNameChar(char c) =>
+        char.IsAsciiLetterOrDigit(c) || "!#$%&'*+-.^_`|~".Contains(c);
 
     /// <summary>The request headers with this rule set's request-side rules applied. Returns the
     /// very same list instance when there are no request rules, so the default relay is provably

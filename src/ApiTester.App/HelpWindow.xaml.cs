@@ -519,7 +519,10 @@ public partial class HelpWindow : Window
                 "Proxy-Authenticate, Proxy-Authorization, and Host are refused with a usage error " +
                 "naming the header and why, rather than silently ignored: the first nine frame the " +
                 "HTTP message and the HTTP stack manages them, and Host is set by the gateway's own " +
-                "HTTP client from the upstream URI, so a rule for it would only ever half-apply."),
+                "HTTP client from the upstream URI, so a rule for it would only ever half-apply. A " +
+                "missing header name, or one carrying a character an HTTP field name cannot hold — " +
+                "a space, an embedded colon — is refused the same way: the header could never " +
+                "match, so the rule would be dropped rather than applied."),
         NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."),
         NoteBox("certapi grpc is command-line only — there is no window for it. certapi grpc call " +
                 "handles unary, server-streaming, client-streaming, and bidirectional methods, choosing " +

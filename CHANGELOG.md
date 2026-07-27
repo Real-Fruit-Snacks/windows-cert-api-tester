@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.61.1] - 2026-07-27
+
+### Fixed
+- **`certapi serve` no longer accepts a header rule with an empty name and then silently drops
+  it.** `--request-header " : v"` used to start the gateway and log `listening` while the name
+  parsed to the empty string: nothing refused it, and at forward time the HTTP stack discarded the
+  nameless header, so the upstream never saw it and the operator had no way to know the rule had
+  not applied. An empty or whitespace-only name is now a usage error (exit 2) on all four flags —
+  `--request-header`, `--remove-request-header`, `--response-header`, `--remove-response-header` —
+  naming the flag and the shape it expected. A name carrying a character that is not legal in an
+  HTTP field name, such as a space or an embedded colon, is refused the same way and for the same
+  reason: the header could never match, so the rule would be dropped rather than applied. This is
+  the rule the previous release already applied to the framing headers and `Host` — a rule that is
+  accepted is a rule that takes effect.
+- **A future edit can no longer make the gateway's two header sets disagree in silence.** The
+  hop-by-hop names the gateway never relays are stripped *after* the header rules have been
+  applied, so a name added to that list but not to the list of headers a user may not manage would
+  have become a rule `serve` accepts on the command line and then throws away — the defect above,
+  reintroduced by an edit nobody would connect to it. The two sets stay separate on purpose,
+  because they answer different questions, but the hop-by-hop names are now exposed read-only and
+  a test pins every one of them as a name the header rules refuse, failing with a message that
+  explains the trap rather than inviting someone to silence it.
+
 ## [1.61.0] - 2026-07-27
 
 ### Added
@@ -1327,7 +1350,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.1...HEAD
+[1.61.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.0...v1.61.1
 [1.61.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.60.0...v1.61.0
 [1.60.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.59.0...v1.60.0
 [1.59.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.58.0...v1.59.0
