@@ -319,6 +319,15 @@ the client-certificate path end to end.
 `certapi serve <upstream> --port <n> [options]` — local mTLS gateway (see
 [Local Gateway](19-Local-Gateway.md)).
 
+- `--cors [<origins>]` — answer CORS preflights at the gateway, restricted to a comma-separated
+  origin list if given
+- `--cors-max-age <seconds>` — how long a browser may cache a preflight answer (default 600); only
+  with `--cors`
+- `--request-header "Name: value"` / `--remove-request-header <name>` — set or strip a header on
+  the request before it reaches the upstream (repeatable)
+- `--response-header "Name: value"` / `--remove-response-header <name>` — set or strip a header on
+  the response before it reaches the caller (repeatable; applied after `--browser`'s own rewrites)
+
 ## grpc
 
 ```

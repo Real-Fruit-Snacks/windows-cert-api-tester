@@ -6,6 +6,48 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.61.0] - 2026-07-27
+
+### Added
+- **`certapi serve --browser`'s `--cors` now answers Chrome's Private Network Access (PNA)
+  preflight**, closing a failure that presented as "the gateway just doesn't work" with no visible
+  cause: a page on a public origin calling a private or loopback address gets a further preflight
+  carrying `Access-Control-Request-Private-Network: true`, and Chrome blocks the request before any
+  gateway logic runs unless the response answers `Access-Control-Allow-Private-Network: true`. Since
+  `certapi serve --browser` binds `127.0.0.1` specifically so a web page can call it, this was the
+  gateway's headline use case failing silently in the most common browser.
+- **The PNA header is emitted only when three things hold together**: Cross-Origin Resource Sharing
+  (CORS) handling is on, the preflight actually carried the PNA request header, and the request's
+  `Origin` passes the existing allowlist check (`--cors <origins>`, or echo mode when no list was
+  given) — never unconditionally, and never for an origin the existing policy would refuse. The
+  allowlist stays the one security boundary for both concerns; an origin outside an explicit
+  allowlist still gets a bare 403 with no headers at all. Letting a public origin reach a loopback
+  service at all is a real exposure regardless of PNA, which is why naming the origins you develop
+  from with `--cors <origins>` is the safer form than leaving it echoing whoever asks.
+- **New `--cors-max-age <seconds>`** replaces a hardcoded 600-second `Access-Control-Max-Age`; 600
+  is still the default, so nothing changes for an existing `--cors` user. `0` is legal — it tells the
+  browser not to cache the preflight answer at all — and a non-numeric or negative value, or the flag
+  given without `--cors`/`--browser`, is a usage error (exit 2).
+- **Four new repeatable flags manipulate headers on forwarded traffic**: `--request-header
+  "Name: value"` and `--response-header "Name: value"` replace a header if one was already sent and
+  add it otherwise; `--remove-request-header <name>` and `--remove-response-header <name>` strip one.
+  Naming the same header to both a set flag and a remove flag on the same side removes it — removal
+  wins over setting.
+- **The rules work with or without `--browser`**, because a header rule is not a browser concern:
+  they live in their own pure `ApiTester.Core` type, `HeaderRules`, applied on the forwarding path
+  regardless of browser mode. On the response side they apply after `--browser`'s own rewrites (CORS,
+  cookies, `Location`), so a header configured explicitly here wins over one the gateway injected —
+  someone overriding `Access-Control-Allow-Origin` on purpose gets their value.
+- **`Connection`, `Keep-Alive`, `Transfer-Encoding`, `Content-Length`, `TE`, `Trailer`, `Upgrade`,
+  `Proxy-Authenticate`, `Proxy-Authorization`, and `Host` are refused with a usage error naming the
+  header and why**, rather than silently ignored: the first nine frame the HTTP message and the HTTP
+  stack manages them; `Host` is set by the gateway's own HTTP client from the upstream URI, so a rule
+  for it would only ever half-apply.
+- **The default relay stays byte-faithful, pinned by a characterization test**: with none of the new
+  flags the gateway forwards exactly as it did before. The header rules act on forwarded HTTP traffic
+  only — never on a CORS/PNA preflight the gateway answers itself, its own 404/400/502 error pages,
+  or a relayed WebSocket upgrade.
+
 ## [1.60.0] - 2026-07-27
 
 ### Added
@@ -1285,7 +1327,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.60.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.0...HEAD
+[1.61.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.60.0...v1.61.0
 [1.60.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.59.0...v1.60.0
 [1.59.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.58.0...v1.59.0
 [1.58.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.57.0...v1.58.0

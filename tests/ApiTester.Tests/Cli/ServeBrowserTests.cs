@@ -210,6 +210,168 @@ public class ServeBrowserTests
     }
 
     [Fact]
+    public async Task A_preflight_requesting_private_network_access_is_granted_when_the_origin_is_allowed()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            // Nothing listens on this port, so an answer that is not a 502 is one the gateway wrote
+            // itself without contacting anything.
+            string unreachable = $"https://127.0.0.1:{FreePort()}";
+            await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
+
+            using var http = NewClient();
+            HttpRequestMessage Preflight()
+            {
+                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
+                m.Headers.Add("Origin", "https://app.example");
+                m.Headers.Add("Access-Control-Request-Method", "GET");
+                m.Headers.Add("Access-Control-Request-Private-Network", "true");
+                return m;
+            }
+            var resp = await Poll(() => http.SendAsync(Preflight()));
+
+            Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+            Assert.Equal(new[] { "https://app.example" }, HeaderValues(resp, "Access-Control-Allow-Origin"));
+            Assert.Equal(new[] { "true" }, HeaderValues(resp, "Access-Control-Allow-Private-Network"));
+        }
+    }
+
+    [Fact]
+    public async Task A_preflight_requesting_private_network_access_is_refused_for_an_origin_outside_an_explicit_allowlist()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            string unreachable = $"https://127.0.0.1:{FreePort()}";
+            await using var serve = ServeHost.Start(client,
+                "--upstream", $"/={unreachable}", "--cors", "https://app.example");
+
+            using var http = NewClient();
+            HttpRequestMessage Preflight(string origin)
+            {
+                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
+                m.Headers.Add("Origin", origin);
+                m.Headers.Add("Access-Control-Request-Method", "GET");
+                m.Headers.Add("Access-Control-Request-Private-Network", "true");
+                return m;
+            }
+
+            var allowed = await Poll(() => http.SendAsync(Preflight("https://app.example")));
+            var stranger = await http.SendAsync(Preflight("https://evil.example"));
+
+            // The allowlisted origin gets the same 204-plus-PNA answer as any other allowed
+            // preflight, so this is the boundary the allowlist draws rather than PNA being refused
+            // outright.
+            Assert.Equal(HttpStatusCode.NoContent, allowed.StatusCode);
+            Assert.Equal(new[] { "true" }, HeaderValues(allowed, "Access-Control-Allow-Private-Network"));
+
+            Assert.Equal(HttpStatusCode.Forbidden, stranger.StatusCode);
+            Assert.Empty(HeaderValues(stranger, "Access-Control-Allow-Private-Network"));
+            Assert.Empty(HeaderValues(stranger, "Access-Control-Allow-Origin"));
+        }
+    }
+
+    [Fact]
+    public async Task A_preflight_that_did_not_ask_for_private_network_access_does_not_get_it_in_the_answer()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            string unreachable = $"https://127.0.0.1:{FreePort()}";
+            await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
+
+            using var http = NewClient();
+            HttpRequestMessage Preflight()
+            {
+                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
+                m.Headers.Add("Origin", "https://app.example");
+                m.Headers.Add("Access-Control-Request-Method", "GET");
+                return m;
+            }
+            var resp = await Poll(() => http.SendAsync(Preflight()));
+
+            Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+            Assert.Empty(HeaderValues(resp, "Access-Control-Allow-Private-Network"));
+        }
+    }
+
+    [Fact]
+    public async Task Cors_max_age_is_honored_when_set()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            string unreachable = $"https://127.0.0.1:{FreePort()}";
+            await using var serve = ServeHost.Start(client,
+                "--upstream", $"/={unreachable}", "--cors", "--cors-max-age", "3600");
+
+            using var http = NewClient();
+            HttpRequestMessage Preflight()
+            {
+                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
+                m.Headers.Add("Origin", "https://app.example");
+                m.Headers.Add("Access-Control-Request-Method", "GET");
+                return m;
+            }
+            var resp = await Poll(() => http.SendAsync(Preflight()));
+
+            Assert.Equal(new[] { "3600" }, HeaderValues(resp, "Access-Control-Max-Age"));
+        }
+    }
+
+    [Fact]
+    public async Task Cors_max_age_defaults_to_600_seconds_when_not_set()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            string unreachable = $"https://127.0.0.1:{FreePort()}";
+            await using var serve = ServeHost.Start(client, "--upstream", $"/={unreachable}", "--cors");
+
+            using var http = NewClient();
+            HttpRequestMessage Preflight()
+            {
+                var m = new HttpRequestMessage(HttpMethod.Options, $"{serve.Origin}/orders");
+                m.Headers.Add("Origin", "https://app.example");
+                m.Headers.Add("Access-Control-Request-Method", "GET");
+                return m;
+            }
+            var resp = await Poll(() => http.SendAsync(Preflight()));
+
+            Assert.Equal(new[] { "600" }, HeaderValues(resp, "Access-Control-Max-Age"));
+        }
+    }
+
+    [Fact]
+    public void Cors_max_age_without_cors_is_a_usage_error()
+    {
+        var stderr = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "serve", "--port", FreePort().ToString(), "--upstream", "/=https://api.internal",
+                     "--cors-max-age", "3600" },
+            TextWriter.Null, stderr, services: new CliServices());
+
+        Assert.Equal(2, code);
+        Assert.Contains("--cors-max-age", stderr.ToString());
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("-1")]
+    public void A_non_numeric_or_negative_cors_max_age_is_a_usage_error(string value)
+    {
+        var stderr = new StringWriter();
+        int code = CliApp.Run(
+            new[] { "serve", "--port", FreePort().ToString(), "--upstream", "/=https://api.internal",
+                     "--cors", "--cors-max-age", value },
+            TextWriter.Null, stderr, services: new CliServices());
+
+        Assert.Equal(2, code);
+        Assert.Contains("--cors-max-age", stderr.ToString());
+    }
+
+    [Fact]
     public async Task A_response_carries_exactly_one_allow_origin_even_when_the_upstream_sent_its_own()
     {
         var (ca, server, client) = Certs();

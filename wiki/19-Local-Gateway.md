@@ -34,6 +34,38 @@ The gateway is **loopback only** (127.0.0.1) — it never listens on an external
 | `--timeout <seconds>` | Per-request upstream timeout (default 100) |
 | `--workspace <file>` | Resolve a saved-website `<upstream>` from a workspace file |
 | `-q, --quiet` | No startup banner or per-request log |
+| `--cors-max-age <seconds>` | How long a browser may cache a CORS (Cross-Origin Resource Sharing) preflight answer (default 600). Only with `--cors` |
+| `--request-header "Name: value"` | Set a header on the request before it reaches the upstream — replace if already sent, add if not. Repeatable |
+| `--remove-request-header <name>` | Strip a header from the request before it reaches the upstream. Repeatable |
+| `--response-header "Name: value"` | Set a header on the response before it reaches the caller, same replace-or-add rule. Repeatable |
+| `--remove-response-header <name>` | Strip a header from the response before it reaches the caller. Repeatable |
+
+## Header rules
+
+`--request-header`, `--remove-request-header`, `--response-header`, and `--remove-response-header`
+apply to forwarded HTTP traffic, with or without `--browser` — a header rule is not a browser
+concern. Setting a header replaces it if one was already present and adds it otherwise; naming the
+same header to both a set flag and a remove flag on the same side removes it, since removal wins over
+setting. On the response side these rules apply *after* `--browser`'s own rewrites (CORS, cookies,
+`Location`), so a header you set here wins over one the gateway injected.
+
+`Connection`, `Keep-Alive`, `Transfer-Encoding`, `Content-Length`, `TE`, `Trailer`, `Upgrade`,
+`Proxy-Authenticate`, `Proxy-Authorization`, and `Host` are refused with a usage error naming the
+header and why, rather than silently ignored — the first nine frame the HTTP message and the HTTP
+stack manages them, and `Host` is set by the gateway's own HTTP client from the upstream URI, so a
+rule for it would only ever half-apply. These rules never touch a CORS or PNA (Private Network
+Access) preflight the gateway answers itself, its own error pages, or a relayed WebSocket upgrade.
+
+## Browsers and Private Network Access
+
+Chrome runs a further check, PNA, before it lets a page on a public origin
+reach a private or loopback address at all: its preflight carries
+`Access-Control-Request-Private-Network: true`, and Chrome blocks the request unless the response
+answers `Access-Control-Allow-Private-Network: true`. `--cors` answers it, but only for an origin the
+same allowlist already accepts — an origin outside an explicit `--cors <origins>` list still gets a
+bare 403. Letting a public origin reach a loopback service at all is a real exposure even with PNA
+answered, which is why naming the origins you develop from with `--cors <origins>` is safer than
+leaving it echoing whoever asks.
 
 ## Add a shared secret
 

@@ -13,9 +13,10 @@ public class BrowserRewriterTests
         bool rewriteLocation = false,
         bool allowUpgrade = false,
         string localOrigin = Local,
-        bool secureOrigin = false) =>
+        bool secureOrigin = false,
+        int corsMaxAge = 600) =>
         new(cors, allowedOrigins, rewriteCookies, rewriteLocation, allowUpgrade, new Uri(localOrigin))
-        { SecureOrigin = secureOrigin };
+        { SecureOrigin = secureOrigin, CorsMaxAgeSeconds = corsMaxAge };
 
     private static GatewayRequest Request(string method, params (string Name, string Value)[] headers) =>
         new(method, "/orders",
@@ -55,6 +56,132 @@ public class BrowserRewriterTests
         Assert.Equal("true", Value(response.Headers, "Access-Control-Allow-Credentials"));
         Assert.Equal("600", Value(response.Headers, "Access-Control-Max-Age"));
         Assert.Equal("Origin", Value(response.Headers, "Vary"));
+    }
+
+    [Fact]
+    public void A_preflight_that_asks_for_private_network_access_in_echo_mode_is_granted_it()
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"),
+            ("Access-Control-Request-Private-Network", "true"));
+
+        var response = BrowserRewriter.TryPreflight(request, Options(cors: true));
+
+        Assert.NotNull(response);
+        Assert.Equal(204, response!.StatusCode);
+        Assert.Equal("https://app.example", Value(response.Headers, "Access-Control-Allow-Origin"));
+        Assert.Equal("PUT", Value(response.Headers, "Access-Control-Allow-Methods"));
+        Assert.Equal("true", Value(response.Headers, "Access-Control-Allow-Credentials"));
+        Assert.Equal("true", Value(response.Headers, "Access-Control-Allow-Private-Network"));
+    }
+
+    [Fact]
+    public void A_private_network_request_from_an_origin_inside_an_explicit_allowlist_is_granted_it()
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"),
+            ("Access-Control-Request-Private-Network", "true"));
+
+        var response = BrowserRewriter.TryPreflight(
+            request, Options(cors: true, allowedOrigins: new[] { "https://app.example" }));
+
+        Assert.NotNull(response);
+        Assert.Equal(204, response!.StatusCode);
+        Assert.Equal("true", Value(response.Headers, "Access-Control-Allow-Private-Network"));
+    }
+
+    [Fact]
+    public void A_private_network_request_from_an_origin_outside_an_explicit_allowlist_is_refused_with_no_headers()
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://evil.example"),
+            ("Access-Control-Request-Method", "PUT"),
+            ("Access-Control-Request-Private-Network", "true"));
+
+        var response = BrowserRewriter.TryPreflight(
+            request, Options(cors: true, allowedOrigins: new[] { "https://app.example" }));
+
+        Assert.NotNull(response);
+        Assert.Equal(403, response!.StatusCode);
+        Assert.Empty(response.Headers);
+        Assert.Null(Value(response.Headers, "Access-Control-Allow-Private-Network"));
+    }
+
+    [Fact]
+    public void A_preflight_that_does_not_ask_for_private_network_access_gets_no_such_header()
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"));
+
+        var response = BrowserRewriter.TryPreflight(request, Options(cors: true));
+
+        Assert.NotNull(response);
+        Assert.Null(Value(response!.Headers, "Access-Control-Allow-Private-Network"));
+    }
+
+    [Theory]
+    [InlineData("false")]
+    [InlineData("")]
+    [InlineData("1")]
+    public void A_private_network_request_header_with_any_value_other_than_true_grants_nothing(
+        string value)
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"),
+            ("Access-Control-Request-Private-Network", value));
+
+        var response = BrowserRewriter.TryPreflight(request, Options(cors: true));
+
+        Assert.NotNull(response);
+        Assert.Null(Value(response!.Headers, "Access-Control-Allow-Private-Network"));
+    }
+
+    [Theory]
+    [InlineData("access-control-request-private-network", "TRUE")]
+    [InlineData("Access-Control-Request-Private-Network", " true ")]
+    public void The_private_network_request_header_is_matched_case_insensitively_by_name_and_value(
+        string headerName, string headerValue)
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"),
+            (headerName, headerValue));
+
+        var response = BrowserRewriter.TryPreflight(request, Options(cors: true));
+
+        Assert.NotNull(response);
+        Assert.Equal("true", Value(response!.Headers, "Access-Control-Allow-Private-Network"));
+    }
+
+    [Fact]
+    public void A_private_network_preflight_is_still_forwarded_when_cors_handling_is_off()
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"),
+            ("Access-Control-Request-Private-Network", "true"));
+
+        Assert.Null(BrowserRewriter.TryPreflight(request, Options(cors: false)));
+    }
+
+    [Theory]
+    [InlineData(3600, "3600")]
+    [InlineData(0, "0")]
+    public void Access_control_max_age_reflects_the_configured_value(int seconds, string expected)
+    {
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"));
+
+        var response = BrowserRewriter.TryPreflight(
+            request, Options(cors: true, corsMaxAge: seconds));
+
+        Assert.NotNull(response);
+        Assert.Equal(expected, Value(response!.Headers, "Access-Control-Max-Age"));
     }
 
     [Fact]

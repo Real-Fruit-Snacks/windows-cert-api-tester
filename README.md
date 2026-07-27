@@ -76,6 +76,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **HAR → OpenAPI** — `certapi export openapi --from-har session.har -o api.json` turns a captured session into an OpenAPI 3.0 document: repeated calls to the same endpoint collapse into one operation, identifier-looking path segments become `{id}` (conservatively — only digits, a Universally Unique Identifier (UUID), or a long hexadecimal string, and only when the value actually varies between calls), responses of 400 and above are skipped, and redacted (`[redacted]`) header values are never written. In the app, Import ▾ → **Export OpenAPI from HAR file…** does the same.
 - **Mock from HAR** — `certapi mock --har session.har` serves a captured session back as a fake backend instead of the built-in routes: exact method + path + query wins, then method + path, then `--no-match-status` (default 404); repeated calls to a route replay in recorded order and then repeat the last one. In the app, the Mock server window's **From HAR…** button starts a replay the same way.
 - **`serve --tls`** — serve the gateway itself over HTTPS on `127.0.0.1` with a generated, cached certificate, so `Secure`, `SameSite=None`, and `__Host-`/`__Secure-` cookies all work through it. The first bind needs an elevated prompt (the exact `netsh` command is printed when one isn't available); `--tls-trust` installs the certificate so the browser stops warning, reversibly, with `--tls-untrust`.
+- **`serve --cors` answers Chrome's Private Network Access (PNA) preflight, and forwarded traffic gets header rules** — a page on a public origin calling a private or loopback address gets a further preflight Chrome requires answering before it will let the request through at all; the gateway answers it only for an origin the existing `--cors` allowlist already accepts, and `--cors-max-age <seconds>` controls how long the browser may cache that answer (default 600, unchanged). Independently of `--browser`, `--request-header`/`--response-header "Name: value"` set (replace or add) a header on the way through and `--remove-request-header`/`--remove-response-header <name>` strip one — repeatable, removal wins over setting, and the handful of headers that frame the HTTP message (plus `Host`) are refused with a usage error rather than silently ignored.
 - **gRPC (`certapi grpc`)** — call a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-store certificate handling as everything else — the reason to reach for this instead of `grpcurl` when the service sits behind mutual TLS. `certapi grpc list <address>` discovers the services and methods a server advertises via server reflection; `certapi grpc call <address> <Service/Method> -d '<json>'` invokes one — unary, server-streaming, client-streaming, or bidirectional, with the kind coming from the service's own definition rather than a flag — JSON in and JSON out: a unary response prints as indented JSON, a server-streaming or bidirectional one prints a compact JSON object per line as each message arrives (`--max-messages <n>` stops it early). For a client-streaming or bidirectional method, each repeated `-d` and each line read from standard input is sent as one message. A host pinned with `certapi trust add` needs no `--insecure`, exactly as `certapi send`. The well-known Protobuf types render — and are accepted on the way in — in their canonical forms rather than as ordinary messages: a `Timestamp` prints as `"2023-11-14T22:13:20Z"`, an RFC 3339 string, not `{"seconds":…,"nanos":…}`. A server that doesn't expose server reflection can still be listed and called: supply a compiled descriptor set with `--protoset <file>` — the binary output of `protoc --descriptor_set_out=<file> --include_imports <proto>`, the same format `grpcurl -protoset` takes — which wins over reflection whenever both are available, and `certapi grpc list --protoset <file>` works entirely offline, with no address and no connection to the service at all. **The honest limits:** `--protoset` only helps if you already have, or can produce, the descriptor set yourself — certapi doesn't compile `.proto` sources — and `certapi serve` does not proxy gRPC.
 - **Pop-out response views** — open a single response view *or the whole response panel (tabs and all)* in its own window: detach the panel to give the request editor the full main window, or pop just the Network trace or a Rendered page beside your work. Everything stays live — the trace keeps streaming, a Rendered page stays interactive — and closing a popped-out window puts its content back.
 - **Saved websites** — save a base URL (e.g. `https://internal.corp`) and the URL box becomes just the path after it, so you can fire off `/api/thing`, `/api/other` without retyping the host.
@@ -263,6 +264,9 @@ certapi serve https://internal.corp --port 8819 --cert "CN=matt" --browser
 
 # serve the gateway itself over HTTPS, so Secure/__Host-/__Secure- cookies survive too
 certapi serve https://internal.corp --port 8819 --cert "CN=matt" --browser --tls --tls-trust
+
+# inject a header the calling app can't set itself, whether or not --browser is on
+certapi serve https://internal.corp --port 8819 --cert "CN=matt" --request-header "X-Api-Key: s3cret"
 ```
 
 Loopback only; add `--token <value>` to require a shared secret.
@@ -276,6 +280,18 @@ named in a warning rather than silently dropped. `--tls` is the fix: it serves t
 HTTPS with a generated certificate, so `Secure`, `SameSite=None`, and those cookie prefixes all work.
 The first bind needs an elevated (Run as administrator) prompt; `--tls-trust` optionally installs the
 certificate so the browser stops warning about it.
+
+Chrome also runs a Private Network Access (PNA) check before it lets a page on a public origin reach
+a private or loopback address at all, and `--cors` answers it — but only for an origin the same
+allowlist already accepts, so PNA never becomes a way around it; `--cors-max-age <seconds>` sets how
+long the browser may cache that preflight answer (default 600, so nothing changes if you don't set
+it). Allowing a public origin to reach a loopback service is a real exposure even with PNA answered,
+which is why naming the origins you develop from with `--cors <origins>` is safer than leaving it
+echoing whoever asks. Separately, `--request-header`/`--response-header "Name: value"` and
+`--remove-request-header`/`--remove-response-header <name>` set or strip a header on forwarded
+traffic — repeatable, removal wins over setting, and they apply with or without `--browser`. The
+handful of headers that frame the HTTP message (`Connection`, `Content-Length`, and the rest) plus
+`Host` are refused with a usage error rather than silently ignored.
 
 ### MCP server (for AI agents)
 Give an AI agent controlled use of your certificate over the Model Context Protocol. Configure your MCP host:

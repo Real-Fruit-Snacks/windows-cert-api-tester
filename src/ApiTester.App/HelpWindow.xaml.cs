@@ -488,13 +488,18 @@ public partial class HelpWindow : Window
           "--browser turns on the four accommodations that fix that — each also usable on its own. " +
           "--cors answers Cross-Origin Resource Sharing (CORS) preflights at the gateway and adds the " +
           "headers a script needs to read the reply (give it a comma-separated list to allow only " +
-          "those origins and refuse the rest with 403). --rewrite-cookies drops Domain= and Secure " +
-          "from each Set-Cookie and turns SameSite=None into Lax, so the browser stores the cookie " +
-          "against the gateway. --rewrite-location points a 3xx Location aimed at the upstream back " +
-          "at the gateway; one aimed anywhere else is left exactly as the upstream wrote it and " +
-          "logged, because that hop leaves the gateway and your client certificate with it. " +
-          "--allow-upgrade relays WebSocket connections to the upstream through your certificate. " +
-          "Without these flags nothing changes: the gateway stays a byte-faithful relay."),
+          "those origins and refuse the rest with 403); --cors-max-age <seconds> controls how long " +
+          "the browser may cache that preflight answer (default 600). Chrome also runs a Private " +
+          "Network Access (PNA) check before a page on a public origin may reach a private or " +
+          "loopback address at all, and --cors answers that too, but only for an origin the same " +
+          "allowlist already accepts — never unconditionally. --rewrite-cookies drops Domain= and " +
+          "Secure from each Set-Cookie and turns SameSite=None into Lax, so the browser stores the " +
+          "cookie against the gateway. --rewrite-location points a 3xx Location aimed at the " +
+          "upstream back at the gateway; one aimed anywhere else is left exactly as the upstream " +
+          "wrote it and logged, because that hop leaves the gateway and your client certificate " +
+          "with it. --allow-upgrade relays WebSocket connections to the upstream through your " +
+          "certificate. Without these flags nothing changes: the gateway stays a byte-faithful " +
+          "relay."),
         NoteBox("Over the default plaintext loopback origin, a cookie named __Host-… or __Secure-… " +
                 "still cannot work — it requires the Secure attribute, which no browser accepts over " +
                 "plaintext http://127.0.0.1 — so it is relayed and named in a warning rather than " +
@@ -503,6 +508,18 @@ public partial class HelpWindow : Window
                 "all work. The first bind needs an elevated prompt (the exact netsh command is " +
                 "printed when one isn't available), and --tls-trust installs the certificate so the " +
                 "browser stops warning about it — reversible with --tls-untrust."),
+        P("--request-header \"Name: value\" and --response-header \"Name: value\" set a header on " +
+          "forwarded traffic — replacing it if one was already there, adding it otherwise — and " +
+          "--remove-request-header <name> / --remove-response-header <name> strip one; all four are " +
+          "repeatable, and naming the same header to a set flag and a remove flag on the same side " +
+          "removes it, since removal wins over setting. These rules are not a browser concern: they " +
+          "apply with or without --browser, and on the response side after --browser's own rewrites " +
+          "(CORS, cookies, Location), so a header you set here wins over one the gateway injected."),
+        NoteBox("Connection, Keep-Alive, Transfer-Encoding, Content-Length, TE, Trailer, Upgrade, " +
+                "Proxy-Authenticate, Proxy-Authorization, and Host are refused with a usage error " +
+                "naming the header and why, rather than silently ignored: the first nine frame the " +
+                "HTTP message and the HTTP stack manages them, and Host is set by the gateway's own " +
+                "HTTP client from the upstream URI, so a rule for it would only ever half-apply."),
         NoteBox("While the app is open, headless runs skip writing results (the app would overwrite them when it closes) — scheduled checks record normally."),
         NoteBox("certapi grpc is command-line only — there is no window for it. certapi grpc call " +
                 "handles unary, server-streaming, client-streaming, and bidirectional methods, choosing " +

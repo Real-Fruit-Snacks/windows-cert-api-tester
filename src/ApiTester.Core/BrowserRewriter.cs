@@ -19,6 +19,11 @@ public sealed record BrowserOptions(
     /// SameSite=None are valid as the upstream sent them and a __Host-/__Secure- prefix works.
     /// False — today's plaintext loopback behavior — unless the caller asks for it.</summary>
     public bool SecureOrigin { get; init; }
+
+    /// <summary>How long a browser may cache a preflight answer, in seconds — `serve --cors-max-age`.
+    /// 600 unless the caller asked otherwise, which is what Access-Control-Max-Age has always been, so
+    /// an existing user's gateway answers exactly as it did before.</summary>
+    public int CorsMaxAgeSeconds { get; init; } = 600;
 }
 
 /// <summary>The policy seam that makes an upstream usable from a browser through the gateway:
@@ -64,7 +69,17 @@ public static class BrowserRewriter
         if (Header(request.Headers, "Access-Control-Request-Headers") is { } requested)
             headers.Add(new("Access-Control-Allow-Headers", requested));
         headers.Add(new("Access-Control-Allow-Credentials", "true"));
-        headers.Add(new("Access-Control-Max-Age", "600"));
+        // Only ever the answer to a question an allowed origin actually asked: the allowlist check
+        // above (or echo mode's implicit "any origin is allowed") has already run by this point, so
+        // an origin the operator did not permit can never reach this line and receive it. Private
+        // Network Access exists precisely to stop an arbitrary public page reaching a private or
+        // loopback service; without that ordering this header would hand back the very permission
+        // the feature is meant to withhold.
+        if (Header(request.Headers, "Access-Control-Request-Private-Network") is { } pna &&
+            pna.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+            headers.Add(new("Access-Control-Allow-Private-Network", "true"));
+        headers.Add(new("Access-Control-Max-Age",
+            options.CorsMaxAgeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         headers.Add(new("Vary", "Origin"));
         return new PreflightResponse(204, headers);
     }

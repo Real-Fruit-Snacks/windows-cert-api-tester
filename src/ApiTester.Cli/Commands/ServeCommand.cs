@@ -46,6 +46,8 @@ public static class ServeCommand
                                   browser needs. With no value the caller's own Origin is
                                   echoed; a comma-separated list allows only those origins and
                                   refuses the rest with 403
+          --cors-max-age <n>      How long a browser may cache a preflight answer, in seconds
+                                  (default 600). Only with --cors
           --rewrite-cookies       Set-Cookie loses Domain= and Secure, and SameSite=None becomes
                                   Lax, so the browser can store the cookie against the gateway
           --rewrite-location      A 3xx Location pointing at the upstream comes back pointing at
@@ -56,6 +58,42 @@ public static class ServeCommand
           A cookie named __Host-… or __Secure-… needs the Secure attribute, which a plaintext
           http://127.0.0.1 origin cannot carry, so run with --tls and it works; without --tls
           such cookies are relayed and logged as a warning.
+
+          Chrome's Private Network Access (PNA) check is a further gate before a page on a
+          public origin can reach a private or loopback address: its preflight carries
+          Access-Control-Request-Private-Network: true, and the gateway answers
+          Access-Control-Allow-Private-Network: true only when --cors is on and the request's
+          Origin passes that same allowlist. Letting a public origin reach a loopback service is
+          a real exposure, which is why that answer follows the allowlist, and why naming the
+          origins you develop from with --cors <origins> is the safer form than leaving it
+          echoing whoever asks.
+
+        Headers (apply to forwarded HTTP traffic, with or without --browser — a header rule is not
+        a browser concern):
+          --request-header "Name: value"    Set a header on the request before it reaches the
+                                             upstream: replaces it if the caller already sent one,
+                                             adds it if not. Repeatable
+          --remove-request-header <name>    Strip a header from the request before it reaches the
+                                             upstream. Repeatable. Removal wins over
+                                             --request-header naming the same header
+          --response-header "Name: value"   Set a header on the response before it reaches the
+                                             caller, the same replace-or-add rule as above.
+                                             Repeatable, and applied after --browser's own rewrites
+                                             (CORS, cookies, Location), so a header you set here
+                                             wins over one the gateway injected
+          --remove-response-header <name>   Strip a header from the response before it reaches the
+                                             caller. Repeatable. Removal wins over
+                                             --response-header naming the same header
+
+          Connection, Keep-Alive, Transfer-Encoding, Content-Length, TE, Trailer, Upgrade,
+          Proxy-Authenticate, Proxy-Authorization and Host are refused with a usage error rather
+          than silently ignored: the first nine frame the HTTP message and the HTTP stack manages
+          them, and Host is set by the gateway's HTTP client from the upstream URI, so a rule here
+          would only ever half-apply.
+
+          These rules act on forwarded HTTP traffic only: never on a CORS/PNA preflight the gateway
+          answers itself, its own 404/400/502 error pages, or a relayed WebSocket upgrade. With
+          none of the four flags the gateway stays the byte-faithful relay it has always been.
 
 
         """ + TransportFlags.Help + """
@@ -80,6 +118,9 @@ public static class ServeCommand
           # HTTPS on the gateway itself, so Secure and __Host-/__Secure- cookies survive
           certapi serve https://internal-api.example.com --port 8443 --cert "CN=My Client" --browser --tls --tls-trust
 
+          # Inject an API key the calling app never has to know
+          certapi serve https://internal-api.example.com --port 8443 --cert "CN=My Client" --request-header "X-Api-Key: s3cret"
+
         Loopback only; stop with Ctrl+C. Exit 0 clean shutdown, 2 usage, 3 data error.
         """;
 
@@ -100,6 +141,14 @@ public static class ServeCommand
         bool rewriteCookies = args.Flag("--rewrite-cookies") || browserBundle;
         bool rewriteLocation = args.Flag("--rewrite-location") || browserBundle;
         bool allowUpgrade = args.Flag("--allow-upgrade") || browserBundle;
+        string? corsMaxAgeRaw = args.Value("--cors-max-age");
+        // Header rules are not a browser concern (they work with or without --browser), but they are
+        // read alongside the browser flags here so every repeatable option is consumed before
+        // Positionals() runs.
+        var requestHeaderSets = args.Values("--request-header");
+        var requestHeaderRemovals = args.Values("--remove-request-header");
+        var responseHeaderSets = args.Values("--response-header");
+        var responseHeaderRemovals = args.Values("--remove-response-header");
         var transportOverrides = TransportFlags.Parse(args, out _);
 
         bool tls = args.Flag("--tls");
@@ -136,6 +185,29 @@ public static class ServeCommand
         if (timeoutRaw is not null && (!int.TryParse(timeoutRaw, out timeoutSeconds) || timeoutSeconds <= 0))
             throw new CliUsageException($"--timeout expects a positive number of seconds, got '{timeoutRaw}'.");
 
+        int corsMaxAge = 600;
+        if (corsMaxAgeRaw is not null)
+        {
+            if (!int.TryParse(corsMaxAgeRaw, out corsMaxAge) || corsMaxAge < 0)
+                throw new CliUsageException(
+                    $"--cors-max-age expects a whole number of seconds (0 or more), got '{corsMaxAgeRaw}'.");
+            if (!cors)
+                throw new CliUsageException("--cors-max-age only applies together with --cors (or --browser).");
+        }
+
+        // Built here, before the listener binds or the gateway is constructed, rather than lazily on
+        // the first request that would need them: a refused header is a mistake in the command line,
+        // and the operator should learn about it from a usage error, not by discovering it later from
+        // traffic that already went through.
+        var requestSets = ParseHeaderSets(requestHeaderSets, "--request-header");
+        var requestRemovals = ParseHeaderRemovals(requestHeaderRemovals, "--remove-request-header");
+        var responseSets = ParseHeaderSets(responseHeaderSets, "--response-header");
+        var responseRemovals = ParseHeaderRemovals(responseHeaderRemovals, "--remove-response-header");
+        var headerRules = HeaderRules.TryCreate(
+                              requestSets, requestRemovals, responseSets, responseRemovals,
+                              out var headerRuleProblem)
+                          ?? throw new CliUsageException(headerRuleProblem!);
+
         var routeList = new List<GatewayRoute>();
         // Resolve the positional upstream: an absolute http(s) URL, or a saved-website name.
         if (positionals.Count == 1)
@@ -168,7 +240,7 @@ public static class ServeCommand
         string scheme = tls ? "https" : "http";
         var browser = new BrowserOptions(
             cors, ParseOrigins(corsOrigins), rewriteCookies, rewriteLocation, allowUpgrade,
-            LocalOrigin: new Uri($"{scheme}://127.0.0.1:{port}")) { SecureOrigin = tls };
+            LocalOrigin: new Uri($"{scheme}://127.0.0.1:{port}")) { SecureOrigin = tls, CorsMaxAgeSeconds = corsMaxAge };
 
         using var gateway = services.GatewayFactory(
             routes, cert, insecure, TimeSpan.FromSeconds(timeoutSeconds), transport);
@@ -242,7 +314,7 @@ public static class ServeCommand
                 try { context = listener.GetContextAsync().GetAwaiter().GetResult(); }
                 catch (Exception) when (ct.IsCancellationRequested) { break; }   // Stop() unblocked us
 
-                var task = HandleAsync(context, gateway, routes, browser, relay, token, Log, ct);
+                var task = HandleAsync(context, gateway, routes, browser, headerRules, relay, token, Log, ct);
                 inFlight[task] = 0;
                 _ = task.ContinueWith(t => inFlight.TryRemove(t, out _), TaskScheduler.Default);
             }
@@ -278,6 +350,35 @@ public static class ServeCommand
         else
             stderr.WriteLine($"the gateway certificate {thumb} was not in CurrentUser\\Root; nothing to remove.");
         return ExitCodes.Ok;
+    }
+
+    /// <summary>Parses a repeatable "Name: value" flag using the same first-colon rule as the request
+    /// commands: a header value is allowed to contain a colon of its own, so only the first one
+    /// separates the name from the value.</summary>
+    private static List<KeyValuePair<string, string>> ParseHeaderSets(IReadOnlyList<string> raw, string flag)
+    {
+        var result = new List<KeyValuePair<string, string>>();
+        foreach (var entry in raw)
+        {
+            int colon = entry.IndexOf(':');
+            if (colon <= 0) throw new CliUsageException($"{flag} expects \"Name: value\", got '{entry}'.");
+            result.Add(new(entry[..colon].Trim(), entry[(colon + 1)..].Trim()));
+        }
+        return result;
+    }
+
+    /// <summary>Parses a repeatable bare-header-name flag: an empty or whitespace-only name is a
+    /// usage error rather than a removal rule that silently matches nothing.</summary>
+    private static List<string> ParseHeaderRemovals(IReadOnlyList<string> raw, string flag)
+    {
+        var result = new List<string>();
+        foreach (var entry in raw)
+        {
+            string name = entry.Trim();
+            if (name.Length == 0) throw new CliUsageException($"{flag} needs a header name.");
+            result.Add(name);
+        }
+        return result;
     }
 
     /// <summary>One --upstream &lt;prefix&gt;=&lt;url&gt; mount. The URL must be spelled out in full: a mount
@@ -381,7 +482,7 @@ public static class ServeCommand
 
     private static async Task HandleAsync(
         HttpListenerContext context, MtlsGateway gateway, GatewayRoutes routes,
-        BrowserOptions browser, GatewayWebSocketRelay? relay, string? token,
+        BrowserOptions browser, HeaderRules headerRules, GatewayWebSocketRelay? relay, string? token,
         Action<string> log, CancellationToken ct)
     {
         var req = context.Request;
@@ -427,7 +528,14 @@ public static class ServeCommand
                 return;
             }
 
-            var gwResp = await gateway.ForwardAsync(gwReq, ct);
+            // The rules describe what reaches the upstream, so they are applied to the forwarded
+            // request and not to the preflight decision above — a preflight is answered here and
+            // never forwarded, and a user rule must not be able to change the Origin that decision is
+            // made on. With no request rules this hands back the very same header list, so the
+            // forwarded request is identical to today's.
+            var forwardReq = gwReq with { Headers = headerRules.ApplyToRequest(headers) };
+
+            var gwResp = await gateway.ForwardAsync(forwardReq, ct);
             using (gwResp.Lifetime)
             {
                 res.StatusCode = gwResp.StatusCode;
@@ -443,6 +551,12 @@ public static class ServeCommand
                         gwResp.Headers, req.Headers["Origin"], route, browser, out var warnings);
                     foreach (var warning in warnings) log("warning: " + warning);
                 }
+
+                // After the browser rewrites, so a header the operator configured explicitly wins
+                // over one the gateway injected — someone overriding Access-Control-Allow-Origin
+                // deliberately gets their value. Applied whether or not any browser accommodation is
+                // on: a header rule is not a browser concern.
+                responseHeaders = headerRules.ApplyToResponse(responseHeaders);
 
                 long? contentLength = null;
                 foreach (var h in responseHeaders)
