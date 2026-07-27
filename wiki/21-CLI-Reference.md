@@ -312,7 +312,9 @@ the client-certificate path end to end.
 - `certapi import curl "<curl command>" [--into <folder>] [--workspace <file>]`
 - `certapi import openapi <file> [--into <folder>] [--workspace <file>]`
 - `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
-- `certapi export workspace -o <file> [--workspace <file>]`
+- `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
+  tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`
+  keeps them, written encrypted for the current Windows user.
 
 ## serve
 

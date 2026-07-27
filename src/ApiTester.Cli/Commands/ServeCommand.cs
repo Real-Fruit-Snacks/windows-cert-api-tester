@@ -215,7 +215,7 @@ public static class ServeCommand
         var routeList = new List<GatewayRoute>();
         // Resolve the positional upstream: an absolute http(s) URL, or a saved-website name.
         if (positionals.Count == 1)
-            routeList.Add(new GatewayRoute("/", ResolveUpstream(positionals[0], workspace, services)));
+            routeList.Add(new GatewayRoute("/", ResolveUpstream(positionals[0], workspace, services, stderr)));
         foreach (var spec in upstreamSpecs) routeList.Add(ParseUpstream(spec));
 
         GatewayRoutes routes;
@@ -409,13 +409,13 @@ public static class ServeCommand
         return new GatewayRoute(prefix, new Uri(upstream.GetLeftPart(UriPartial.Authority)));
     }
 
-    private static Uri ResolveUpstream(string value, string? workspace, CliServices services)
+    private static Uri ResolveUpstream(string value, string? workspace, CliServices services, TextWriter stderr)
     {
         if (Uri.TryCreate(value, UriKind.Absolute, out var abs) &&
             (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps))
             return new Uri(abs.GetLeftPart(UriPartial.Authority));   // scheme + host + port only
 
-        var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
         var saved = state.SavedBaseUrls.FirstOrDefault(b =>
             b.Equals(value, StringComparison.OrdinalIgnoreCase) ||
             (Uri.TryCreate(b, UriKind.Absolute, out var u) && u.Host.Equals(value, StringComparison.OrdinalIgnoreCase)));

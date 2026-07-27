@@ -43,7 +43,9 @@ choice — in:
 ```
 
 That's a single JSON (JavaScript Object Notation) file. Back it up, or hand it to a teammate, and
-everything travels with it. The
+everything travels with it — except secrets (captured tokens/cookies, saved auth values, variables
+marked **secret**), which are encrypted with the Windows Data Protection API (DPAPI) for the Windows
+user who saved them, so they don't travel to a different user or machine. The
 CLI (command-line interface) reads the same file by default, so requests you build in the app are runnable headless
 immediately. You can also point either tool at a separate **workspace file** with `--workspace` — see
 [Collections & History](10-Collections-and-History.md).

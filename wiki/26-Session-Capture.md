@@ -64,9 +64,13 @@ end to end.
 
 ## Security note
 
-Captured cookies and tokens are stored in your workspace (`%AppData%\CertApiTester\state.json`) **in
-plain text**, exactly as automatic tokens are. Session cookies are as sensitive as passwords — treat
-an exported workspace as a secret, and clear a captured session from the chip when you're done. See
+Captured cookies and tokens are stored in your workspace (`%AppData%\CertApiTester\state.json`)
+**encrypted** with the Windows Data Protection API (DPAPI), scoped to the Windows user who captured
+them — the same protection automatic tokens get. Session cookies are still as sensitive as
+passwords, though: a captured session lets someone act as you on that site for as long as it's valid,
+so clear a captured session from the chip when you're done, and remember that a workspace file
+carried to another Windows user or another machine loses its captured cookies and tokens (they can't
+be decrypted there) while everything else in it still loads. See
 [Authentication](08-Authentication.md) and [Capturing Values](12-Capturing-Values.md).
 
 ---

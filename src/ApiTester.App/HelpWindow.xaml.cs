@@ -404,7 +404,8 @@ public partial class HelpWindow : Window
           "sends. Headless, add --cookies to certapi run to share a jar across a suite."),
         NoteBox("Explicit auth always wins: a Bearer/Basic setting or a manual Authorization " +
                 "header is never overridden, and expired tokens are never sent. Captured tokens " +
-                "are saved with your workspace in plain text — treat exported workspaces as private."));
+                "are encrypted in your workspace for your Windows user, not saved in plain text " +
+                "(see Importing & exporting)."));
 
     private UIElement Importing() => Section("Importing & exporting",
         P("Bring requests in from elsewhere with the Import ▾ menu next to the tabs."),
@@ -434,8 +435,21 @@ public partial class HelpWindow : Window
           "and redacted header values are never written. Headless, the same thing is " +
           "certapi export openapi --from-har session.har -o api.json."),
         Sub("SAVE / LOAD A WORKSPACE"),
-        P("“Export workspace…” in the Import ▾ menu saves everything — open tabs, collections (with their known-good results), environments, saved websites, and history — to a single JSON file. “Import workspace…” loads one back, either merging into what you have or replacing it. Use it to move between machines, keep named snapshots of a project, or hand a teammate a ready-to-use setup."),
-        NoteBox("A workspace file includes request auth values, environment variables (including captured tokens), and response history — treat it as a private file."),
+        P("“Export workspace…” in the Import ▾ menu saves everything — open tabs, collections (with their known-good results), environments, saved websites, and history — to a single JSON file. “Import workspace…” loads one back, either merging into what you have or replacing it. Use it to keep named snapshots of a project or hand a teammate a ready-to-use setup."),
+        NoteBox("The export writes secrets — captured tokens/cookies, saved auth values, secret variables — encrypted for your Windows user, the same as the live workspace; there's no way to write them to disk in the clear. Moving the file to another machine, or opening it signed in as someone else, brings everything across except those secrets, which that user or machine can't decrypt (headless, certapi export workspace strips secrets by default instead — see the command line's --include-secrets)."),
+        Sub("SECRETS AT REST"),
+        P("Your workspace lives at %AppData%\\CertApiTester\\state.json. Most of it is plain, readable " +
+          "JSON — requests, collections, chains, history, environment names — so the file stays easy " +
+          "to inspect. The secrets in it are not: a captured bearer token, a browser-captured session " +
+          "cookie, a saved request's auth secret (Basic password or bearer token), and any environment " +
+          "variable ticked secret are encrypted with the Windows Data Protection API (DPAPI), scoped " +
+          "to the Windows user who saved them."),
+        NoteBox("A state.json file copied to another Windows user, or to another machine, still opens " +
+                "with everything intact except those secrets — they can't be decrypted there, so each " +
+                "one is reported and treated as absent rather than crashing the load. The first time an " +
+                "older workspace is rewritten in the new format, the previous file is kept beside it as " +
+                "a timestamped state.json.<date-time>.bak, so upgrading never costs you the copy you had " +
+                "before."),
         Sub("EXPORT AS OPENAPI"),
         P("“Export as OpenAPI…” at the bottom of the collections sidebar writes the selected folder — or all collections when nothing is selected — as an OpenAPI 3.0 JSON file: folders become tags, each saved request becomes an operation with its query parameters, headers, and body example, and a request's known-good note (when it was last checked and what it returned) becomes the operation description."),
         NoteBox("Exports are safe to share: authentication is written only as a security scheme — bearer tokens, usernames, and passwords are never written to the file."));

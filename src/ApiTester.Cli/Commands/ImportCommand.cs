@@ -36,7 +36,7 @@ public static class ImportCommand
         // Importing may target a brand-new workspace file: start empty and create it on save.
         var state = workspace is not null && !File.Exists(workspace)
             ? new AppState()
-            : CliWorkspace.Load(workspace, services.LiveStatePath);
+            : CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
 
         int added;
         string what;
@@ -81,7 +81,7 @@ public static class ImportCommand
             default: throw new CliUsageException(Help);
         }
 
-        state.SaveTo(targetPath);
+        CliWorkspace.ReportSaveResult(state.SaveTo(targetPath), targetPath, stderr);
         stderr.WriteLine($"Imported {added} request{(added == 1 ? "" : "s")} ({what}) into {(workspace is null ? "the live workspace" : workspace)}.");
         return ExitCodes.Ok;
     }

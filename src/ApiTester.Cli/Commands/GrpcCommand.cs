@@ -712,13 +712,13 @@ public static class GrpcCommand
     {
         if (workspace is null)
         {
-            try { return CliWorkspace.Load(null, services.LiveStatePath); }
+            try { return CliWorkspace.Load(null, services.LiveStatePath, stderr); }
             catch (CliDataException ex)
             {
                 stderr.WriteLine($"warning: could not read the live state ({ex.Message}) — continuing without saved tokens/environments");
                 return new AppState();
             }
         }
-        return CliWorkspace.Load(workspace, services.LiveStatePath);
+        return CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
     }
 }

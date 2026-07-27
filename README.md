@@ -49,8 +49,7 @@ It runs as a single self-contained `.exe` with no external dependencies — no i
 - **Automatic bearer tokens** — login once and follow-on requests to the same host carry the
   captured token automatically, in the GUI, `certapi send`/`run`, and the MCP server. Host-scoped,
   never overriding explicit auth; `--no-auto-token` / a status-bar toggle opt out. Captured tokens
-  are stored in your workspace in plain text, like other secrets — treat exported workspaces as
-  private.
+  are encrypted in your workspace for your Windows user (see [Secrets at rest](#secrets-at-rest)).
 - **Collection defaults** — collections remember their website + client certificate, so opening
   any endpoint is immediately sendable.
 - **Endpoint discovery** — probe a wordlist against a website to map an undocumented API, in the
@@ -170,12 +169,12 @@ Open the **ENV** selector (title bar) → **Edit** to define `{{variable}}` valu
 Many APIs want you to log in first and then send the returned token on every call. Do it once and reuse it automatically:
 1. Build the **login request** (e.g. `POST https://internal.corp/auth` with your credentials in the body).
 2. Open its **Capture** tab → **+ Add capture**. Set **Variable** = `token`, **From** = `Body`, **Path** = `access_token` (use a dotted path like `data.access_token` for nested fields, or **From = Header** with a header name).
-3. **Send** the login request. The status line shows `Captured token`, and the value is saved into your active environment (a `Captured` environment is created automatically if you don't have one selected). Captured values are stored with your environments (in the workspace/state file, in plain text), so treat exported workspaces as private.
+3. **Send** the login request. The status line shows `Captured token`, and the value is saved into your active environment (a `Captured` environment is created automatically if you don't have one selected) as a variable marked **secret**, so it's encrypted in the workspace/state file rather than stored in plain text (see [Secrets at rest](#secrets-at-rest)).
 4. In your other requests, set **Auth → Bearer** with the token `{{token}}` (or put `{{token}}` in any header). Send — the captured token is filled in. Re-run the login request anytime to refresh it.
 
 ### Import / export
 - **Import ▾** (next to the tabs): paste a **cURL** command, or import an **OpenAPI/Swagger** JSON file to generate a whole collection.
-- **Export**: write a collection as **OpenAPI** (from the collections sidebar), or **Export workspace** to move everything — tabs, collections, environments, history — to another machine.
+- **Export**: write a collection as **OpenAPI** (from the collections sidebar), or **Export workspace** to move everything — tabs, collections, environments, history — to another machine. Secrets (captured tokens/cookies, saved auth values, secret variables) are written encrypted for your Windows user, so they don't travel to a different user or machine; the headless `certapi export workspace` strips them by default instead (see [Secrets at rest](#secrets-at-rest)).
 
 ### Headless (the `certapi` command-line tool)
 `certapi.exe` (a separate download on the releases page) does everything without the window:
@@ -220,7 +219,8 @@ certapi sse https://internal.corp/events --cert "CN=matt" --max-events 5 --json
 certapi certs --filter matt
 certapi selftest
 certapi import openapi .\spec.json --into imported
-certapi export workspace -o team-setup.json
+certapi export workspace -o team-setup.json               # strips secrets by default
+certapi export workspace -o team-setup.json --include-secrets   # keeps them, encrypted for you
 
 # run a local test server and fire requests at it (try --tls or --mtls too)
 certapi mock --port 8770
@@ -459,6 +459,22 @@ The engine (`ApiTester.Core`) has no UI dependency, so every behaviour is covere
 - Client certificates are **never exported**; the live `X509Certificate2` is handed to the networking layer and Windows performs the signing.
 - *Ignore server certificate errors* is **off by default** and clearly labelled insecure — turn it on only for internal sites whose server certificate you trust.
 - The app makes no network calls other than the requests you send. There is no telemetry. Window and request settings are stored locally under `%AppData%\CertApiTester`.
+
+### Secrets at rest
+
+Everything lives in one workspace file, `%AppData%\CertApiTester\state.json`. Most of it — request
+definitions, collections, chains, history, environment names — is plain, readable JSON, so the file
+stays diffable and debuggable. The secrets in it are not: a captured bearer token, a browser-captured
+session cookie, a saved request's Basic-auth password or bearer token, and any environment variable
+ticked **secret** are encrypted with the Windows Data Protection API (DPAPI), scoped to the Windows
+user who saved them.
+
+The consequence: a `state.json` copied to another Windows user, or to another machine, still opens
+with everything intact **except those secrets**, which cannot be decrypted there and are dropped or
+left empty rather than crashing the load. `certapi export workspace` strips secrets by default for
+the same reason exported HTTP Archive (HAR) files are redacted by default — an exported workspace is
+a file people email around — pass `--include-secrets` to keep them (still encrypted for you, never in
+the clear).
 
 ## License
 

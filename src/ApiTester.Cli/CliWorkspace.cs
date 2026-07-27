@@ -4,13 +4,44 @@ namespace ApiTester.Cli;
 
 public static class CliWorkspace
 {
-    public static AppState Load(string? workspacePath, string liveStatePath)
+    public static AppState Load(string? workspacePath, string liveStatePath, TextWriter? warn = null)
     {
+        AppState state;
         if (workspacePath is null)
-            return File.Exists(liveStatePath) ? SafeLoad(liveStatePath) : new AppState();
-        if (!File.Exists(workspacePath))
-            throw new CliDataException($"Workspace file not found: {workspacePath}");
-        return SafeLoad(workspacePath);
+        {
+            state = File.Exists(liveStatePath) ? SafeLoad(liveStatePath) : new AppState();
+        }
+        else
+        {
+            if (!File.Exists(workspacePath))
+                throw new CliDataException($"Workspace file not found: {workspacePath}");
+            state = SafeLoad(workspacePath);
+        }
+        ReportSecretWarnings(state, warn);
+        return state;
+    }
+
+    /// <summary>Print the secrets this load could not decrypt. They have already been treated as
+    /// absent, so this is a notice and never an error: the run continues and the exit code is
+    /// unaffected. Only a file that cannot be read at all is a data error.</summary>
+    public static void ReportSecretWarnings(AppState state, TextWriter? warn)
+    {
+        if (warn is null) return;
+        foreach (var w in state.SecretWarnings)
+            warn.WriteLine("warning: " + w);
+    }
+
+    /// <summary>Say what a save did that the user needs to know about: the one-time copy taken of the
+    /// previous file before its secrets were first encrypted, and the case where per-user encryption
+    /// was unavailable so secrets had to be written in the clear. Both are notices — the command has
+    /// already succeeded and the exit code is unaffected.</summary>
+    public static void ReportSaveResult(StateSaveResult result, string path, TextWriter? warn)
+    {
+        if (warn is null) return;
+        if (result.BackupPath is not null)
+            warn.WriteLine($"note: secrets in {path} are now encrypted — the previous file was copied to {Path.GetFileName(result.BackupPath)} first.");
+        if (!result.SecretsEncrypted)
+            warn.WriteLine($"warning: per-user encryption is unavailable on this system — secrets in {path} were saved in the clear.");
     }
 
     private static AppState SafeLoad(string path)

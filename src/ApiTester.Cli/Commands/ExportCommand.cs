@@ -8,7 +8,7 @@ public static class ExportCommand
     public const string Help = """
         Usage: certapi export openapi [<folder>] -o <file> [--workspace <file>]
                certapi export openapi --from-har <file.har> -o <file> [--host <h>] [--no-template-ids]
-               certapi export workspace -o <file> [--workspace <file>]
+               certapi export workspace -o <file> [--workspace <file>] [--include-secrets]
 
         openapi: writes collections (optionally one root folder) as an OpenAPI 3.0
         document — auth is exported as a security scheme only, never the secrets.
@@ -18,8 +18,13 @@ public static class ExportCommand
         redacted header values are never written.
           --host <h>          keep only entries for this host (case-insensitive)
           --no-template-ids   keep identifier-looking path segments literal instead of {id}
-        workspace: writes the whole workspace as a portable JSON file (window geometry
-        stripped). Note: workspace files include request auth values and history.
+        workspace: writes the whole workspace as a portable JSON file (window geometry stripped).
+        Secrets — captured tokens and cookies, saved auth values, and secret environment
+        variables — are stripped by default, since an exported workspace is a file people email
+        to each other.
+          --include-secrets   Keep secrets in the export instead of stripping them; they are
+                               written encrypted for the current Windows user, same as a saved
+                               workspace, so another user or machine still cannot read them.
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -27,6 +32,7 @@ public static class ExportCommand
           certapi export openapi -o api.json
           certapi export openapi --from-har session.har -o api.json
           certapi export workspace -o workspace.json
+          certapi export workspace -o workspace.json --include-secrets
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
@@ -34,11 +40,15 @@ public static class ExportCommand
         string? fromHar = args.Value("--from-har");
         string? host = args.Value("--host");
         bool noTemplateIds = args.Flag("--no-template-ids");
+        bool includeSecrets = args.Flag("--include-secrets");
         string? workspace = args.Value("--workspace");
         string? outFile = args.Value("-o", "--output");
         var positionals = args.Positionals();
         if (positionals.Count is < 1 or > 2 || outFile is null) throw new CliUsageException(Help);
         string kind = positionals[0].ToLowerInvariant();
+
+        if (includeSecrets && (fromHar is not null || kind != "workspace"))
+            throw new CliUsageException("--include-secrets only applies to 'export workspace'.");
 
         if (fromHar is not null)
         {
@@ -51,7 +61,7 @@ public static class ExportCommand
         if (host is not null || noTemplateIds)
             throw new CliUsageException("--host and --no-template-ids only apply together with --from-har.");
 
-        var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
 
         switch (kind)
         {
@@ -82,8 +92,23 @@ public static class ExportCommand
                 var clone = JsonSerializer.Deserialize<AppState>(JsonSerializer.Serialize(state))!;
                 clone.WindowWidth = clone.WindowHeight = clone.WindowLeft = clone.WindowTop = null;
                 clone.WindowMaximized = false;
-                clone.SaveTo(outFile);
-                stderr.WriteLine($"Workspace exported to {outFile} — it includes auth values and history, so treat it as private.");
+
+                if (includeSecrets)
+                {
+                    var result = clone.SaveTo(outFile);
+                    stderr.WriteLine($"Workspace exported to {outFile} — it includes auth values and history, so treat it as private. " +
+                        "The secrets in it are encrypted for your Windows user, so another user or another machine will not be able to read them.");
+                    CliWorkspace.ReportSaveResult(result, outFile, stderr);
+                }
+                else
+                {
+                    var summary = StateSecrets.Strip(clone);
+                    var result = clone.SaveTo(outFile);
+                    stderr.WriteLine(summary.Any
+                        ? $"Workspace exported to {outFile} — stripped {summary.Describe()}. Pass --include-secrets to keep them."
+                        : $"Workspace exported to {outFile} — it contained no secrets to strip.");
+                    CliWorkspace.ReportSaveResult(result, outFile, stderr);
+                }
                 return ExitCodes.Ok;
             }
             default: throw new CliUsageException(Help);

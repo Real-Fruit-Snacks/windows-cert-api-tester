@@ -133,6 +133,18 @@ public class WorkspaceStateTests
                         Captures = { new CaptureRule { Enabled = true, Variable = "id", Source = CaptureSource.Body, Path = "data.id" } },
                         Assertions = { new AssertionRule { Enabled = true, Target = AssertTarget.Status, Op = AssertOp.Equals, Value = "201" } }
                     }
+                },
+                Environments =
+                {
+                    new ApiEnvironment
+                    {
+                        Id = "e1", Name = "Dev",
+                        Variables =
+                        {
+                            new Variable { Key = "access_token", Value = "eyJhbGciOiJIUzI1NiJ9.secret-payload.sig", Secret = true },
+                            new Variable { Key = "host", Value = "dev.local", Secret = false }
+                        }
+                    }
                 }
             };
             state.SaveTo(path);
@@ -175,6 +187,14 @@ public class WorkspaceStateTests
             Assert.Equal(AssertOp.Equals, assertion.Op);
             Assert.Equal("201", assertion.Value);
             Assert.True(assertion.Enabled);
+
+            var backEnv = Assert.Single(back.Environments);
+            var secretVar = backEnv.Variables.Single(v => v.Key == "access_token");
+            Assert.Equal("eyJhbGciOiJIUzI1NiJ9.secret-payload.sig", secretVar.Value);
+            Assert.True(secretVar.Secret);
+            var plainVar = backEnv.Variables.Single(v => v.Key == "host");
+            Assert.Equal("dev.local", plainVar.Value);
+            Assert.False(plainVar.Secret);
         }
         finally { File.Delete(path); }
     }

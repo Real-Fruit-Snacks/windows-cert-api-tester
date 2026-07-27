@@ -158,7 +158,7 @@ public static class BenchCommand
         // ---- workspace (read-only) ----
         // Loaded for variables, saved requests, and pinned certificates. Never saved back: a bench is
         // a measurement, not an observation worth keeping.
-        var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
         var vars = CliWorkspace.BuildVars(state, envName, varOverrides);
         var unresolved = new List<string>();
         string R(string s)

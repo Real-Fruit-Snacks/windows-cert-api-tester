@@ -628,14 +628,14 @@ public static class SendCommand
         if (workspace is not null && !File.Exists(workspace)) return new AppState();
         if (workspace is null)
         {
-            try { return CliWorkspace.Load(null, services.LiveStatePath); }
+            try { return CliWorkspace.Load(null, services.LiveStatePath, stderr); }
             catch (CliDataException ex)
             {
                 stderr.WriteLine($"warning: could not read the live state ({ex.Message}) — continuing without saved tokens/environments");
                 return new AppState();
             }
         }
-        return CliWorkspace.Load(workspace, services.LiveStatePath);
+        return CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
     }
 
     private static void SaveState(AppState state, string? workspace, CliServices services, TextWriter stderr)
@@ -645,7 +645,8 @@ public static class SendCommand
             stderr.WriteLine("note: the GUI is running — captured values were not saved (it would overwrite them on close).");
             return;
         }
-        try { state.SaveTo(workspace ?? services.LiveStatePath); }
+        string path = workspace ?? services.LiveStatePath;
+        try { CliWorkspace.ReportSaveResult(state.SaveTo(path), path, stderr); }
         catch (Exception ex) { stderr.WriteLine($"warning: could not save captured values: {ex.Message}"); }
     }
 

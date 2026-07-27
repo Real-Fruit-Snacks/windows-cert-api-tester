@@ -6,6 +6,53 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-07-27
+
+### Added
+- **Secrets in the workspace file are now encrypted for the Windows user who saved them, instead of
+  sitting in plain text.** A captured bearer token, a browser-captured session cookie, the auth
+  secret saved on an open tab, a history entry, or a saved collection request (the Basic-auth
+  password or bearer token), and an environment variable value marked **secret** are each encrypted
+  in place — as the string `enc:v1:<base64>` in the same JSON property they always occupied. Keys,
+  names, URLs, headers, and bodies are left exactly as they were, on purpose: the file stays
+  diffable and readable for everything that isn't a credential.
+- **Encryption is per current Windows user, through the Windows Data Protection API (DPAPI)**,
+  called directly against `crypt32.dll` rather than through a package, so `ApiTester.Core` still
+  carries zero NuGet references. The call is always made with prompting forbidden, so a headless
+  `certapi` run can never hang waiting for a dialog that will never appear, and scope is always the
+  user, never the machine.
+- **A new `Secret` flag on an environment variable** marks a value for encryption; tick **secret**
+  on any variable in the Environments window to opt it in. A captured value gets the flag
+  automatically, because capturing a value into an environment is exactly the path that lands a
+  token there in the first place.
+- **The first time an older workspace is rewritten in the new format, the previous file is copied
+  beside itself first**, as `state.json.<yyyyMMdd-HHmmss>.bak` — so upgrading a workspace can't cost
+  you the plain-text copy you had before. The app says so in its status line, both before the
+  upgrade (while the file still stores secrets in the clear) and again once the rewrite has
+  happened, naming the backup it kept.
+- **A secret that cannot be decrypted degrades instead of crashing anything.** Because protection is
+  scoped to one Windows user, a workspace file carried to a different user or a different machine
+  cannot have its secrets read back. Each one is treated as absent — a captured token or cookie is
+  dropped, an auth secret or secret variable is left empty — a warning names the field, and every
+  other part of the workspace still loads: requests, collections, chains, history, and environments
+  are all unaffected. `certapi`'s exit codes are unchanged by this: it's a warning, not a failure, so
+  the run still exits 0; only a workspace that cannot be read at all is still a data error (exit 3).
+
+### Changed
+- **`certapi export workspace` now strips secrets by default**, the same way HTTP Archive (HAR)
+  export already redacts them, because an exported workspace is a file people end up emailing to
+  each other. Captured tokens and cookies are removed, saved auth secrets are cleared, and a secret
+  environment variable keeps its key and its flag but loses its value — the exported workspace still
+  opens and works, just without the credentials. Pass `--include-secrets` to keep them; they are
+  still written encrypted for the current Windows user, so even then there is no way to write a
+  secret to disk in the clear. The desktop app's **Export workspace…** always writes secrets through
+  that same encrypting path — the strip-by-default behavior is `certapi export workspace`'s alone.
+- **The on-disk workspace format changed: schema version 2.** An older file loads exactly as before
+  and is upgraded — encrypted, backed up first as described above — on its next save; nothing has to
+  be done by hand. The one visible consequence: a workspace file copied to another Windows user or
+  another machine now loses its secrets on that load (and only its secrets — everything else in it
+  is intact), because encryption that traveled with the file would not really be protecting anything.
+
 ## [1.61.1] - 2026-07-27
 
 ### Fixed
@@ -1350,7 +1397,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.62.0...HEAD
+[1.62.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.1...v1.62.0
 [1.61.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.0...v1.61.1
 [1.61.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.60.0...v1.61.0
 [1.60.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.59.0...v1.60.0

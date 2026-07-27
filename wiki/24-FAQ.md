@@ -30,9 +30,18 @@ They're two front ends over one engine, sharing the workspace at
 `%AppData%\CertApiTester\state.json`. Build a request in the app and run it with `certapi run`, or the
 reverse. See [Core Concepts](04-Concepts.md).
 
+**Where are secrets stored, and are they encrypted?**
+In the same workspace file as everything else, but a captured token/cookie, a saved request's auth
+secret, and any variable marked **secret** are encrypted with the Windows Data Protection API (DPAPI),
+scoped to the Windows user who saved them — never in plain text, and never readable by a different
+Windows user or a different machine. Everything else in the file (requests, headers, URLs, names) is
+plain JSON so it stays diffable. See [Troubleshooting](23-Troubleshooting.md) for what happens when a
+secret can't be decrypted.
+
 **Can I keep a request suite in source control?**
 Yes — export a workspace (`certapi export workspace -o suite.json`) or manage a `--workspace` file, and
-check it in. Note that variable values (possibly secrets) travel with a workspace.
+check it in. By default secrets are stripped from an export (`--include-secrets` keeps them, encrypted
+for you), so a checked-in workspace doesn't hand out credentials.
 
 **Does it do OAuth?**
 Yes — client-credentials, password, refresh, and interactive authorization-code with PKCE (Proof Key

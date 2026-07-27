@@ -64,12 +64,17 @@
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="1.5*"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBox Grid.Column="0" Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}"
                                                      Tag="key" VerticalContentAlignment="Center" ToolTip="Variable name"/>
                                             <TextBox Grid.Column="1" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
                                                      Tag="value" Margin="6,0,0,0" VerticalContentAlignment="Center" ToolTip="Value"/>
-                                            <Button Grid.Column="2" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
+                                            <CheckBox Grid.Column="2" Content="secret" IsChecked="{Binding Secret}"
+                                                      VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"
+                                                      Foreground="{DynamicResource Text.Muted}"
+                                                      ToolTip="Encrypt this value in the workspace file. Encryption is per Windows user — a workspace copied to another user or machine cannot read it."/>
+                                            <Button Grid.Column="3" Style="{StaticResource MiniButton}" Margin="6,0,0,0"
                                                     Content="&#x2715;" Tag="{Binding}" Click="RemoveVar_Click" ToolTip="Remove"/>
                                         </Grid>
                                     </DataTemplate>

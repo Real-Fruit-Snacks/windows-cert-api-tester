@@ -56,10 +56,24 @@ At send time the variable map is built from:
 3. values **captured** from earlier responses (see [Capturing Values](12-Capturing-Values.md)) — a
    login can save `{{token}}` that later requests use.
 
+## Marking a variable secret
+
+Tick **secret** next to a variable in the environments manager when its value is a credential — an
+API key, a password, a token you pasted in by hand. A secret variable is encrypted in the workspace
+file with the Windows Data Protection API (DPAPI), scoped to the Windows user who saved it, instead of
+sitting in plain text like an ordinary value; a value written by [capture](12-Capturing-Values.md)
+gets the flag automatically, since that's exactly the path that lands a token in an environment.
+Everything else about the variable — its key, and where `{{name}}` is used — works the same either
+way.
+
 ## Workspaces vs. environments
 
 An environment lives inside a **workspace** (`state.json` or a `--workspace` file). Export a workspace
-to share both the requests and the environments; secrets you typed as variable values travel with it,
-so treat exported workspaces accordingly. See [Import & Export](17-Import-and-Export.md).
+to share both the requests and the environments; `certapi export workspace` strips a secret variable's
+value by default (its key and its **secret** flag still travel), so a shared workspace doesn't hand
+out credentials by accident — `--include-secrets` keeps it, encrypted for whoever exported it. The
+app's own **Export workspace…** always keeps secrets, encrypted for your Windows user, so a variable
+you marked secret only travels to someone who can decrypt it. See
+[Import & Export](17-Import-and-Export.md).
 
 Next: [Collections & History](10-Collections-and-History.md).

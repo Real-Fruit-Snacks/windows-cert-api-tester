@@ -56,10 +56,17 @@ public sealed class AppState
     /// overlay and updated live when the user toggles it from the title bar.</summary>
     public string Theme { get; set; } = "Dark";
 
-    /// <summary>File-format version. 0 = files from before the Auto/None auth split.</summary>
+    /// <summary>File-format version. 0 = files from before the Auto/None auth split. 1 = secrets
+    /// (captured tokens/cookies, saved auth secrets, secret variables) stored in the clear. 2 =
+    /// those same secrets encrypted per Windows user.</summary>
     public int SchemaVersion { get; set; }
 
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>Secrets that could not be decrypted on this load, described for the user. In-memory
+    /// only: hosts print these (the CLI on stderr, the app in its status line) and the values they
+    /// name have been treated as absent.</summary>
+    [JsonIgnore] public List<string> SecretWarnings { get; } = new();
 
     /// <summary>The live GUI state file under %AppData%. Computing the path has no side
     /// effects; <see cref="SaveTo"/> creates the directory when it first writes.</summary>
@@ -74,21 +81,30 @@ public sealed class AppState
     }
 
     /// <summary>Load from an explicit file. Throws on missing/corrupt files — callers decide.</summary>
-    public static AppState LoadFrom(string path)
+    public static AppState LoadFrom(string path) => LoadFrom(path, SecretProtection.Default);
+
+    /// <summary>Load with an explicit protector — the seam the tests use to prove the degraded paths.</summary>
+    public static AppState LoadFrom(string path, ISecretProtector protector)
     {
         var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(path)) ?? new AppState();
+        StateSecrets.Unprotect(state, protector, state.SecretWarnings);   // before Migrate, so migrations see plaintext
         state.Migrate();
         return state;
     }
 
     /// <summary>Upgrade older states in place. Version 0 → 1: auth "None" predates the
-    /// Auto/None split and meant "nothing configured", so it becomes "Auto".</summary>
+    /// Auto/None split and meant "nothing configured", so it becomes "Auto". Version 1 → 2 needs no
+    /// in-memory migration: a plaintext secret loads as itself (already decrypted, if possible, by
+    /// <see cref="LoadFrom(string, ISecretProtector)"/> above), and the next save encrypts it.</summary>
     public void Migrate()
     {
         if (SchemaVersion >= CurrentSchemaVersion) return;
-        foreach (var t in Tabs) MigrateAuth(t);
-        foreach (var h in History) if (h.AuthType == "None") h.AuthType = "Auto";
-        foreach (var c in Collections) MigrateNode(c);
+        if (SchemaVersion < 1)
+        {
+            foreach (var t in Tabs) MigrateAuth(t);
+            foreach (var h in History) if (h.AuthType == "None") h.AuthType = "Auto";
+            foreach (var c in Collections) MigrateNode(c);
+        }
         SchemaVersion = CurrentSchemaVersion;
 
         static void MigrateAuth(RequestModel m) { if (m.AuthType == "None") m.AuthType = "Auto"; }
@@ -99,21 +115,57 @@ public sealed class AppState
         }
     }
 
-    public void Save()
+    public StateSaveResult Save()
     {
-        try { SaveTo(DefaultPath); }
-        catch { /* best effort for the GUI */ }
+        try { return SaveTo(DefaultPath); }
+        catch { return new StateSaveResult { BackupPath = null }; }   // best effort for the GUI
     }
 
     /// <summary>Write atomically: serialize to a temp file, then replace the target.</summary>
-    public void SaveTo(string path)
+    public StateSaveResult SaveTo(string path) => SaveTo(path, SecretProtection.Default);
+
+    /// <summary>Write atomically with an explicit protector. Backs up the previous file before the
+    /// first rewrite in the encrypted format, then serializes a deep clone with its secrets
+    /// encrypted — the live object graph (data-bound in the desktop application) never holds
+    /// ciphertext, even briefly.</summary>
+    public StateSaveResult SaveTo(string path, ISecretProtector protector)
     {
         SchemaVersion = CurrentSchemaVersion;   // a written file is by definition current
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+
+        string? backup = null;
+        if (File.Exists(path) && NeedsSecretUpgrade(path))
+        {
+            backup = path + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".bak";
+            File.Copy(path, backup, overwrite: true);
+        }
+
+        var clone = JsonSerializer.Deserialize<AppState>(JsonSerializer.Serialize(this))!;
+        bool encrypted = StateSecrets.Protect(clone, protector);
+
+        var json = JsonSerializer.Serialize(clone, new JsonSerializerOptions { WriteIndented = true });
         if (Path.GetDirectoryName(path) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
         var tmp = path + ".tmp";
         File.WriteAllText(tmp, json);
         File.Move(tmp, path, overwrite: true);
+
+        return new StateSaveResult { BackupPath = backup, SecretsEncrypted = encrypted };
+    }
+
+    /// <summary>True when the file at <paramref name="path"/> still needs its secrets encrypted: it
+    /// exists and its stored schema version is older than the current one, or it cannot be read at all
+    /// (in which case a copy is taken before anything overwrites it). False when the file does not exist.</summary>
+    public static bool NeedsSecretUpgrade(string path)
+    {
+        if (!File.Exists(path)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (!doc.RootElement.TryGetProperty(nameof(SchemaVersion), out var v) ||
+                v.ValueKind != JsonValueKind.Number || !v.TryGetInt32(out var version))
+                return true;
+            return version < CurrentSchemaVersion;
+        }
+        catch { return true; }
     }
 }
 
@@ -363,8 +415,14 @@ public sealed class Variable : System.ComponentModel.INotifyPropertyChanged
 {
     private string _key = "";
     private string _value = "";
+    private bool _secret;
     public string Key { get => _key; set { _key = value; Raise(nameof(Key)); } }
     public string Value { get => _value; set { _value = value; Raise(nameof(Value)); } }
+
+    /// <summary>Marks this value as a secret: it is encrypted in the workspace file rather than
+    /// stored in the clear. Additive and false by default, so a variable written before this existed
+    /// loads as a plain value.</summary>
+    public bool Secret { get => _secret; set { _secret = value; Raise(nameof(Secret)); } }
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private void Raise(string n) => PropertyChanged?.Invoke(this, new(n));

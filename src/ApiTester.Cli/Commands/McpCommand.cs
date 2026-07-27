@@ -64,7 +64,7 @@ public static class McpCommand
         stderr.WriteLine($"certapi mcp ready · cert: {cert?.Subject ?? "none"} · " +
             (allowHosts.Count == 0 ? "allow: ANY HOST (no --allow given)" : "allow: " + string.Join(", ", allowHosts)));
 
-        var server = new McpServer(BuildTools(cert, allow, insecure, timeout, localMachine, workspace, noAutoToken, services), Version());
+        var server = new McpServer(BuildTools(cert, allow, insecure, timeout, localMachine, workspace, noAutoToken, services, stderr), Version());
         server.Run(input, stdout, stderr, services.Cancel);
         return ExitCodes.Ok;
     }
@@ -79,7 +79,8 @@ public static class McpCommand
 
     internal static IReadOnlyList<ToolDef> BuildTools(
         X509Certificate2? cert, HostAllowlist allow, bool insecure, int timeout,
-        bool includeLocalMachine, string? workspace, bool noAutoToken, CliServices services)
+        bool includeLocalMachine, string? workspace, bool noAutoToken, CliServices services,
+        TextWriter? stderr = null)
     {
         // Session-scoped token store: lives for this MCP process only, never written to disk.
         var tokenState = new AppState();
@@ -165,7 +166,7 @@ public static class McpCommand
             JsonNode.Parse("""{"type":"object","properties":{}}""")!,
             _ =>
             {
-                var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+                var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
                 List<(string Path, ApiTester.Core.CollectionNode Node)> leaves;
                 try { leaves = CliWorkspace.ResolveTargets(state, null, all: true); }
                 catch (CliDataException) { leaves = new(); }   // empty collections
@@ -186,7 +187,7 @@ public static class McpCommand
             {
                 string? path = Str(a, "path");
                 if (string.IsNullOrWhiteSpace(path)) return Err("path is required");
-                var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+                var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
                 List<(string Path, ApiTester.Core.CollectionNode Node)> leaves;
                 try { leaves = CliWorkspace.ResolveTargets(state, path, all: false); }
                 catch (CliDataException ex) { return Err(ex.Message); }

@@ -145,7 +145,7 @@ public static class FuzzCommand
         if (methods.Length == 0) methods = new[] { "GET" };
 
         // ---- variables ----
-        var state = LoadState(workspace, services);
+        var state = LoadState(workspace, services, stderr);
         // Every probe targets the same base URL, so one predicate covers the whole run — and,
         // unlike a fresh lambda per probe, lets probes to the same host share a pooled connection.
         var predicates = new TrustPredicates(state);
@@ -250,8 +250,11 @@ public static class FuzzCommand
             if (workspace is null && services.IsGuiRunning())
                 stderr.WriteLine("note: the GUI is running — the discovered collection was not saved (it would overwrite it on close).");
             else
-                try { state.SaveTo(workspace ?? services.LiveStatePath); }
+            {
+                string path = workspace ?? services.LiveStatePath;
+                try { CliWorkspace.ReportSaveResult(state.SaveTo(path), path, stderr); }
                 catch (Exception ex) { stderr.WriteLine($"warning: could not save: {ex.Message}"); }
+            }
         }
 
         if (harPath is not null && harEntries is not null)
@@ -286,10 +289,10 @@ public static class FuzzCommand
         return report.AllErrored ? ExitCodes.Failure : ExitCodes.Ok;
     }
 
-    private static AppState LoadState(string? workspace, CliServices services) =>
+    private static AppState LoadState(string? workspace, CliServices services, TextWriter stderr) =>
         workspace is not null && !File.Exists(workspace) ? new AppState()
         : workspace is null && !File.Exists(services.LiveStatePath) ? new AppState()
-        : CliWorkspace.Load(workspace, services.LiveStatePath);
+        : CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
 
     private static void SaveDiscovered(AppState state, FuzzReport report, string baseUrl,
         System.Security.Cryptography.X509Certificates.X509Certificate2? cert, string name)

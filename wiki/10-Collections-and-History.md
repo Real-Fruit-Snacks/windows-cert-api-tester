@@ -43,7 +43,8 @@ Everything above lives in a **workspace**:
 
 - **Live workspace** — `%AppData%\CertApiTester\state.json`, shared by the app and the CLI
   (command-line interface). This is
-  what you edit day to day.
+  what you edit day to day. Secrets in it — captured tokens/cookies, a saved request's auth secret,
+  a variable marked **secret** — are encrypted for your Windows user, not stored in plain text.
 - **Workspace files** — a separate `.json` you manage explicitly. Point either tool at one with
   `--workspace suite.json`. Use these to:
   - check a request suite into source control,
@@ -53,7 +54,7 @@ Everything above lives in a **workspace**:
 Export/import whole workspaces from [Import & Export](17-Import-and-Export.md):
 
 ```powershell
-certapi export workspace -o team-setup.json
+certapi export workspace -o team-setup.json   # strips secrets by default — see below
 ```
 
 > **A note on the CLI and the live workspace:** while the app is open, headless runs **skip writing

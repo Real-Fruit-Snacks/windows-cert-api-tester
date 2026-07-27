@@ -180,7 +180,7 @@ public static class RunCommand
             if (!Directory.Exists(harDir)) throw new CliUsageException($"--har directory does not exist: {harDir}");
         }
 
-        var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
         // One instance for the whole run: ApiClient's handler cache keys the per-host trust
         // predicate by delegate identity, so a caller that built a fresh lambda per request could
         // never pool a connection with itself. This makes repeated requests to the same host reuse
@@ -334,7 +334,8 @@ public static class RunCommand
         bool guiBlocksLiveWrite = workspace is null && services.IsGuiRunning();
         if ((record || capturedAny || tokensCaptured) && !guiBlocksLiveWrite)
         {
-            try { state.SaveTo(workspace ?? services.LiveStatePath); }
+            string path = workspace ?? services.LiveStatePath;
+            try { CliWorkspace.ReportSaveResult(state.SaveTo(path), path, stderr); }
             catch (Exception ex) { stderr.WriteLine($"warning: could not save results: {ex.Message}"); }
         }
         else if ((capturedAny || tokensCaptured) && guiBlocksLiveWrite)

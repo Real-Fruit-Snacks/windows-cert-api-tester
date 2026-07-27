@@ -138,7 +138,12 @@ public class TokenStoreTests
             loaded.SaveTo(path);
             Assert.Equal("None", AppState.LoadFrom(path).Tabs[0].AuthType);
         }
-        finally { File.Delete(path); }
+        finally
+        {
+            File.Delete(path);
+            foreach (var f in Directory.GetFiles(Path.GetDirectoryName(path)!, Path.GetFileName(path) + ".*.bak"))
+                File.Delete(f);
+        }
     }
 
     [Fact]

@@ -39,9 +39,11 @@ not the public internet.
 
 Everything you build lives in a **workspace**: tabs, collections, environments, request history,
 saved session tokens, and your theme. By default it's a single JSON (JavaScript Object Notation) file at
-`%AppData%\CertApiTester\state.json`, shared by the app and the CLI. You can also keep **separate
-workspace files** (`--workspace suite.json`) to check a request suite into source control or hand it
-to a teammate. See [Collections & History](10-Collections-and-History.md).
+`%AppData%\CertApiTester\state.json`, shared by the app and the CLI. Secrets in it (captured
+tokens/cookies, saved auth values, variables marked **secret**) are encrypted with the Windows Data
+Protection API (DPAPI) for the Windows user who saved them — everything else stays plain JSON. You can
+also keep **separate workspace files** (`--workspace suite.json`) to check a request suite into source
+control or hand it to a teammate. See [Collections & History](10-Collections-and-History.md).
 
 ## Requests, collections, environments
 

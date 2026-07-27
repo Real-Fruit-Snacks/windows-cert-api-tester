@@ -168,7 +168,7 @@ public static class TokenCommand
         }
         else
         {
-            try { state = CliWorkspace.Load(workspace, services.LiveStatePath); }
+            try { state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr); }
             catch (CliDataException ex) { stderr.WriteLine($"warning: could not load state to save the token ({ex.Message})"); return; }
         }
 
@@ -198,9 +198,10 @@ public static class TokenCommand
             stderr.WriteLine("note: the GUI is running — the token was not saved (it would overwrite it on close).");
             return;
         }
+        string path = workspace ?? services.LiveStatePath;
         try
         {
-            state.SaveTo(workspace ?? services.LiveStatePath);
+            CliWorkspace.ReportSaveResult(state.SaveTo(path), path, stderr);
             stderr.WriteLine("saved the token for " + string.Join(", ", saved));
         }
         catch (Exception ex) { stderr.WriteLine($"warning: could not save the token: {ex.Message}"); }

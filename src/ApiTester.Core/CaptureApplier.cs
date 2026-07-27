@@ -38,8 +38,12 @@ public static class CaptureApplier
 
     private static void Upsert(ApiEnvironment env, string key, string value)
     {
+        // A capture rule's whole purpose is to lift a value out of a response - an access token,
+        // a session id - and this is precisely the path that lands credentials in an environment
+        // file, so what a capture writes is treated as a secret whether or not the variable existed
+        // before.
         var existing = env.Variables.FirstOrDefault(v => v.Key == key);
-        if (existing is not null) existing.Value = value;
-        else env.Variables.Add(new Variable { Key = key, Value = value });
+        if (existing is not null) { existing.Value = value; existing.Secret = true; }
+        else env.Variables.Add(new Variable { Key = key, Value = value, Secret = true });
     }
 }

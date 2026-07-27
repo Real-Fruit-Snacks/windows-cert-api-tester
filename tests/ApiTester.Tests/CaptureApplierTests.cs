@@ -69,4 +69,50 @@ public class CaptureApplierTests
         Assert.Empty(state.Environments);              // nothing created
         Assert.Null(state.ActiveEnvironmentId);
     }
+
+    [Fact]
+    public void A_capture_that_creates_a_new_variable_marks_it_secret()
+    {
+        var state = new AppState();
+        var rules = new[] { new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" } };
+
+        CaptureApplier.Apply(state, rules, B("""{"access_token":"xyz"}"""), null, NoHeaders);
+
+        var env = state.Environments.Single();
+        Assert.True(env.Variables.Single(v => v.Key == "token").Secret);
+    }
+
+    [Fact]
+    public void A_capture_that_overwrites_an_existing_non_secret_variable_marks_it_secret()
+    {
+        var state = new AppState();
+        var env = new ApiEnvironment { Id = "e1", Name = "Dev", Variables = { new Variable { Key = "token", Value = "old", Secret = false } } };
+        state.Environments.Add(env);
+        state.ActiveEnvironmentId = "e1";
+
+        var rules = new[] { new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" } };
+        CaptureApplier.Apply(state, rules, B("""{"access_token":"new"}"""), null, NoHeaders);
+
+        var variable = env.Variables.Single(v => v.Key == "token");
+        Assert.Equal("new", variable.Value);
+        Assert.True(variable.Secret);
+    }
+
+    [Fact]
+    public void A_hand_added_variable_stays_non_secret_when_a_capture_writes_a_different_key()
+    {
+        var state = new AppState();
+        var env = new ApiEnvironment { Id = "e1", Name = "Dev", Variables = { new Variable { Key = "host", Value = "dev.local" } } };
+        state.Environments.Add(env);
+        state.ActiveEnvironmentId = "e1";
+
+        var handAdded = env.Variables.Single(v => v.Key == "host");
+        Assert.False(handAdded.Secret);
+
+        var rules = new[] { new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" } };
+        CaptureApplier.Apply(state, rules, B("""{"access_token":"xyz"}"""), null, NoHeaders);
+
+        Assert.False(handAdded.Secret);                                     // flag follows the captured value, not the environment
+        Assert.True(env.Variables.Single(v => v.Key == "token").Secret);
+    }
 }

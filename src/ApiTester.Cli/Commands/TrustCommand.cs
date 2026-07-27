@@ -58,7 +58,7 @@ public static class TrustCommand
         if (positionals.Count == 0) throw new CliUsageException(Help);
         string sub = positionals[0].ToLowerInvariant();
 
-        var state = CliWorkspace.Load(workspace, services.LiveStatePath);
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
         string targetPath = workspace ?? services.LiveStatePath;
 
         return sub switch
@@ -135,7 +135,7 @@ public static class TrustCommand
         }
 
         TrustService.Trust(state, host, finalThumbprint, subject);
-        state.SaveTo(targetPath);
+        CliWorkspace.ReportSaveResult(state.SaveTo(targetPath), targetPath, stderr);
         stderr.WriteLine($"Trusted {finalThumbprint} for {host}.");
         return ExitCodes.Ok;
     }
@@ -151,7 +151,7 @@ public static class TrustCommand
         int before = state.TrustedServerCerts.Count;
         TrustService.Untrust(state, host, thumbprint);
         int removed = before - state.TrustedServerCerts.Count;
-        state.SaveTo(targetPath);
+        CliWorkspace.ReportSaveResult(state.SaveTo(targetPath), targetPath, stderr);
         stderr.WriteLine($"Removed {removed} pin(s) for {host}.");
         return ExitCodes.Ok;
     }

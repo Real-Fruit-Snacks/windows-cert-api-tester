@@ -87,4 +87,22 @@ app, for headless runs that persist.
 Everything is in `%AppData%\CertApiTester\state.json`. Back it up before experimenting; delete it to
 start fresh (the app recreates it).
 
+## My tokens disappeared after I copied state.json to another machine / logged in as another user
+
+This is expected. Secrets in the workspace — captured tokens and cookies, a saved request's auth
+secret, a variable marked **secret** — are encrypted with the Windows Data Protection API (DPAPI) for
+the Windows user who saved them, and DPAPI deliberately can't decrypt a value for anyone else. Loading
+the file as a different user, or on a different machine, names each secret it couldn't read (as a
+`warning:` on stderr, or in the app's status line) and treats it as absent — dropped if it was a
+captured token/cookie, left empty otherwise. Everything else in the workspace — requests, collections,
+chains, history, environments — loads intact; just log back in / re-capture / re-enter the secret and
+carry on.
+
+## What is this `state.json.20260727-143005.bak` file?
+
+That's a one-time backup of your previous workspace file, taken automatically right before the first
+save that rewrites it in the new encrypted format — so upgrading to the encrypted format can't lose
+the copy you had before. It's a plain snapshot of what the file looked like right before that save.
+Safe to keep for a while as a fallback, or delete once you're satisfied the upgraded file is fine.
+
 Next: [FAQ](24-FAQ.md).

@@ -96,6 +96,20 @@ public partial class MainWindow : Window
         PreviewKeyDown += Window_PreviewKeyDown;
         UpdateTokenChip();
         UpdateThemeToggleGlyph();
+
+        // Tell the user what happened to their secrets: either some were just dropped on this
+        // load (per-user decryption failed), or the file is still waiting for its first encrypted
+        // save — whichever is more pressing to know about right now.
+        if (_state.SecretWarnings.Count > 0)
+        {
+            StatusText.Text = _state.SecretWarnings[0] +
+                (_state.SecretWarnings.Count > 1 ? $" (+{_state.SecretWarnings.Count - 1} more)" : "");
+        }
+        else if (AppState.NeedsSecretUpgrade(AppState.DefaultPath))
+        {
+            StatusText.Text = "Your workspace still stores secrets in the clear — they will be encrypted " +
+                "the next time it saves, and a timestamped backup of the current file will be kept beside it.";
+        }
     }
 
     /// <summary>Flip between the dark and light palettes, persist the choice, and repaint the
@@ -106,7 +120,6 @@ public partial class MainWindow : Window
         string next = app.CurrentTheme == "Light" ? "Dark" : "Light";
         app.ApplyTheme(next);
         _state.Theme = next;
-        _state.Save();
         NativeTheme.ApplyTitleBar(this, next == "Light");
         UpdateThemeToggleGlyph();
 
@@ -116,6 +129,7 @@ public partial class MainWindow : Window
         if (_lastPretty is { } p) SetPretty(p.Text, p.Kind);
 
         StatusText.Text = $"{next} theme applied.";
+        SaveState();
     }
 
     /// <summary>Show the glyph/tooltip for the theme the button would switch to.</summary>
@@ -137,7 +151,7 @@ public partial class MainWindow : Window
     {
         if (ActiveRequest is { } active) CaptureControlsInto(active);
         CaptureStateForSave();
-        _state.Save();
+        SaveState();
 
         _browserSession?.Dispose();
         _browserCts?.Cancel();
@@ -171,6 +185,18 @@ public partial class MainWindow : Window
         _state.IgnoreServerCertErrors = ActiveRequest?.IgnoreServerCert ?? false;
         _state.TimeoutSeconds = ActiveRequest?.TimeoutSeconds ?? 100;
         _state.LastBaseUrl = string.IsNullOrWhiteSpace(ActiveRequest?.BaseUrl) ? null : ActiveRequest!.BaseUrl!.Trim();
+    }
+
+    /// <summary>Persist the workspace and surface anything the user needs to know about the write.</summary>
+    // Callers write a routine confirmation to StatusText BEFORE calling this, so a rare one-time
+    // notice about the user's secrets (below) wins the status line rather than losing it.
+    private void SaveState()
+    {
+        var result = _state.Save();
+        if (result.BackupPath is not null)
+            StatusText.Text = $"Secrets are now encrypted — your previous workspace file was copied to {Path.GetFileName(result.BackupPath)} first.";
+        else if (!result.SecretsEncrypted)
+            StatusText.Text = "Per-user encryption is unavailable on this system, so secrets were saved in the clear.";
     }
 
     private static bool IsOnScreen(double l, double t) =>
@@ -851,15 +877,13 @@ public partial class MainWindow : Window
 
         try
         {
-            // Clone so the exported file carries no window geometry.
+            // Clone so the exported file carries no window geometry; SaveTo stamps the schema version.
             var clone = System.Text.Json.JsonSerializer.Deserialize<AppState>(
                 System.Text.Json.JsonSerializer.Serialize(_state))!;
             clone.WindowWidth = clone.WindowHeight = clone.WindowLeft = clone.WindowTop = null;
             clone.WindowMaximized = false;
-            clone.SchemaVersion = AppState.CurrentSchemaVersion;   // a hand-written export is current, like SaveTo stamps
-            File.WriteAllText(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(
-                clone, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-            StatusText.Text = $"Workspace exported to {System.IO.Path.GetFileName(dialog.FileName)} — it includes auth values and history, so treat it as private.";
+            clone.SaveTo(dialog.FileName);
+            StatusText.Text = $"Workspace exported to {System.IO.Path.GetFileName(dialog.FileName)} — secrets in it are encrypted for your Windows user, so another user or machine will not be able to read them.";
         }
         catch (Exception ex)
         {
@@ -875,13 +899,11 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
 
-        AppState? ws;
-        try { ws = System.Text.Json.JsonSerializer.Deserialize<AppState>(File.ReadAllText(dialog.FileName)); }
+        AppState ws;
+        try { ws = AppState.LoadFrom(dialog.FileName); }
         catch (Exception ex) { StatusText.Text = "Could not read the workspace file: " + ex.Message; return; }
-        ws?.Migrate();
-        if (ws is null ||
-            (ws.Tabs.Count == 0 && ws.Collections.Count == 0 && ws.Environments.Count == 0 && ws.History.Count == 0
-             && ws.Chains.Count == 0))
+        if (ws.Tabs.Count == 0 && ws.Collections.Count == 0 && ws.Environments.Count == 0 && ws.History.Count == 0
+            && ws.Chains.Count == 0)
         {
             StatusText.Text = "That file doesn't contain a workspace.";
             return;
@@ -897,6 +919,9 @@ public partial class MainWindow : Window
         if (choice == DialogChoice.Cancel) return;
 
         ApplyWorkspace(ws, merge: choice == DialogChoice.Primary);
+        if (ws.SecretWarnings.Count > 0)
+            StatusText.Text += " " + ws.SecretWarnings[0] +
+                (ws.SecretWarnings.Count > 1 ? $" (+{ws.SecretWarnings.Count - 1} more)" : "");
     }
 
     private static int CountNodes(CollectionNode n) => n.IsFolder ? n.Children.Sum(CountNodes) : 1;
@@ -2382,7 +2407,7 @@ public partial class MainWindow : Window
                 if (c == DialogChoice.Primary)
                 {
                     TrustService.Trust(_state, host, thumb, response.Connection.ServerCertificateSubject);
-                    _state.Save();
+                    SaveState();
                     await SendRequestAsync();
                 }
             }
@@ -2823,8 +2848,8 @@ public partial class MainWindow : Window
         {
             if (win.SaveCollectionName is { } cn) ImportObservedCalls(win.CapturedCalls, cn);
             UpdateTokenChip();
-            _state.Save();
             StatusText.Text = "Session captured.";
+            SaveState();
         }
     }
 
