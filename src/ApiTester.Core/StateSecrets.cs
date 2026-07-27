@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 
 namespace ApiTester.Core;
 
@@ -38,7 +39,10 @@ public static class StateSecrets
             tab.AuthSecret = ProtectValueOptional(tab.AuthSecret, protector, ref allEncrypted);
 
         foreach (var h in state.History)
+        {
             h.AuthSecret = ProtectValueOptional(h.AuthSecret, protector, ref allEncrypted);
+            if (h.Response is { } resp) resp.Body = ProtectBody(resp.Body, protector, ref allEncrypted);
+        }
 
         foreach (var root in state.Collections)
             ProtectNode(root, protector, ref allEncrypted);
@@ -53,6 +57,7 @@ public static class StateSecrets
         static void ProtectNode(CollectionNode node, ISecretProtector p, ref bool allEncrypted)
         {
             if (node.Request is { } r) r.AuthSecret = ProtectValueOptional(r.AuthSecret, p, ref allEncrypted);
+            if (node.KnownGood is { } kg) node.KnownGood = kg with { Body = ProtectBody(kg.Body, p, ref allEncrypted) };
             foreach (var child in node.Children) ProtectNode(child, p, ref allEncrypted);
         }
     }
@@ -75,6 +80,73 @@ public static class StateSecrets
     // Same rules, for the nullable auth-secret fields — null and empty both pass through unchanged.
     private static string? ProtectValueOptional(string? value, ISecretProtector protector, ref bool allEncrypted) =>
         string.IsNullOrEmpty(value) ? value : ProtectValue(value, protector, ref allEncrypted);
+
+    // Same rules as ProtectValue, for a stored response body. An empty/absent body and an
+    // already-protected one pass through unchanged. Otherwise the raw bytes are Base64-encoded
+    // into a string, THAT string is handed to the (string-shaped) protector, and the resulting
+    // "enc:v1:…" marker is stored back as its UTF-8 bytes — the Base64 step is what lets an
+    // arbitrary binary body survive a protector built for strings.
+    private static byte[] ProtectBody(byte[] body, ISecretProtector protector, ref bool allEncrypted)
+    {
+        if (body is null || body.Length == 0) return body ?? Array.Empty<byte>();
+        if (LooksLikeProtectedBody(body)) return body;
+
+        var protectedValue = protector.Protect(Convert.ToBase64String(body));
+        if (protectedValue is null)
+        {
+            allEncrypted = false;
+            return body;
+        }
+        return Encoding.UTF8.GetBytes(protectedValue);
+    }
+
+    // Cheap guard first, mirroring the one in TryUnprotectBody: only decode a (possibly large,
+    // possibly binary) body as UTF-8 once its leading bytes already match the ASCII marker.
+    private static bool LooksLikeProtectedBody(byte[] body) =>
+        StartsWithProtectedMarker(body) && SecretProtection.LooksProtected(Encoding.UTF8.GetString(body));
+
+    private static readonly byte[] ProtectedMarkerBytes = Encoding.ASCII.GetBytes(SecretProtection.Prefix);
+
+    private static bool StartsWithProtectedMarker(byte[] body)
+    {
+        if (body.Length < ProtectedMarkerBytes.Length) return false;
+        for (int i = 0; i < ProtectedMarkerBytes.Length; i++)
+            if (body[i] != ProtectedMarkerBytes[i]) return false;
+        return true;
+    }
+
+    // Decrypt a stored response body in place. Never throws: a null from Unprotect or a
+    // FormatException from the Base64 decode both mean "undecryptable" — result becomes empty and
+    // the caller is told via the false return so it can add a named warning. A body that does not
+    // start with the marker is legacy plaintext (or genuinely not ciphertext) and is left exactly
+    // as it is. Note: a stored body whose literal first bytes are the marker followed by valid
+    // Base64 would be misread as ciphertext here — the same tradeoff SecretProtection.LooksProtected
+    // already documents and accepts for string secrets.
+    private static bool TryUnprotectBody(byte[] body, ISecretProtector protector, out byte[] result)
+    {
+        result = body;
+        if (body is null || body.Length == 0 || !StartsWithProtectedMarker(body)) return true;
+
+        var text = Encoding.UTF8.GetString(body);
+        if (!SecretProtection.LooksProtected(text)) return true;
+
+        var plain = protector.Unprotect(text);
+        if (plain is null)
+        {
+            result = Array.Empty<byte>();
+            return false;
+        }
+        try
+        {
+            result = Convert.FromBase64String(plain);
+            return true;
+        }
+        catch (FormatException)
+        {
+            result = Array.Empty<byte>();
+            return false;
+        }
+    }
 
     /// <summary>Decrypt every stored secret in place. A value that cannot be decrypted is treated
     /// as absent (per the table below) and described in <paramref name="warnings"/>.</summary>
@@ -140,6 +212,18 @@ public static class StateSecrets
         for (int i = 0; i < state.History.Count; i++)
         {
             var h = state.History[i];
+
+            if (h.Response is { } resp)
+            {
+                bool bodyOk = TryUnprotectBody(resp.Body, protector, out var newBody);
+                resp.Body = newBody;
+                if (!bodyOk)
+                {
+                    warnings.Add($"Could not decrypt the stored response body on history entry {i + 1} ({h.Method} {h.EffectiveUrl}) — it was left empty.");
+                    anyDropped = true;
+                }
+            }
+
             if (!SecretProtection.LooksProtected(h.AuthSecret)) continue;
             var plain = protector.Unprotect(h.AuthSecret!);
             if (plain is null)
@@ -194,6 +278,16 @@ public static class StateSecrets
                     r.AuthSecret = plain;
                 }
             }
+            if (node.KnownGood is { } kg)
+            {
+                bool bodyOk = TryUnprotectBody(kg.Body, p, out var newBody);
+                node.KnownGood = kg with { Body = newBody };
+                if (!bodyOk)
+                {
+                    warnings.Add($"Could not decrypt the stored known-good response on saved request \"{path}\" — it was left empty.");
+                    anyDropped = true;
+                }
+            }
             foreach (var child in node.Children)
                 UnprotectNode(child, p, path + "/" + child.Name, warnings, ref anyDropped);
         }
@@ -214,34 +308,56 @@ public static class StateSecrets
         foreach (var tab in state.Tabs)
             if (!string.IsNullOrEmpty(tab.AuthSecret)) { tab.AuthSecret = null; authSecrets++; }
 
+        int bodies = 0;
         foreach (var h in state.History)
+        {
             if (!string.IsNullOrEmpty(h.AuthSecret)) { h.AuthSecret = null; authSecrets++; }
+            // History is a record of what happened: an entry that keeps its method, URL, status and
+            // headers but not its body is still a useful record, exactly as a tab that keeps
+            // everything but its auth secret is still a useful tab. Every other field is untouched.
+            if (h.Response is { } resp && resp.Body is { Length: > 0 })
+            {
+                resp.Body = Array.Empty<byte>();
+                bodies++;
+            }
+        }
 
         foreach (var root in state.Collections)
-            authSecrets += StripNode(root);
+            authSecrets += StripNode(root, ref bodies);
 
         int variables = 0;
         foreach (var env in state.Environments)
             foreach (var v in env.Variables)
                 if (v.Secret && !string.IsNullOrEmpty(v.Value)) { v.Value = ""; variables++; }
 
-        return new SecretStripSummary(tokens, cookies, authSecrets, variables);
+        return new SecretStripSummary(tokens, cookies, authSecrets, variables, bodies);
 
-        static int StripNode(CollectionNode node)
+        static int StripNode(CollectionNode node, ref int bodies)
         {
             int count = 0;
             if (node.Request is { } r && !string.IsNullOrEmpty(r.AuthSecret)) { r.AuthSecret = null; count++; }
-            foreach (var child in node.Children) count += StripNode(child);
+            // Unlike a history body, a known-good snapshot IS the diff baseline: emptying its body
+            // rather than removing it would make every later `certapi send --diff known-good` report
+            // a spurious whole-body difference — it would lie, the same way CollectionNode.RecordResult
+            // already refuses to record a failing send as the baseline. Removing it instead produces
+            // the existing, honest "no recorded known-good response yet" data error.
+            if (node.KnownGood is not null)
+            {
+                node.KnownGood = null;
+                bodies++;
+            }
+            foreach (var child in node.Children) count += StripNode(child, ref bodies);
             return count;
         }
     }
 }
 
-/// <summary>How many secrets a strip removed, so the caller can say what left the building.</summary>
-public sealed record SecretStripSummary(int Tokens, int Cookies, int AuthSecrets, int Variables)
+/// <summary>How many secrets and stored response bodies a strip removed, so the caller can say what
+/// left the building.</summary>
+public sealed record SecretStripSummary(int Tokens, int Cookies, int AuthSecrets, int Variables, int ResponseBodies)
 {
     /// <summary>True when anything at all was stripped.</summary>
-    public bool Any => Tokens > 0 || Cookies > 0 || AuthSecrets > 0 || Variables > 0;
+    public bool Any => Tokens > 0 || Cookies > 0 || AuthSecrets > 0 || Variables > 0 || ResponseBodies > 0;
 
     /// <summary>A human list of what went, e.g. "2 captured tokens, 1 saved auth secret".
     /// Empty string when nothing was stripped.</summary>
@@ -252,8 +368,10 @@ public sealed record SecretStripSummary(int Tokens, int Cookies, int AuthSecrets
         if (Cookies > 0) parts.Add(Pluralize(Cookies, "captured cookie"));
         if (AuthSecrets > 0) parts.Add(Pluralize(AuthSecrets, "saved auth secret"));
         if (Variables > 0) parts.Add(Pluralize(Variables, "secret variable"));
+        if (ResponseBodies > 0) parts.Add(Pluralize(ResponseBodies, "stored response body", "stored response bodies"));
         return string.Join(", ", parts);
 
-        static string Pluralize(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
+        static string Pluralize(int count, string noun, string? plural = null) =>
+            $"{count} {(count == 1 ? noun : plural ?? noun + "s")}";
     }
 }

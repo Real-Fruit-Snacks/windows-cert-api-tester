@@ -136,8 +136,11 @@ public static class McpCommand
             {
                 string? url = Str(a, "url");
                 if (string.IsNullOrWhiteSpace(url)) return Err("url is required");
+                string? methodArg = Str(a, "method");
+                if (methodArg is not null && string.IsNullOrWhiteSpace(methodArg))
+                    return Err(MethodOption.Describe("method", methodArg));
                 var headers = ObjPairs(a, "headers");
-                return SendUrl(Str(a, "method") ?? "GET", url!, headers, Str(a, "body"), Str(a, "contentType"));
+                return SendUrl(methodArg ?? "GET", url!, headers, Str(a, "body"), Str(a, "contentType"));
             });
 
         // ---- list_certificates ----

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using ApiTester.Cli;
 using ApiTester.Core;
 
@@ -53,10 +54,18 @@ public class ExportSecretsCliTests
         state.Tabs.Add(new RequestModel { Method = "GET", Path = "/one", AuthType = "Bearer", AuthSecret = "tab-secret-value" });
         state.Tabs.Add(new RequestModel { Method = "POST", Path = "/two" });   // second tab, no secret
 
-        state.History.Add(new HistoryEntry { Method = "GET", Url = "/hist", AuthType = "Bearer", AuthSecret = "history-secret-value" });
+        state.History.Add(new HistoryEntry
+        {
+            Method = "GET", Url = "/hist", AuthType = "Bearer", AuthSecret = "history-secret-value",
+            Response = new HistorySnapshot
+            {
+                StatusCode = 200,
+                Body = Encoding.UTF8.GetBytes("history-body-secret-value")
+            }
+        });
 
         var folder = new CollectionNode { Name = "api", IsFolder = true };
-        folder.Children.Add(new CollectionNode
+        var leaf = new CollectionNode
         {
             Name = "call",
             Request = new RequestModel
@@ -64,7 +73,10 @@ public class ExportSecretsCliTests
                 Method = "GET", Path = "/nested", BaseUrl = "https://api.example.com",
                 AuthType = "Bearer", AuthSecret = "collection-secret-value"
             }
-        });
+        };
+        leaf.RecordResult(200, DateTime.UtcNow, new ResponseSnapshot(200, new List<KeyValuePair<string, string>>(),
+            Encoding.UTF8.GetBytes("{\"access_token\":\"known-good-body-secret-value\"}"), "application/json"));
+        folder.Children.Add(leaf);
         state.Collections.Add(folder);
 
         var env = new ApiEnvironment { Name = "env1" };
@@ -126,6 +138,40 @@ public class ExportSecretsCliTests
             Assert.DoesNotContain("collection-secret-value", raw);
             Assert.DoesNotContain("secret-var-value", raw);
             Assert.DoesNotContain("enc:v1:", raw);
+        }
+        finally { CleanUp(live); CleanUp(outFile); }
+    }
+
+    [Fact]
+    public void Default_export_strips_stored_response_bodies()
+    {
+        var (services, live) = FreshServices();
+        var outFile = Path.Combine(Path.GetTempPath(), $"certapi-exs-out8-{Guid.NewGuid():N}.json");
+        try
+        {
+            SeedComprehensiveWorkspace(live);
+
+            int code = CliApp.Run(new[] { "export", "workspace", "-o", outFile }, new StringWriter(), new StringWriter(), services: services);
+            Assert.Equal(0, code);
+
+            var exported = AppState.LoadFrom(outFile);
+
+            var hist = Assert.Single(exported.History);
+            Assert.Equal("GET", hist.Method);
+            Assert.Equal("/hist", hist.Url);
+            Assert.NotNull(hist.Response);
+            Assert.Equal(200, hist.Response!.StatusCode);
+            Assert.Empty(hist.Response!.Body);
+
+            var nestedRequest = Assert.Single(Assert.Single(exported.Collections).Children);
+            Assert.Equal("call", nestedRequest.Name);
+            Assert.Equal("GET", nestedRequest.Request!.Method);
+            Assert.Equal("/nested", nestedRequest.Request!.Path);
+            Assert.Null(nestedRequest.KnownGood);
+
+            var raw = File.ReadAllText(outFile);
+            Assert.DoesNotContain("history-body-secret-value", raw);
+            Assert.DoesNotContain("known-good-body-secret-value", raw);
         }
         finally { CleanUp(live); CleanUp(outFile); }
     }
@@ -213,6 +259,35 @@ public class ExportSecretsCliTests
     }
 
     [Fact]
+    public void Include_secrets_keeps_stored_response_bodies()
+    {
+        var (services, live) = FreshServices();
+        var outFile = Path.Combine(Path.GetTempPath(), $"certapi-exs-out9-{Guid.NewGuid():N}.json");
+        try
+        {
+            SeedComprehensiveWorkspace(live);
+
+            int code = CliApp.Run(new[] { "export", "workspace", "-o", outFile, "--include-secrets" }, new StringWriter(), new StringWriter(), services: services);
+            Assert.Equal(0, code);
+
+            var exported = AppState.LoadFrom(outFile);
+
+            var hist = Assert.Single(exported.History);
+            Assert.Equal(Encoding.UTF8.GetBytes("history-body-secret-value"), hist.Response!.Body);
+
+            var nestedRequest = Assert.Single(Assert.Single(exported.Collections).Children);
+            Assert.Equal(
+                Encoding.UTF8.GetBytes("{\"access_token\":\"known-good-body-secret-value\"}"),
+                nestedRequest.KnownGood!.Body);
+
+            var raw = File.ReadAllText(outFile);
+            Assert.DoesNotContain("history-body-secret-value", raw);
+            Assert.DoesNotContain("known-good-body-secret-value", raw);
+        }
+        finally { CleanUp(live); CleanUp(outFile); }
+    }
+
+    [Fact]
     public void Stderr_names_what_the_default_export_stripped_and_mentions_include_secrets()
     {
         var (services, live) = FreshServices();
@@ -231,6 +306,30 @@ public class ExportSecretsCliTests
             Assert.Contains("saved auth secret", text);
             Assert.Contains("secret variable", text);
             Assert.Contains("--include-secrets", text);
+        }
+        finally { CleanUp(live); CleanUp(outFile); }
+    }
+
+    [Fact]
+    public void Stderr_names_the_stored_response_bodies_it_stripped()
+    {
+        var (services, live) = FreshServices();
+        var outFile = Path.Combine(Path.GetTempPath(), $"certapi-exs-out10-{Guid.NewGuid():N}.json");
+        try
+        {
+            SeedComprehensiveWorkspace(live);
+            var se = new StringWriter();
+
+            int code = CliApp.Run(new[] { "export", "workspace", "-o", outFile }, new StringWriter(), se, services: services);
+            Assert.Equal(0, code);
+
+            var text = se.ToString();
+            Assert.Contains("captured token", text);
+            Assert.Contains("captured cookie", text);
+            Assert.Contains("saved auth secret", text);
+            Assert.Contains("secret variable", text);
+            Assert.Contains("2 stored response bodies", text);
+            Assert.DoesNotContain("bodys", text);
         }
         finally { CleanUp(live); CleanUp(outFile); }
     }

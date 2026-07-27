@@ -19,9 +19,9 @@ public static class ExportCommand
           --host <h>          keep only entries for this host (case-insensitive)
           --no-template-ids   keep identifier-looking path segments literal instead of {id}
         workspace: writes the whole workspace as a portable JSON file (window geometry stripped).
-        Secrets — captured tokens and cookies, saved auth values, and secret environment
-        variables — are stripped by default, since an exported workspace is a file people email
-        to each other.
+        Secrets — captured tokens and cookies, saved auth values, secret environment
+        variables, and stored response bodies (history and known-good) — are stripped by default,
+        since an exported workspace is a file people email to each other.
           --include-secrets   Keep secrets in the export instead of stripping them; they are
                                written encrypted for the current Windows user, same as a saved
                                workspace, so another user or machine still cannot read them.

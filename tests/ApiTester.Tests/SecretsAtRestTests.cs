@@ -19,6 +19,8 @@ public class SecretsAtRestTests
     private const string PlainHistorySecret = "history-auth-secret-plaintext";
     private const string PlainRequestSecret = "collection-request-secret-plaintext";
     private const string PlainVariableValue = "secret-variable-plaintext-value";
+    private const string PlainKnownGoodBody = "{\"ok\":true,\"stage\":\"known-good\"}";
+    private const string PlainHistoryResponseBody = "{\"status\":\"history-body-plaintext\"}";
 
     private static string TempPath(string tag) =>
         Path.Combine(Path.GetTempPath(), $"certapi-secrets-{tag}-{Guid.NewGuid():N}.json");
@@ -151,11 +153,204 @@ public class SecretsAtRestTests
         return state;
     }
 
+    /// <summary>A realistic v1.64.0 workspace: the six secret fields already encrypted per Windows
+    /// user (SchemaVersion 2, this release's predecessor), but stored response bodies still in the
+    /// clear — exactly the gap D2 closes. Written by hand with <see cref="JsonSerializer"/>, never
+    /// through <see cref="AppState.SaveTo(string)"/>, which would already write today's format.</summary>
+    private static AppState BuildV1_64Workspace()
+    {
+        var protector = SecretProtection.Default;
+        var state = new AppState
+        {
+            SchemaVersion = 2,
+            Theme = "Light",
+            TimeoutSeconds = 45,
+            AutoTokens = false,
+            AutoCookies = false,
+            ActiveEnvironmentId = "e1"
+        };
+        state.SavedBaseUrls.Add("https://api.example.com");
+
+        state.SessionTokens.Add(new SessionToken
+        {
+            Origin = "https://api.example.com:443", Token = protector.Protect(PlainToken)!, Source = "oauth",
+            CapturedUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+        });
+        state.SessionCookies.Add(new SessionCookie
+        {
+            Origin = "https://intranet.corp:443", Name = "SESSIONID", Value = protector.Protect(PlainCookieValue)!,
+            Path = "/", Domain = "intranet.corp", Secure = true, HttpOnly = true
+        });
+
+        var tab = new RequestModel
+        {
+            Method = "POST", BaseUrl = "https://api.example.com", Path = "/users",
+            AuthType = "Bearer", AuthSecret = protector.Protect(PlainTabSecret)!, AuthUser = "tab-user",
+            Headers = { new HeaderRow { Name = "X-T", Value = "1" } },
+            QueryParams = { new ParamRow { Key = "q", Value = "2" } },
+            Captures = { new CaptureRule { Enabled = true, Variable = "id", Source = CaptureSource.Body, Path = "data.id" } },
+            Assertions = { new AssertionRule { Enabled = true, Target = AssertTarget.Status, Op = AssertOp.Equals, Value = "201" } }
+        };
+        state.Tabs.Add(tab);
+
+        var folder = new CollectionNode { Id = "f1", IsFolder = true, Name = "api" };
+        var leaf = new CollectionNode
+        {
+            Id = "n1", IsFolder = false, Name = "Create user",
+            Request = new RequestModel
+            {
+                Method = "POST", Path = "/users", AuthType = "Bearer", AuthSecret = protector.Protect(PlainRequestSecret)!
+            }
+        };
+        leaf.RecordResult(201, new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+            new ResponseSnapshot(201, new List<KeyValuePair<string, string>>(),
+                Encoding.UTF8.GetBytes(PlainKnownGoodBody), "application/json"));   // body still PLAINTEXT — v1.64.0 doesn't encrypt it
+        folder.Children.Add(leaf);
+        state.Collections.Add(folder);
+
+        var env = new ApiEnvironment { Id = "e1", Name = "Dev" };
+        env.Variables.Add(new Variable { Key = "access_token", Value = protector.Protect(PlainVariableValue)!, Secret = true });
+        env.Variables.Add(new Variable { Key = "host", Value = "dev.local", Secret = false });
+        state.Environments.Add(env);
+
+        state.History.Add(new HistoryEntry
+        {
+            Method = "GET", Url = "/status", StatusCode = 200,
+            AuthType = "Bearer", AuthSecret = protector.Protect(PlainHistorySecret)!,
+            Response = new HistorySnapshot
+            {
+                StatusCode = 200, ContentType = "application/json",
+                Body = Encoding.UTF8.GetBytes(PlainHistoryResponseBody)   // still PLAINTEXT — v1.64.0 doesn't encrypt it
+            }
+        });
+
+        state.Chains.Add(new RequestChain
+        {
+            Id = "c1", Name = "login then browse", EnvironmentName = "Dev",
+            Steps =
+            {
+                new ChainStep { RequestId = "n1" },
+                new ChainStep { RequestId = "n2", StopOnFailure = false }
+            }
+        });
+
+        return state;
+    }
+
     private static byte[] DeterministicNoise(int seed)
     {
         var bytes = new byte[64];
         new Random(seed).NextBytes(bytes);
         return bytes;
+    }
+
+    [Fact]
+    public void A_stored_response_body_round_trips_through_save_and_load()
+    {
+        var path = TempPath("body-roundtrip");
+        try
+        {
+            var textBody = Encoding.UTF8.GetBytes("{\"ok\":true,\"id\":42}");
+            // Deliberately invalid UTF-8 (0xC3 with no continuation byte, plus a lone high byte),
+            // so this proves arbitrary binary survives, not just text that happens to be bytes.
+            var binaryBody = new byte[] { 0xFF, 0xFE, 0x00, 0x01, 0x80, 0x81, 0x7F, 0x00, 0xC3, 0x28 };
+
+            var state = new AppState();
+            state.History.Add(new HistoryEntry
+            {
+                Method = "GET",
+                Url = "/status",
+                Response = new HistorySnapshot
+                {
+                    StatusCode = 200,
+                    ContentType = "application/json",
+                    Body = textBody,
+                    Headers = { new HeaderRow { Name = "X-Trace", Value = "abc" } }
+                }
+            });
+
+            var folder = new CollectionNode { IsFolder = true, Name = "api" };
+            var leaf = new CollectionNode { Name = "Create user", Request = new RequestModel { Method = "POST", Path = "/users" } };
+            leaf.RecordResult(201, DateTime.UtcNow,
+                new ResponseSnapshot(201,
+                    new List<KeyValuePair<string, string>> { new("Content-Type", "application/octet-stream") },
+                    binaryBody, "application/octet-stream"));
+            folder.Children.Add(leaf);
+            state.Collections.Add(folder);
+
+            state.SaveTo(path);
+
+            // The round trip alone would "pass" trivially today, since bodies are stored in the
+            // clear — this is what makes the test genuinely red before the feature exists. A body
+            // is a byte[], which System.Text.Json always Base64-encodes regardless of encryption,
+            // so a literal substring search for the marker in the raw file text would never find
+            // it either way; decoding the persisted bytes is what actually proves encryption ran.
+            using (var doc = JsonDocument.Parse(File.ReadAllText(path)))
+            {
+                var storedHistoryBody = doc.RootElement.GetProperty("History")[0].GetProperty("Response")
+                    .GetProperty("Body").GetBytesFromBase64();
+                Assert.True(SecretProtection.LooksProtected(Encoding.UTF8.GetString(storedHistoryBody)));
+
+                var storedKnownGoodBody = doc.RootElement.GetProperty("Collections")[0].GetProperty("Children")[0]
+                    .GetProperty("KnownGood").GetProperty("Body").GetBytesFromBase64();
+                Assert.True(SecretProtection.LooksProtected(Encoding.UTF8.GetString(storedKnownGoodBody)));
+            }
+
+            var back = AppState.LoadFrom(path);
+
+            var h = Assert.Single(back.History);
+            Assert.NotNull(h.Response);
+            Assert.Equal(textBody, h.Response!.Body);
+            Assert.Equal(200, h.Response.StatusCode);
+            Assert.Equal("application/json", h.Response.ContentType);
+            Assert.Equal("X-Trace", Assert.Single(h.Response.Headers).Name);
+
+            var backLeaf = Assert.Single(Assert.Single(back.Collections).Children);
+            Assert.NotNull(backLeaf.KnownGood);
+            Assert.Equal(binaryBody, backLeaf.KnownGood!.Body);
+            Assert.Equal(201, backLeaf.KnownGood.StatusCode);
+            Assert.Equal("application/octet-stream", backLeaf.KnownGood.ContentType);
+            Assert.Equal("Content-Type", Assert.Single(backLeaf.KnownGood.Headers).Key);
+
+            Assert.Empty(back.SecretWarnings);
+        }
+        finally { DeleteWithBackups(path); }
+    }
+
+    [Fact]
+    public void Saved_file_never_contains_a_stored_response_body_in_the_clear()
+    {
+        var path = TempPath("body-plaintext");
+        try
+        {
+            const string plainBody = "{\"access_token\":\"body-token-plaintext-abc\"}";
+            var plainBodyBytes = Encoding.UTF8.GetBytes(plainBody);
+
+            var folder = new CollectionNode { IsFolder = true, Name = "api" };
+            var leaf = new CollectionNode { Name = "login", Request = new RequestModel { Method = "POST", Path = "/login" } };
+            leaf.RecordResult(200, DateTime.UtcNow,
+                new ResponseSnapshot(200, new List<KeyValuePair<string, string>>(), plainBodyBytes, "application/json"));
+            folder.Children.Add(leaf);
+            var state = new AppState();
+            state.Collections.Add(folder);
+
+            state.SaveTo(path);
+
+            var raw = File.ReadAllText(path);
+            Assert.DoesNotContain(plainBody, raw);
+
+            // A body is a byte[], which System.Text.Json always Base64-encodes regardless of
+            // encryption, so the raw file's "Body" string never literally contains
+            // SecretProtection.Prefix — that marker is nested inside this outer Base64 layer.
+            // Decoding the persisted bytes is what actually proves the body is no longer the
+            // plaintext, and that what replaced it looks like ciphertext.
+            using var doc = JsonDocument.Parse(raw);
+            var storedBody = doc.RootElement.GetProperty("Collections")[0].GetProperty("Children")[0]
+                .GetProperty("KnownGood").GetProperty("Body").GetBytesFromBase64();
+            Assert.NotEqual(plainBodyBytes, storedBody);
+            Assert.True(SecretProtection.LooksProtected(Encoding.UTF8.GetString(storedBody)));
+        }
+        finally { DeleteWithBackups(path); }
     }
 
     [Fact]
@@ -312,7 +507,7 @@ public class SecretsAtRestTests
             Assert.Equal(originalBytes, File.ReadAllBytes(result.BackupPath!));
 
             using (var doc = JsonDocument.Parse(File.ReadAllText(path)))
-                Assert.Equal(2, doc.RootElement.GetProperty("SchemaVersion").GetInt32());
+                Assert.Equal(AppState.CurrentSchemaVersion, doc.RootElement.GetProperty("SchemaVersion").GetInt32());
             Assert.Contains(SecretProtection.Prefix, File.ReadAllText(path));
 
             var reloaded = AppState.LoadFrom(path);
@@ -327,6 +522,144 @@ public class SecretsAtRestTests
 
             var second = reloaded.SaveTo(path);
             Assert.Null(second.BackupPath);
+        }
+        finally { DeleteWithBackups(path); }
+    }
+
+    [Fact]
+    public void A_v1_64_0_workspace_loads_with_every_field_intact_and_upgrades_on_the_next_save()
+    {
+        var path = TempPath("migration-v1-64");
+        try
+        {
+            var legacy = BuildV1_64Workspace();
+            File.WriteAllText(path, JsonSerializer.Serialize(legacy, new JsonSerializerOptions { WriteIndented = true }));
+            var originalBytes = File.ReadAllBytes(path);
+
+            Assert.True(AppState.NeedsSecretUpgrade(path));
+
+            var back = AppState.LoadFrom(path);
+
+            Assert.Equal("Light", back.Theme);
+            Assert.Equal(45, back.TimeoutSeconds);
+            Assert.False(back.AutoTokens);
+            Assert.False(back.AutoCookies);
+            Assert.Equal("https://api.example.com", Assert.Single(back.SavedBaseUrls));
+            Assert.Equal("e1", back.ActiveEnvironmentId);
+
+            var token = Assert.Single(back.SessionTokens);
+            Assert.Equal(PlainToken, token.Token);
+            Assert.Equal("oauth", token.Source);
+            Assert.Equal("https://api.example.com:443", token.Origin);
+
+            var cookie = Assert.Single(back.SessionCookies);
+            Assert.Equal(PlainCookieValue, cookie.Value);
+            Assert.Equal("SESSIONID", cookie.Name);
+            Assert.True(cookie.Secure);
+            Assert.True(cookie.HttpOnly);
+
+            var tab = Assert.Single(back.Tabs);
+            Assert.Equal(PlainTabSecret, tab.AuthSecret);
+            Assert.Equal("tab-user", tab.AuthUser);
+            Assert.Equal("X-T", Assert.Single(tab.Headers).Name);
+            Assert.Equal("q", Assert.Single(tab.QueryParams).Key);
+            Assert.Equal("id", Assert.Single(tab.Captures).Variable);
+            Assert.Equal("201", Assert.Single(tab.Assertions).Value);
+
+            var backFolder = Assert.Single(back.Collections);
+            Assert.Equal("api", backFolder.Name);
+            var backLeaf = Assert.Single(backFolder.Children);
+            Assert.Equal(PlainRequestSecret, backLeaf.Request!.AuthSecret);
+            Assert.Equal(201, backLeaf.LastStatusCode);
+            Assert.True(backLeaf.IsKnownGood);
+            Assert.NotNull(backLeaf.KnownGood);
+            Assert.Equal(Encoding.UTF8.GetBytes(PlainKnownGoodBody), backLeaf.KnownGood!.Body);
+            Assert.Equal(201, backLeaf.KnownGood.StatusCode);
+            Assert.Equal("application/json", backLeaf.KnownGood.ContentType);
+
+            var backEnv = Assert.Single(back.Environments);
+            var secretVar = backEnv.Variables.Single(v => v.Key == "access_token");
+            Assert.Equal(PlainVariableValue, secretVar.Value);
+            Assert.True(secretVar.Secret);
+            var plainVar = backEnv.Variables.Single(v => v.Key == "host");
+            Assert.Equal("dev.local", plainVar.Value);
+            Assert.False(plainVar.Secret);
+
+            var h = Assert.Single(back.History);
+            Assert.Equal(200, h.StatusCode);
+            Assert.Equal(PlainHistorySecret, h.AuthSecret);
+            Assert.NotNull(h.Response);
+            Assert.Equal(Encoding.UTF8.GetBytes(PlainHistoryResponseBody), h.Response!.Body);
+            Assert.Equal(200, h.Response.StatusCode);
+            Assert.Equal("application/json", h.Response.ContentType);
+
+            var chain = Assert.Single(back.Chains);
+            Assert.Equal("login then browse", chain.Name);
+            Assert.Equal("Dev", chain.EnvironmentName);
+            Assert.Equal(2, chain.Steps.Count);
+            Assert.Equal("n1", chain.Steps[0].RequestId);
+            Assert.True(chain.Steps[0].StopOnFailure);
+            Assert.Equal("n2", chain.Steps[1].RequestId);
+            Assert.False(chain.Steps[1].StopOnFailure);
+
+            Assert.Empty(back.SecretWarnings);
+
+            var result = back.SaveTo(path);
+            Assert.NotNull(result.BackupPath);
+            Assert.Equal(originalBytes, File.ReadAllBytes(result.BackupPath!));
+
+            var rewritten = File.ReadAllText(path);
+            using (var doc = JsonDocument.Parse(rewritten))
+                Assert.Equal(AppState.CurrentSchemaVersion, doc.RootElement.GetProperty("SchemaVersion").GetInt32());
+
+            // The bodies are byte[] (always Base64-encoded by System.Text.Json regardless of
+            // encryption), so a raw substring search for the plaintext is a weak guard at best —
+            // decoding what is actually stored is what proves the rewrite really encrypted them.
+            using (var doc = JsonDocument.Parse(rewritten))
+            {
+                var storedKnownGoodBody = doc.RootElement.GetProperty("Collections")[0].GetProperty("Children")[0]
+                    .GetProperty("KnownGood").GetProperty("Body").GetBytesFromBase64();
+                Assert.NotEqual(Encoding.UTF8.GetBytes(PlainKnownGoodBody), storedKnownGoodBody);
+                Assert.True(SecretProtection.LooksProtected(Encoding.UTF8.GetString(storedKnownGoodBody)));
+
+                var storedHistoryBody = doc.RootElement.GetProperty("History")[0].GetProperty("Response")
+                    .GetProperty("Body").GetBytesFromBase64();
+                Assert.NotEqual(Encoding.UTF8.GetBytes(PlainHistoryResponseBody), storedHistoryBody);
+                Assert.True(SecretProtection.LooksProtected(Encoding.UTF8.GetString(storedHistoryBody)));
+            }
+
+            var reloaded = AppState.LoadFrom(path);
+            Assert.Equal(Encoding.UTF8.GetBytes(PlainKnownGoodBody),
+                Assert.Single(Assert.Single(reloaded.Collections).Children).KnownGood!.Body);
+            Assert.Equal(Encoding.UTF8.GetBytes(PlainHistoryResponseBody), Assert.Single(reloaded.History).Response!.Body);
+            Assert.Equal(PlainToken, Assert.Single(reloaded.SessionTokens).Token);
+            Assert.Empty(reloaded.SecretWarnings);
+
+            var second = reloaded.SaveTo(path);
+            Assert.Null(second.BackupPath);
+        }
+        finally { DeleteWithBackups(path); }
+    }
+
+    [Fact]
+    public void A_failed_backup_aborts_the_save_and_leaves_the_only_copy_untouched()
+    {
+        var path = TempPath("backup-fails");
+        try
+        {
+            var legacy = BuildV1_64Workspace();
+            File.WriteAllText(path, JsonSerializer.Serialize(legacy, new JsonSerializerOptions { WriteIndented = true }));
+            var originalBytes = File.ReadAllBytes(path);
+
+            var loaded = AppState.LoadFrom(path);
+
+            using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.ThrowsAny<IOException>(() => loaded.SaveTo(path));
+            }
+
+            Assert.Equal(originalBytes, File.ReadAllBytes(path));
+            Assert.False(File.Exists(path + ".tmp"));
         }
         finally { DeleteWithBackups(path); }
     }
@@ -405,6 +738,71 @@ public class SecretsAtRestTests
             Assert.Contains(back.SecretWarnings, w => w.Contains("captured cookie \"SESSIONID\"") && w.Contains("dropped"));
             Assert.Contains(back.SecretWarnings, w => w.Contains("open tab 1") && w.Contains("POST /broken"));
             Assert.Contains(back.SecretWarnings, w => w.Contains("environment variable \"broken_secret\"") && w.Contains("Dev"));
+            Assert.Equal(
+                "Secrets are encrypted for your Windows user — a workspace file copied from another user or machine cannot be read.",
+                back.SecretWarnings[^1]);
+        }
+        finally { DeleteWithBackups(path); }
+    }
+
+    [Fact]
+    public void An_undecryptable_stored_body_is_left_empty_with_a_named_warning_and_the_rest_of_the_workspace_opens()
+    {
+        var path = TempPath("undecryptable-body");
+        try
+        {
+            // Valid Base64 of 64 random bytes, so it reads as ciphertext-shaped, but not a real
+            // DPAPI blob, so decryption genuinely fails on this machine — same approach as the
+            // undecryptable-secret test above, applied to a stored body.
+            var noiseBody = Encoding.UTF8.GetBytes(
+                SecretProtection.Prefix + Convert.ToBase64String(DeterministicNoise(20260728)));
+
+            var state = new AppState { SchemaVersion = AppState.CurrentSchemaVersion };
+
+            var folder = new CollectionNode { IsFolder = true, Name = "api" };
+            var leaf = new CollectionNode { Name = "Create user", Request = new RequestModel { Method = "POST", Path = "/users" } };
+            leaf.RecordResult(201, DateTime.UtcNow,
+                new ResponseSnapshot(201, new List<KeyValuePair<string, string>>(), noiseBody, "application/json"));
+            folder.Children.Add(leaf);
+            state.Collections.Add(folder);
+
+            state.History.Add(new HistoryEntry
+            {
+                Method = "GET", Url = "/status", StatusCode = 200,
+                Response = new HistorySnapshot { StatusCode = 200, ContentType = "application/json", Body = noiseBody }
+            });
+
+            var env = new ApiEnvironment { Id = "e1", Name = "Dev" };
+            env.Variables.Add(new Variable { Key = "host", Value = "dev.local", Secret = false });
+            state.Environments.Add(env);
+
+            File.WriteAllText(path, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+
+            var back = AppState.LoadFrom(path);
+
+            var backLeaf = Assert.Single(Assert.Single(back.Collections).Children);
+            Assert.NotNull(backLeaf.KnownGood);
+            Assert.Empty(backLeaf.KnownGood!.Body);
+            Assert.Equal(201, backLeaf.KnownGood.StatusCode);
+            Assert.Equal("application/json", backLeaf.KnownGood.ContentType);
+            Assert.Equal("api", Assert.Single(back.Collections).Name);
+            Assert.Equal("Create user", backLeaf.Name);
+
+            var h = Assert.Single(back.History);
+            Assert.NotNull(h.Response);
+            Assert.Empty(h.Response!.Body);
+            Assert.Equal(200, h.Response.StatusCode);
+            Assert.Equal("application/json", h.Response.ContentType);
+            Assert.Equal(200, h.StatusCode);
+
+            var backEnv = Assert.Single(back.Environments);
+            Assert.Equal("dev.local", backEnv.Variables.Single(v => v.Key == "host").Value);
+
+            Assert.Equal(3, back.SecretWarnings.Count);
+            Assert.Contains(back.SecretWarnings,
+                w => w.Contains("stored response body on history entry 1") && w.Contains("GET /status"));
+            Assert.Contains(back.SecretWarnings,
+                w => w.Contains("stored known-good response on saved request \"api/Create user\""));
             Assert.Equal(
                 "Secrets are encrypted for your Windows user — a workspace file copied from another user or machine cannot be read.",
                 back.SecretWarnings[^1]);

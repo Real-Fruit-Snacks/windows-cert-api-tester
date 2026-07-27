@@ -142,7 +142,7 @@ public static class FuzzCommand
         int delay = ParseNonNegative(delayRaw, 0, "--delay");
         var methods = (methodsRaw ?? "GET").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Select(m => m.ToUpperInvariant()).ToArray();
-        if (methods.Length == 0) methods = new[] { "GET" };
+        MethodOption.RequireList(methodsRaw, "-X/--methods", methods.Length);
 
         // ---- variables ----
         var state = LoadState(workspace, services, stderr);

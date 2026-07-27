@@ -147,6 +147,7 @@ public static class SendCommand
     {
         // ---- bind options ----
         string? methodOpt = args.Value("-X", "--method");
+        MethodOption.Require(methodOpt, "-X/--method");
         var headers = args.Values("-H", "--header");
         string? data = args.Value("-d", "--data");
         string? dataFile = args.Value("--data-file");

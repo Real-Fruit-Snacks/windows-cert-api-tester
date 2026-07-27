@@ -284,6 +284,30 @@ public class ApiClientPoolingTests
             client.SendAsync(new ApiRequest { Method = HttpMethod.Get, Url = "https://127.0.0.1:1/" }, null));
     }
 
+    // This test is known to stall roughly one run in three, and when it does the default
+    // ApiRequest.Timeout (100 seconds) turns a fast, loud failure into a slow, silent one that eats
+    // a CI run. StallTimeout below is a mitigation, not a fix -- the root cause of the underlying
+    // stall is not known. Five hypotheses were investigated and eliminated: (1) handler-cache
+    // eviction -- the cache is lease-counted and correct, and the stall is observed at send #1 while
+    // eviction only begins at send #8, so eviction cannot be the cause; (2) thread-pool starvation --
+    // an instrumented capture at the moment of the stall showed pending=0, so no queued work was
+    // waiting on a starved pool; (3) target-framework or WPF-specific differences -- 26 clean
+    // standalone runs across two target frameworks never reproduced it; (4) xunit's
+    // concurrency-limiting synchronization context -- the stall still occurs with test
+    // parallelization disabled; (5) a TLS 1.3 client-certificate handshake stall -- the stall still
+    // occurs with the connection pinned to TLS 1.2. The instrumented capture that does reproduce it
+    // reads "send#1 FAIL:Timeout conns=1 reqs=1 pending=0": a second connection is opened whose
+    // handshake never completes, on both the client and server sides, while the first connection and
+    // its request/response accounting look entirely normal. The product code is exonerated for now --
+    // 26 out of 26 standalone runs were clean, and the failure has only ever been reproduced under the
+    // `dotnet test` host -- so the untested candidate that remains is certificate key-container
+    // behavior specific to that host. Until that is understood, every send in this test gets a bounded
+    // per-request timeout instead of the framework default: StallTimeout is 15 seconds, roughly 18x the
+    // ~800ms this test takes when it passes, which is generous enough that the bound itself can never
+    // become a flake, while still turning a 100-second silent stall into a 15-second one that fails
+    // loudly with "The request timed out."
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(15);
+
     [Fact]
     public async Task Many_distinct_certificates_do_not_break_the_bounded_cache()
     {
@@ -304,7 +328,8 @@ public class ApiClientPoolingTests
             foreach (var cert in certs)
             {
                 var resp = await client.SendAsync(
-                    new ApiRequest { Method = HttpMethod.Get, Url = server.BaseUrl }, cert, transport: transport);
+                    new ApiRequest { Method = HttpMethod.Get, Url = server.BaseUrl, Timeout = StallTimeout },
+                    cert, transport: transport);
                 Assert.True(resp.IsSuccess, resp.Error?.Message);
             }
 

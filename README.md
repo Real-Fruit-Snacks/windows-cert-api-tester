@@ -175,7 +175,7 @@ Many APIs want you to log in first and then send the returned token on every cal
 
 ### Import / export
 - **Import ▾** (next to the tabs): paste a **cURL** command, or import an **OpenAPI/Swagger** JSON file to generate a whole collection.
-- **Export**: write a collection as **OpenAPI** (from the collections sidebar), or **Export workspace** to move everything — tabs, collections, environments, history — to another machine. Secrets (captured tokens/cookies, saved auth values, secret variables) are written encrypted for your Windows user, so they don't travel to a different user or machine; the headless `certapi export workspace` strips them by default instead (see [Secrets at rest](#secrets-at-rest)).
+- **Export**: write a collection as **OpenAPI** (from the collections sidebar), or **Export workspace** to move everything — tabs, collections, environments, history — to another machine. Secrets (captured tokens/cookies, saved auth values, secret variables, stored response bodies) are written encrypted for your Windows user, so they don't travel to a different user or machine; the headless `certapi export workspace` strips them by default instead (see [Secrets at rest](#secrets-at-rest)).
 
 ### Headless (the `certapi` command-line tool)
 `certapi.exe` (a separate download on the releases page) does everything without the window:
@@ -469,16 +469,17 @@ The engine (`ApiTester.Core`) has no UI dependency, so every behaviour is covere
 Everything lives in one workspace file, `%AppData%\CertApiTester\state.json`. Most of it — request
 definitions, collections, chains, history, environment names — is plain, readable JSON, so the file
 stays diffable and debuggable. The secrets in it are not: a captured bearer token, a browser-captured
-session cookie, a saved request's Basic-auth password or bearer token, and any environment variable
-ticked **secret** are encrypted with the Windows Data Protection API (DPAPI), scoped to the Windows
-user who saved them.
+session cookie, a saved request's Basic-auth password or bearer token, any environment variable
+ticked **secret**, and stored response bodies — the ones kept in history entries and in a saved
+request's known-good snapshot — are encrypted with the Windows Data Protection API (DPAPI), scoped to
+the Windows user who saved them.
 
 The consequence: a `state.json` copied to another Windows user, or to another machine, still opens
 with everything intact **except those secrets**, which cannot be decrypted there and are dropped or
-left empty rather than crashing the load. `certapi export workspace` strips secrets by default for
-the same reason exported HTTP Archive (HAR) files are redacted by default — an exported workspace is
-a file people email around — pass `--include-secrets` to keep them (still encrypted for you, never in
-the clear).
+left empty rather than crashing the load. `certapi export workspace` strips secrets — including those
+stored bodies — by default for the same reason exported HTTP Archive (HAR) files are redacted by
+default — an exported workspace is a file people email around — pass `--include-secrets` to keep them
+(still encrypted for you, never in the clear).
 
 ## License
 

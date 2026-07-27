@@ -124,6 +124,7 @@ public static class BenchCommand
         var varOverrides = args.Values("--var");
         string? workspace = args.Value("--workspace");
         string? methodOpt = args.Value("-X", "--method");
+        MethodOption.Require(methodOpt, "-X/--method");
         var headers = args.Values("-H", "--header");
         string? data = args.Value("-d", "--data");
         string? contentType = args.Value("--content-type");

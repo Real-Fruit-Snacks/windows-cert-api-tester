@@ -58,10 +58,11 @@ public sealed class AppState
 
     /// <summary>File-format version. 0 = files from before the Auto/None auth split. 1 = secrets
     /// (captured tokens/cookies, saved auth secrets, secret variables) stored in the clear. 2 =
-    /// those same secrets encrypted per Windows user.</summary>
+    /// those same secrets encrypted per Windows user. 3 = stored response bodies (history
+    /// snapshots and known-good snapshots) encrypted as well.</summary>
     public int SchemaVersion { get; set; }
 
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     /// <summary>Secrets that could not be decrypted on this load, described for the user. In-memory
     /// only: hosts print these (the CLI on stderr, the app in its status line) and the values they
@@ -95,7 +96,9 @@ public sealed class AppState
     /// <summary>Upgrade older states in place. Version 0 → 1: auth "None" predates the
     /// Auto/None split and meant "nothing configured", so it becomes "Auto". Version 1 → 2 needs no
     /// in-memory migration: a plaintext secret loads as itself (already decrypted, if possible, by
-    /// <see cref="LoadFrom(string, ISecretProtector)"/> above), and the next save encrypts it.</summary>
+    /// <see cref="LoadFrom(string, ISecretProtector)"/> above), and the next save encrypts it.
+    /// Version 2 → 3 needs no in-memory migration either, for the same reason: a plaintext stored
+    /// response body loads as itself, and the next save encrypts it.</summary>
     public void Migrate()
     {
         if (SchemaVersion >= CurrentSchemaVersion) return;

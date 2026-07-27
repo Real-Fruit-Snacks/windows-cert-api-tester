@@ -6,6 +6,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-07-27
+
+### Fixed
+- **An empty or whitespace-only `-X`/`--method` no longer leaks a framework exception and exits 1 as
+  if the connection itself had failed.** `certapi send <url> -X ""` (and `-X "   "`) used to print
+  `The value cannot be an empty string or composed entirely of whitespace. (Parameter 'method')` — an
+  internal parameter name a caller was never meant to see — and return the transport-failure exit
+  code, when a malformed argument should be a usage error (exit 2), exactly like every other bad flag
+  value in the same command. It now prints a written message naming the flag and what was expected,
+  and exits 2. The same shared check covers `certapi bench`'s `-X`/`--method`; `certapi fuzz`'s
+  `-X`/`--methods` (a comma-separated list) now refuses a value that resolves to no methods at all
+  instead of silently falling back to GET; and the Model Context Protocol (MCP) server's
+  `send_request` tool returns the same written message through its own error shape instead of the
+  leaked one. Deliberately unchanged: arbitrary extension methods are legal Hypertext Transfer
+  Protocol (HTTP), so `PATCH`, a lowercase `get`, and a non-standard verb all keep working, pinned by
+  a guard test.
+
+### Changed
+- **Stored response bodies — in history entries and in a saved request's known-good snapshot — are
+  now encrypted at rest, closing the gap v1.62.0 left behind.** That release encrypted captured
+  tokens, cookies, saved auth secrets, and secret variables, but a login response body sitting in
+  history or in a known-good snapshot could itself contain `{"access_token":"…"}`, written to the
+  workspace file in the clear — exactly the exposure v1.62.0 existed to close and named as a residual
+  at the time. Bodies are now protected the same way, with the Windows Data Protection API (DPAPI),
+  and decrypted transparently on load. A body that can't be decrypted (a file from another Windows
+  user or machine) degrades to absent with a named warning rather than throwing; the rest of the
+  workspace still opens. `certapi send --diff known-good` and `certapi run --diff-har` read these
+  snapshots back exactly as before.
+- **The on-disk workspace format moves to schema version 3.** An existing file loads with every field
+  intact and is upgraded on its next save, after the timestamped backup v1.62.0 introduced — a failed
+  backup aborts the save rather than overwriting the only copy. Migration is additive and lossless,
+  the same as v1.62.0's was.
+- **`certapi export workspace`'s default secret-stripping now covers stored bodies too**, rather than
+  leaving them a hole beside everything else it already strips. A history entry keeps its method,
+  URL, and status with its body emptied; a known-good snapshot is removed outright, because a
+  baseline with an emptied body would make every later diff report a spurious whole-body difference.
+  The export's summary reports them in the same "stripped …" sentence as every other secret, and
+  `--include-secrets` keeps them, still encrypted, exactly as it does for the rest.
+
 ## [1.64.0] - 2026-07-27
 
 ### Added
@@ -1484,7 +1523,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.64.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.65.0...HEAD
+[1.65.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.64.0...v1.65.0
 [1.64.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.63.0...v1.64.0
 [1.63.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.62.0...v1.63.0
 [1.62.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.61.1...v1.62.0

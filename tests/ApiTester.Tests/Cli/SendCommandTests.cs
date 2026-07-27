@@ -179,6 +179,29 @@ public class SendCommandTests
     }
 
     [Fact]
+    public void Empty_or_whitespace_method_is_a_usage_error()
+    {
+        foreach (var bad in new[] { "", "   " })
+        {
+            var se = new StringWriter();
+            int code = CliApp.Run(new[] { "send", "https://h/", "-X", bad },
+                                  new StringWriter(), se, new MemoryStream(), new CliServices { LiveStatePath = TempState() });
+            Assert.Equal(2, code);
+            Assert.Contains("--method", se.ToString());
+        }
+    }
+
+    [Fact]
+    public async Task Arbitrary_and_lowercase_methods_still_send()
+    {
+        foreach (var method in new[] { "PATCH", "get", "FROBNICATE" })
+        {
+            var r = await RunAsync(new[] { "send", "{URL}", "--cert", "CliClient", "--insecure", "-X", method });
+            Assert.Equal(0, r.Code);
+        }
+    }
+
+    [Fact]
     public void Envelope_merges_mixed_case_duplicate_headers()
     {
         var response = new ApiResponse

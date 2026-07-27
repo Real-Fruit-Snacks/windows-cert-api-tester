@@ -36,7 +36,12 @@ The gateway is **loopback only** (127.0.0.1) — it never listens on an external
 | `--timeout <seconds>` | Per-request upstream timeout (default 100) |
 | `--workspace <file>` | Resolve a saved-website `<upstream>` from a workspace file |
 | `-q, --quiet` | No startup banner or per-request log |
-| `--cors-max-age <seconds>` | How long a browser may cache a CORS (Cross-Origin Resource Sharing) preflight answer (default 600). Only with `--cors` |
+| `--browser` | Turn on all four browser accommodations below at once — each also works on its own |
+| `--cors [<origins>]` | Answer CORS (Cross-Origin Resource Sharing) preflights at the gateway and add the response headers a script needs to read the reply; echoes the caller's own `Origin` with no value, or takes a comma-separated allowlist |
+| `--cors-max-age <seconds>` | How long a browser may cache a CORS preflight answer (default 600). Only with `--cors` |
+| `--rewrite-cookies` | Strip `Domain=` and `Secure` from each `Set-Cookie`, and turn `SameSite=None` into `Lax`, so the browser stores the cookie against the gateway |
+| `--rewrite-location` | Rewrite a 3xx `Location` aimed at the upstream to point at the gateway instead; one aimed elsewhere is left alone and logged |
+| `--allow-upgrade` | Relay WebSocket connections to the upstream through your certificate |
 | `--request-header "Name: value"` | Set a header on the request before it reaches the upstream — replace if already sent, add if not. Repeatable |
 | `--remove-request-header <name>` | Strip a header from the request before it reaches the upstream. Repeatable |
 | `--response-header "Name: value"` | Set a header on the response before it reaches the caller, same replace-or-add rule. Repeatable |
@@ -70,6 +75,38 @@ an HTTP field name cannot hold — a space, an embedded colon — is a usage err
 reason: the header could never match, so the rule would be dropped rather than applied. These rules
 never touch a CORS or PNA (Private Network Access) preflight the gateway answers itself, its own
 error pages, or a relayed WebSocket upgrade.
+
+## Browser accommodations
+
+A plain relay hands a browser exactly the headers that make it refuse the response — a tab checks
+things curl and a script never do, like origin policy, cookie attributes, and where a redirect
+actually leads. Without any of the four flags below nothing changes: the gateway stays a
+byte-faithful relay, which is exactly what protects every existing non-browser caller. `--browser` is
+the bundle that turns on all four accommodations at once; each one is also usable entirely on its
+own.
+
+`--cors [<origins>]` answers a preflight at the gateway and adds the response headers a script needs
+in order to read the reply. With no value the caller's own `Origin` is echoed back; give it a
+comma-separated list to allow only those origins instead. See
+[Browsers and Private Network Access](#browsers-and-private-network-access), below, for the further
+check Chrome runs on top of CORS.
+
+`--rewrite-cookies` is what lets the browser actually keep the cookie: a `Set-Cookie` loses its
+`Domain=` attribute and its `Secure` attribute, and `SameSite=None` becomes `SameSite=Lax`, so the
+cookie can be stored against the gateway rather than the upstream the browser never directly talked
+to.
+
+`--rewrite-location` keeps a redirect on the gateway: a 3xx `Location` aimed at the upstream comes
+back pointing at the gateway instead. One aimed anywhere else is left exactly as the upstream wrote
+it, and logged — because that hop leaves the gateway, and your client certificate leaves with it.
+
+`--allow-upgrade` relays WebSocket connections to the upstream through your certificate, the same way
+every other forwarded request is.
+
+Over the default plaintext loopback origin, a cookie named `__Host-…` or `__Secure-…` cannot work at
+all: it requires the `Secure` attribute, which no browser accepts over plaintext `http://127.0.0.1`.
+Rather than dropping such a cookie behind your back, the gateway still relays it and names it in a
+warning. `--tls` is the fix, because it serves the gateway itself over HTTPS (HTTP Secure).
 
 ## Browsers and Private Network Access
 
