@@ -44,10 +44,17 @@ public static class SelfSignedCertificateFactory
     /// is the one artifact that turns "the flag was set" into proof the check actually ran. Left
     /// null (the default), no such extension is added at all, and the certificate is byte-for-byte
     /// the same shape it was before this parameter existed — every existing caller depends on that.</param>
+    /// <param name="notBefore">When this certificate starts being valid; defaults to yesterday.
+    /// Together with <paramref name="notAfter"/> this is what lets a caller mint a deliberately
+    /// expired or not-yet-valid certificate — the mock's TLS-misbehaviour modes, which make the
+    /// client's own error paths reachable from a terminal rather than only from a test.</param>
+    /// <param name="notAfter">When it stops; defaults to a year out.</param>
     public static X509Certificate2 CreateSignedCertificate(
         string name, X509Certificate2 issuer, bool serverAuth, bool clientAuth,
         IEnumerable<string>? dnsNames = null,
-        string? crlDistributionPoint = null)
+        string? crlDistributionPoint = null,
+        DateTimeOffset? notBefore = null,
+        DateTimeOffset? notAfter = null)
     {
         using var rsa = RSA.Create(2048);
         var req = new CertificateRequest($"CN={name}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -81,7 +88,10 @@ public static class SelfSignedCertificateFactory
         RandomNumberGenerator.Fill(serial);
 
         using var signed = req.Create(
-            issuer, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1), serial);
+            issuer,
+            notBefore ?? DateTimeOffset.UtcNow.AddDays(-1),
+            notAfter ?? DateTimeOffset.UtcNow.AddYears(1),
+            serial);
         using var withKey = signed.CopyWithPrivateKey(rsa);
         // SChannel/SslStream cannot access ephemeral keys; use Exportable-only to create a temporary
         // non-persisted container that SChannel can use, auto-deleted on Dispose.

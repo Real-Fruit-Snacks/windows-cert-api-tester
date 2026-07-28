@@ -6,7 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.81.0] - 2026-07-28
+## [1.82.0] - 2026-07-28
+
+### Added
+- **`certapi mock --tls-mode expired | wrong-host | self-signed` serves a deliberately broken
+  server certificate**, so the client-side TLS errors this product reports become reproducible at
+  a terminal rather than only inside its own test suite. `expired` presents a certificate for
+  `localhost` whose validity ended an hour ago; `wrong-host` presents a perfectly valid
+  certificate issued for somewhere else, so the *name* check is what fails; `self-signed` presents
+  a leaf that is its own issuer, chaining to nothing. `valid` (the default) is unchanged.
+  This is what turns the mock into a test bed for the client: `doctor`'s TLS stage, `send`'s
+  `ServerCertificateUntrusted`, and the `--insecure` override can all now be exercised without
+  finding a real broken endpoint to point at. The flag needs `--tls` or `--mtls` — over plain HTTP
+  there is no certificate to spoil, and asking for one is a usage error rather than a silent
+  no-op — and the mock prints a line reminding you that a client refusing this certificate is the
+  *correct* outcome, so a red result reads as success.
+  One X.509 constraint worth recording, because it shaped the implementation: a certificate cannot
+  begin before the authority that issued it. The expired certificate's whole validity window
+  therefore sits inside the mock authority's own — twelve hours ago to one hour ago — rather than
+  starting a year back as a first attempt did.
 
 ### Added
 - **The mock can now misbehave on demand, which is the point of a test server.** A scenario's
@@ -1966,7 +1984,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.81.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.82.0...HEAD
+[1.82.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.81.0...v1.82.0
 [1.81.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.80.0...v1.81.0
 [1.80.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.79.0...v1.80.0
 [1.79.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.78.0...v1.79.0

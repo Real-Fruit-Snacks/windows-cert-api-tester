@@ -27,6 +27,9 @@ public static class MockCommand
           --mtls            HTTPS that also requires a client certificate (any cert is accepted)
           --cert-dir <dir>  Where to write generated certificates (default ./certapi-mock-certs)
           -q, --quiet       Don't log each request
+          --tls-mode <m>    Serve a deliberately broken server certificate, so a client's own
+                            error paths can be exercised from a terminal: valid (default),
+                            expired, wrong-host, or self-signed. Needs --tls or --mtls
           --routes <file>   Serve the routes declared in a JSON scenario file instead of the
                             built-in ones: each route says what it matches (method, path glob or
                             regular expression, required query and headers) and what it answers
@@ -81,6 +84,18 @@ public static class MockCommand
             throw new CliUsageException($"--no-match-status expects an HTTP status 100-599, got '{noMatchRaw}'.");
 
         string? routesFile = args.Value("--routes");
+        string? tlsDefectRaw = args.Value("--tls-mode");
+        var tlsDefect = tlsDefectRaw?.ToLowerInvariant() switch
+        {
+            null or "valid" => MockTlsDefect.None,
+            "expired" => MockTlsDefect.Expired,
+            "wrong-host" => MockTlsDefect.WrongHost,
+            "self-signed" => MockTlsDefect.SelfSigned,
+            _ => throw new CliUsageException(
+                $"--tls-mode expects valid, expired, wrong-host, or self-signed, got '{tlsDefectRaw}'.")
+        };
+        if (tlsDefect != MockTlsDefect.None && mode == MockTlsMode.Http)
+            throw new CliUsageException("--tls-mode needs --tls or --mtls: there is no certificate to spoil over plain HTTP.");
 
         if (args.Positionals().Count > 0) throw new CliUsageException(Help);
 
@@ -117,7 +132,7 @@ public static class MockCommand
 
         X509Certificate2? serverCert = null;
         if (mode != MockTlsMode.Http)
-            serverCert = MockCertificates.Generate(mode, certDir).ServerCertificate;
+            serverCert = MockCertificates.Generate(mode, certDir, tlsDefect).ServerCertificate;
 
         Action<MockRequestLog>? onRequest = quiet ? null : Log;
         MockServer server;
@@ -133,6 +148,8 @@ public static class MockCommand
         }
 
         stderr.WriteLine($"certapi mock listening on {server.BaseUrl}  ({mode})");
+        if (tlsDefect != MockTlsDefect.None)
+            stderr.WriteLine($"serving a deliberately {tlsDefectRaw} certificate — clients are SUPPOSED to refuse this one");
         if (scenario is not null)
             stderr.WriteLine($"serving {scenario.Routes.Count} declared route(s) from {routesFile}" +
                 (replay is not null ? "; anything they miss falls through to the recording" : ""));

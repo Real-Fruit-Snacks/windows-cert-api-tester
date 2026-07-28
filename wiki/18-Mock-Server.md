@@ -126,6 +126,33 @@ rather than hand back a short body as if it were whole; `then: "reset"` tears th
 the way a middlebox or a crash does. Declaring both `respond` and `respondSequence` on one route is
 refused by name — it is a contradiction, not a merge.
 
+## Serving a deliberately broken certificate
+
+Every TLS error this tool reports — expired, wrong host, untrusted — is easy to *read about* and
+hard to *reproduce*. `--tls-mode` makes each one happen on demand:
+
+```powershell
+certapi mock --tls --tls-mode expired --port 8443
+certapi send https://127.0.0.1:8443/api/x          # refuses, as it should
+certapi doctor https://127.0.0.1:8443/api/x        # and doctor explains why
+certapi send https://127.0.0.1:8443/api/x --insecure   # the escape hatch still works
+```
+
+| Mode | The certificate is… |
+|---|---|
+| `valid` (default) | fine — issued by the mock's own certificate authority, for `localhost` |
+| `expired` | issued for `localhost`, but its validity ended an hour ago |
+| `wrong-host` | perfectly valid, and issued for a **different** host, so the name check fails |
+| `self-signed` | its own issuer — nothing chains to the mock's authority at all |
+
+Needs `--tls` or `--mtls`; over plain HTTP there is no certificate to spoil, and asking is a usage
+error rather than a silent no-op. The mock prints a line reminding you that clients are *supposed*
+to refuse this one, so a red result reads as success.
+
+This is what turns the mock into a test bed for the client: `doctor`'s TLS stage, `send`'s
+`ServerCertificateUntrusted`, and the `--insecure` override can all be exercised without a real
+broken endpoint to point at.
+
 ## Modes and certificates
 
 - **`--http`** (default) — plain HTTP; hit it with anything (curl, a browser, the app), no

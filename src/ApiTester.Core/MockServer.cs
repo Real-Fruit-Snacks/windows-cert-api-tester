@@ -17,16 +17,58 @@ public enum MockTlsMode { Http, Https, Mtls }
 /// <summary>Generates the self-signed certificates a TLS/mTLS mock server uses and writes the public
 /// certs (and, for mTLS, a ready-to-use client .pfx) to a folder. Shared by the CLI and the GUI so
 /// both produce identical files.</summary>
+/// <summary>How the mock's own server certificate should misbehave. Every client-side TLS error
+/// this product reports is otherwise only reachable from inside the test suite; these make each of
+/// them reproducible at a terminal, which is what turns the mock into a test bed for `doctor` and
+/// for `send`'s error paths.</summary>
+public enum MockTlsDefect
+{
+    /// <summary>A valid certificate for localhost — the historical behaviour.</summary>
+    None,
+    /// <summary>Validity ended yesterday.</summary>
+    Expired,
+    /// <summary>Valid, but issued for a different host, so the name check fails.</summary>
+    WrongHost,
+    /// <summary>Not issued by the mock's own certificate authority either — a bare self-signed
+    /// leaf, the shape a device or an appliance usually presents.</summary>
+    SelfSigned
+}
+
 public static class MockCertificates
 {
     public sealed record Generated(X509Certificate2 ServerCertificate, IReadOnlyList<string> WrittenFiles);
 
-    public static Generated Generate(MockTlsMode mode, string certDir)
+    public static Generated Generate(MockTlsMode mode, string certDir, MockTlsDefect defect = MockTlsDefect.None)
     {
         Directory.CreateDirectory(certDir);
         using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("certapi mock CA");
-        var serverCert = SelfSignedCertificateFactory.CreateSignedCertificate(
-            "localhost", ca, serverAuth: true, clientAuth: false, dnsNames: new[] { "localhost" });
+        var serverCert = defect switch
+        {
+            // A certificate that WAS valid and has since lapsed — the realistic case, and a
+            // different client message than "not yet valid".
+            //
+            // The window has to sit inside the issuer's: X.509 refuses a leaf that begins before
+            // its certificate authority does, and this authority is minted one day ago. So the
+            // leaf runs from twelve hours ago to one hour ago — comfortably expired, comfortably
+            // inside the authority's own validity.
+            MockTlsDefect.Expired => SelfSignedCertificateFactory.CreateSignedCertificate(
+                "localhost", ca, serverAuth: true, clientAuth: false, dnsNames: new[] { "localhost" },
+                crlDistributionPoint: null,
+                notBefore: DateTimeOffset.UtcNow.AddHours(-12),
+                notAfter: DateTimeOffset.UtcNow.AddHours(-1)),
+
+            // Perfectly valid — for somewhere else. The client is connecting to localhost.
+            MockTlsDefect.WrongHost => SelfSignedCertificateFactory.CreateSignedCertificate(
+                "not-the-host.invalid", ca, serverAuth: true, clientAuth: false,
+                dnsNames: new[] { "not-the-host.invalid" }),
+
+            // Its own issuer: nothing chains to the mock's certificate authority at all.
+            MockTlsDefect.SelfSigned => SelfSignedCertificateFactory.CreateSelfSignedServerCertificate(
+                "localhost", new[] { "localhost" }),
+
+            _ => SelfSignedCertificateFactory.CreateSignedCertificate(
+                "localhost", ca, serverAuth: true, clientAuth: false, dnsNames: new[] { "localhost" })
+        };
 
         var files = new List<string>();
         void Write(string name, byte[] bytes)
