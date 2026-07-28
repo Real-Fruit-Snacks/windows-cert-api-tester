@@ -34,6 +34,23 @@ Four things it can tell you that an ordinary request never will:
 `--json` prints the whole report for scripts; `-q` shows only what failed or carries advice.
 Exit 0 when every stage passed, 1 when one failed.
 
+## "It works in my browser but not here"
+
+Nine times in ten this is the proxy — and specifically a PAC (proxy auto-config) script sending
+the two down different routes. Ask:
+
+```powershell
+certapi proxy https://api.example.com/orders
+```
+
+It prints the machine's configuration (WPAD auto-detection, the configuration-script address, the
+static proxy and its bypass list) and then, for that URL, **two answers**: the one Windows' own
+engine computes by running your PAC script, and the one .NET computes — which is the one certapi
+follows. When those disagree, the command says so, and you have your explanation.
+
+A PAC script is JavaScript, so nothing can predict its answer by reading configuration alone;
+this runs the real engine rather than guessing.
+
 ## Self-test
 
 Before blaming an endpoint, prove your machine can do mTLS at all:

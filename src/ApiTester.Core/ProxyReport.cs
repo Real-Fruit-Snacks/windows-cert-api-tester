@@ -1,0 +1,210 @@
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+
+namespace ApiTester.Core;
+
+/// <summary>How this machine is configured to reach the internet, as Internet Options records it.
+/// Null strings mean the setting is absent, which is not the same as empty.</summary>
+public sealed record ProxySettings(
+    bool AutoDetect, string? AutoConfigUrl, bool ProxyEnabled, string? ProxyServer, string? ProxyOverride)
+{
+    /// <summary>True when nothing at all is configured — the answer for any URL is DIRECT, and
+    /// saying so plainly saves a reader hunting for a proxy that was never there.</summary>
+    public bool IsEmpty =>
+        !AutoDetect && string.IsNullOrWhiteSpace(AutoConfigUrl) &&
+        (!ProxyEnabled || string.IsNullOrWhiteSpace(ProxyServer));
+}
+
+/// <summary>What the machine's own proxy engine answers for one URL, and what .NET would do with
+/// the same URL. Two sources on purpose: they normally agree, and when they do not, that
+/// disagreement IS the finding.</summary>
+public sealed record ProxyDecision(
+    string Url, string? WinHttpProxy, string? WinHttpError, string? DotNetProxy)
+{
+    /// <summary>True when both engines were consulted and named different destinations.</summary>
+    public bool Disagrees =>
+        WinHttpError is null &&
+        !string.Equals(Normalize(WinHttpProxy), Normalize(DotNetProxy), StringComparison.OrdinalIgnoreCase);
+
+    private static string Normalize(string? proxy) =>
+        string.IsNullOrWhiteSpace(proxy) ? "DIRECT" : proxy!.Trim();
+}
+
+/// <summary>Reads the machine's proxy configuration and asks Windows itself which proxy applies to
+/// a given URL. The per-URL answer comes from WinHTTP's own PAC engine
+/// (<c>WinHttpGetProxyForUrl</c>), not a re-implementation: a proxy auto-config script is
+/// JavaScript, and the only honest answer to "which proxy will I actually get" is the one the
+/// operating system computes. Everything is behind seams so the rendering and the
+/// disagreement logic are testable without a PAC server.</summary>
+public static class ProxyIntrospection
+{
+    /// <summary>Internet Options, as the current user has them. Empty settings on a non-Windows
+    /// platform rather than throwing — the caller reports what it got.</summary>
+    public static ProxySettings ReadSettings()
+    {
+        if (!OperatingSystem.IsWindows()) return new ProxySettings(false, null, false, null, null);
+        return ReadSettingsWindows();
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static ProxySettings ReadSettingsWindows()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Internet Settings");
+            if (key is null) return new ProxySettings(false, null, false, null, null);
+
+            // AutoDetect is bit 3 of the first byte of DefaultConnectionSettings — the same flag
+            // the "Automatically detect settings" checkbox sets.
+            bool autoDetect = false;
+            if (key.GetValue("DefaultConnectionSettings") is byte[] { Length: >= 9 } blob)
+                autoDetect = (blob[8] & 0x08) != 0;
+
+            return new ProxySettings(
+                autoDetect,
+                key.GetValue("AutoConfigURL") as string,
+                key.GetValue("ProxyEnable") is int enable && enable != 0,
+                key.GetValue("ProxyServer") as string,
+                key.GetValue("ProxyOverride") as string);
+        }
+        catch (Exception)
+        {
+            // A registry we cannot read contributes nothing; it is never worth failing the command.
+            return new ProxySettings(false, null, false, null, null);
+        }
+    }
+
+    /// <summary>The proxy Windows itself would use for <paramref name="url"/>, evaluated by WinHTTP
+    /// with the machine's configured PAC/WPAD. Returns null with no error for DIRECT.
+    /// <paramref name="winHttp"/> exists so tests can supply an engine without a PAC server.</summary>
+    public static ProxyDecision Decide(
+        string url, ProxySettings settings,
+        Func<string, ProxySettings, (string? Proxy, string? Error)>? winHttp = null,
+        Func<string, string?>? dotNet = null)
+    {
+        var engine = winHttp ?? WinHttpProxyForUrl;
+        var (proxy, error) = engine(url, settings);
+
+        string? net;
+        if (dotNet is not null) net = dotNet(url);
+        else
+        {
+            try
+            {
+                net = Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                    ? System.Net.Http.HttpClient.DefaultProxy.GetProxy(uri)?.ToString()
+                    : null;
+            }
+            catch (Exception ex) { net = "(could not be evaluated: " + ex.Message + ")"; }
+        }
+
+        return new ProxyDecision(url, proxy, error, net);
+    }
+
+    // ---------------------------------------------------------------- WinHTTP
+
+    private const int WinHttpAccessTypeNoProxy = 1;
+    private const uint WinHttpAutoDetectTypeDhcp = 0x00000001;
+    private const uint WinHttpAutoDetectTypeDnsA = 0x00000002;
+    private const uint WinHttpAutoproxyAutoDetect = 0x00000001;
+    private const uint WinHttpAutoproxyConfigUrl = 0x00000002;
+    private const uint WinHttpAutoproxyAllowStatic = 0x00000004;
+    private const uint WinHttpAutoproxyAllowCm = 0x00000008;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinHttpAutoproxyOptions
+    {
+        public uint dwFlags;
+        public uint dwAutoDetectFlags;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpszAutoConfigUrl;
+        public IntPtr lpvReserved;
+        public uint dwReserved;
+        [MarshalAs(UnmanagedType.Bool)] public bool fAutoLogonIfChallenged;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinHttpProxyInfo
+    {
+        public uint dwAccessType;
+        public IntPtr lpszProxy;
+        public IntPtr lpszProxyBypass;
+    }
+
+    [DllImport("winhttp.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr WinHttpOpen(string? pszAgentW, int dwAccessType,
+        string? pszProxyW, string? pszProxyBypassW, int dwFlags);
+
+    [DllImport("winhttp.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WinHttpGetProxyForUrl(IntPtr hSession, string lpcwszUrl,
+        ref WinHttpAutoproxyOptions pAutoProxyOptions, out WinHttpProxyInfo pProxyInfo);
+
+    [DllImport("winhttp.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WinHttpCloseHandle(IntPtr hInternet);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalFree(IntPtr hMem);
+
+    /// <summary>Ask WinHTTP to evaluate this URL against the configured PAC/WPAD. Never throws:
+    /// any failure comes back as the error string, because a diagnostic must not be what breaks.</summary>
+    private static (string? Proxy, string? Error) WinHttpProxyForUrl(string url, ProxySettings settings)
+    {
+        if (!OperatingSystem.IsWindows())
+            return (null, "WinHTTP is only available on Windows.");
+        if (!settings.AutoDetect && string.IsNullOrWhiteSpace(settings.AutoConfigUrl))
+            return (null, null);   // nothing automatic configured: DIRECT, and not an error
+
+        IntPtr session = IntPtr.Zero;
+        try
+        {
+            session = WinHttpOpen("certapi-proxy", WinHttpAccessTypeNoProxy, null, null, 0);
+            if (session == IntPtr.Zero)
+                return (null, $"WinHttpOpen failed ({Marshal.GetLastWin32Error()})");
+
+            var options = new WinHttpAutoproxyOptions
+            {
+                dwFlags = WinHttpAutoproxyAllowStatic | WinHttpAutoproxyAllowCm,
+                // fAutoLogonIfChallenged stays false: a PAC fetch that demands credentials should
+                // be reported, not silently authenticated with the user's identity.
+                fAutoLogonIfChallenged = false
+            };
+            if (settings.AutoDetect)
+            {
+                options.dwFlags |= WinHttpAutoproxyAutoDetect;
+                options.dwAutoDetectFlags = WinHttpAutoDetectTypeDhcp | WinHttpAutoDetectTypeDnsA;
+            }
+            if (!string.IsNullOrWhiteSpace(settings.AutoConfigUrl))
+            {
+                options.dwFlags |= WinHttpAutoproxyConfigUrl;
+                options.lpszAutoConfigUrl = settings.AutoConfigUrl;
+            }
+
+            if (!WinHttpGetProxyForUrl(session, url, ref options, out var info))
+            {
+                int error = Marshal.GetLastWin32Error();
+                return (null, error switch
+                {
+                    12180 => "WPAD found no proxy-configuration script on this network (WINHTTP_ERROR_AUTODETECTION_FAILED).",
+                    12167 => "the proxy-configuration script could not be downloaded (WINHTTP_ERROR_UNABLE_TO_DOWNLOAD_SCRIPT).",
+                    12166 => "the proxy-configuration script has an error in it (WINHTTP_ERROR_BAD_AUTO_PROXY_SCRIPT).",
+                    _ => $"WinHttpGetProxyForUrl failed ({error})"
+                });
+            }
+
+            try
+            {
+                string? proxy = info.lpszProxy == IntPtr.Zero ? null : Marshal.PtrToStringUni(info.lpszProxy);
+                return (string.IsNullOrWhiteSpace(proxy) ? null : proxy, null);
+            }
+            finally
+            {
+                if (info.lpszProxy != IntPtr.Zero) GlobalFree(info.lpszProxy);
+                if (info.lpszProxyBypass != IntPtr.Zero) GlobalFree(info.lpszProxyBypass);
+            }
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+        finally { if (session != IntPtr.Zero) WinHttpCloseHandle(session); }
+    }
+}

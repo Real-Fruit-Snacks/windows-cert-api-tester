@@ -26,6 +26,7 @@ Usage: certapi <command> [options]
 | [`serve <upstream>`](#serve) | Run a local mTLS gateway that forwards to an upstream |
 | [`grpc`](#grpc) | Discover and call a gRPC service (unary, server-, client-, or bidirectional-streaming) |
 | [`doctor <url>`](#doctor) | Diagnose a connection stage by stage — why can't I reach this? |
+| [`proxy [<url>]`](#proxy) | Show the machine's proxy settings, and which proxy a URL gets |
 | [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
 
@@ -392,6 +393,21 @@ the client-certificate path end to end.
 - cert flags, `--json`, `-q`, and the same `--proxy`/`--noproxy`/`--revocation` flags as
   [`send`](#send)
 - Exit 0 when every stage passed, 1 when one failed
+
+## proxy
+
+`certapi proxy [<url>] [--json]` — the machine's proxy configuration, and which proxy a given URL
+actually gets (see [Troubleshooting](23-Troubleshooting.md)).
+
+- With no URL: automatic detection (WPAD — Web Proxy Auto-Discovery), the configuration-script
+  (PAC — proxy auto-config) address, the static proxy, and its bypass list, as Internet Options
+  records them
+- With a URL: the answer from **Windows' own engine** (`WinHttpGetProxyForUrl`, which runs your
+  PAC script the way the operating system does — not a re-implementation) alongside the answer
+  .NET gives, which is what certapi will follow
+- When the two disagree, that is called out: it explains a request that works in a browser but
+  not here, or the reverse
+- Exit 0 whether or not a proxy is configured; 2 on usage
 
 ## serve
 

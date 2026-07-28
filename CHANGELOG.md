@@ -6,7 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.69.0] - 2026-07-28
+## [1.70.0] - 2026-07-28
+
+### Added
+- **`certapi proxy [<url>]` — which proxy do I actually get?** It prints how this machine is
+  configured to reach the internet (WPAD auto-detection, the configuration-script address, the
+  static proxy and its bypass list, as Internet Options records them) and, given a URL, which
+  proxy applies to *that address*.
+  The per-URL answer comes from **Windows' own engine** — `WinHttpGetProxyForUrl`, running your
+  PAC script the way the operating system does. That distinction matters: a proxy auto-config
+  script is a JavaScript program, so nothing can predict its answer by reading settings, and
+  re-implementing it would need a script engine (and a dependency this project does not take).
+  Alongside it the command prints .NET's answer for the same URL, which is the one certapi
+  actually follows — **and says so when the two disagree**, because that disagreement is the
+  explanation for the oldest complaint in corporate networking: "it works in my browser but not
+  in this tool." A WPAD network with no script, an unreachable script, and a script with an
+  error in it are each reported as themselves rather than as a generic failure. `--json` prints
+  the whole report for scripts.
 
 ### Added
 - **`certapi doctor <url>` — the answer to "why can't I reach this?"** It makes the connection one
@@ -1730,7 +1746,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.69.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.70.0...HEAD
+[1.70.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.69.0...v1.70.0
 [1.69.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.68.0...v1.69.0
 [1.68.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.67.0...v1.68.0
 [1.67.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.1...v1.67.0
