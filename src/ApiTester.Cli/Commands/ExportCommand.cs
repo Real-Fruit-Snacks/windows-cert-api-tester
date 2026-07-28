@@ -9,6 +9,8 @@ public static class ExportCommand
         Usage: certapi export openapi [<folder>] -o <file> [--workspace <file>]
                certapi export openapi --from-har <file.har> -o <file> [--host <h>] [--no-template-ids]
                certapi export workspace -o <file> [--workspace <file>] [--include-secrets]
+               certapi export markdown -o <folder> [--workspace <file>] [--into <name>]
+                                       [--index] [--include-secrets]
 
         openapi: writes collections (optionally one root folder) as an OpenAPI 3.0
         document — auth is exported as a security scheme only, never the secrets.
@@ -26,6 +28,17 @@ public static class ExportCommand
           --include-secrets   Keep secrets in the export instead of stripping them; they are
                                written encrypted for the current Windows user, same as a saved
                                workspace, so another user or machine still cannot read them.
+        markdown: writes the workspace as a folder of linked markdown notes — one note per saved
+        request, plus environments and chains, with YAML frontmatter and [[wikilinks]]. An Obsidian
+        vault is just a folder of markdown, so -o can point straight at one; the same output works
+        in Logseq, Foam, a docs repository or a plain wiki. Re-exporting overwrites the same notes
+        in place, so a note you edited by hand is overwritten too — that is why the generated tree
+        lives in its own subfolder.
+          --into <name>       Subfolder to write into (default "certapi")
+          --index             Also write index.md, a table of every request
+          --include-secrets   Keep credential values. Off by default, and the default matters here
+                               more than anywhere else: vaults sync (Obsidian Sync, iCloud,
+                               OneDrive, git), so a note is likely to leave the machine
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -34,6 +47,7 @@ public static class ExportCommand
           certapi export openapi --from-har session.har -o api.json
           certapi export workspace -o workspace.json
           certapi export workspace -o workspace.json --include-secrets
+          certapi export markdown -o C:\Users\me\Vault --index
         """;
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
@@ -43,13 +57,18 @@ public static class ExportCommand
         bool noTemplateIds = args.Flag("--no-template-ids");
         bool includeSecrets = args.Flag("--include-secrets");
         string? workspace = args.Value("--workspace");
+        string? into = args.Value("--into");
+        bool index = args.Flag("--index");
         string? outFile = args.Value("-o", "--output");
         var positionals = args.Positionals();
         if (positionals.Count is < 1 or > 2 || outFile is null) throw new CliUsageException(Help);
         string kind = positionals[0].ToLowerInvariant();
 
-        if (includeSecrets && (fromHar is not null || kind != "workspace"))
-            throw new CliUsageException("--include-secrets only applies to 'export workspace'.");
+        if (includeSecrets && (fromHar is not null || kind is not ("workspace" or "markdown")))
+            throw new CliUsageException(
+                "--include-secrets only applies to 'export workspace' and 'export markdown'.");
+        if ((into is not null || index) && kind != "markdown")
+            throw new CliUsageException("--into and --index only apply to 'export markdown'.");
 
         if (fromHar is not null)
         {
@@ -110,6 +129,33 @@ public static class ExportCommand
                         : $"Workspace exported to {outFile} — it contained no secrets to strip.");
                     CliWorkspace.ReportSaveResult(result, outFile, stderr);
                 }
+                return ExitCodes.Ok;
+            }
+            case "markdown":
+            {
+                if (positionals.Count != 1) throw new CliUsageException(Help);
+                var files = MarkdownExport.Build(state, new MarkdownExportOptions
+                {
+                    Into = into ?? "certapi",
+                    Index = index,
+                    IncludeSecrets = includeSecrets,
+                });
+                if (files.Count == 0)
+                    throw new CliDataException("Nothing to export — no saved requests, environments or chains.");
+
+                foreach (var file in files)
+                {
+                    // The builder returns forward-slash relative paths; the filesystem decides the
+                    // separator, and the folder has to exist before the file can.
+                    string path = Path.Combine(outFile, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    File.WriteAllText(path, file.Content);
+                }
+
+                stderr.WriteLine($"Exported {files.Count} note(s) to {outFile}"
+                    + (includeSecrets
+                        ? " — WITH secrets. Vaults sync, so treat this folder as private."
+                        : " — credential values are redacted; pass --include-secrets to keep them."));
                 return ExitCodes.Ok;
             }
             default: throw new CliUsageException(Help);

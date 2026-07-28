@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.88.0] - 2026-07-28
+
+### Added
+- **`certapi export markdown -o <folder>` turns the workspace into a folder of linked notes** — one
+  per saved request, plus environments and chains, so the APIs a team actually calls become a
+  browsable internal reference instead of a JSON file nobody opens.
+  **An Obsidian vault is just a folder of markdown files**, which is the whole reason this is an
+  export rather than an integration: no plugin to install, no service to authenticate against, and
+  the same output serves Logseq, Foam, a git-backed documentation repository or a plain wiki. `-o`
+  can point straight at a vault. Obsidian's conventions are honoured because they cost nothing —
+  YAML frontmatter (`method`, `host`, `url`, `auth`, `lastStatus`, `lastChecked`) that its
+  properties view and Dataview read, and `[[wikilinks]]` that make the export a graph: a request
+  links to its collection and to any chain using it, a chain links to each step, and a step whose
+  request was deleted says so rather than linking into a void.
+  `--into <name>` names the subfolder (default `certapi`), `--index` adds a table of every request.
+  **Re-exporting overwrites the same notes in place** — names derive filenames, so no
+  `Get orders 2.md` accumulates — and the help states the consequence plainly: a generated note
+  edited by hand is overwritten too, which is why the tree lives in its own subfolder.
+  **Credentials are redacted by default, and that default is firmer here than anywhere else in the
+  product: vaults sync.** Obsidian Sync, iCloud, OneDrive, git — a note is likelier to leave the
+  machine than any other artifact this tool writes. Credential header values, saved auth secrets
+  and variables marked secret are all withheld unless `--include-secrets` is given, which then says
+  so on stderr. The header *name* survives redaction, because "this request sends a bearer token"
+  is exactly what a catalogue should record.
+  The builder is a pure function from workspace to a list of (path, content), so every layout,
+  escaping and redaction rule is tested as data with nothing written to disk. The escaping cases
+  are the ones that quietly corrupt a document, and each has a test: a name illegal as a Windows
+  filename (including real device names like `CON`), the difference between sanitising a *filename*
+  and escaping the same name in *prose* — a request called `Orders / v2 *beta*` must not render as
+  italics — a `|` inside a table cell, two requests sharing a name, and a request body containing a
+  ``` fence, which would otherwise close its own code block and spill the rest of the note into
+  prose. That last one is also how a document that looks redacted quietly stops being one.
+
 ## [1.87.0] - 2026-07-28
 
 ### Added
@@ -2201,7 +2234,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.87.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.88.0...HEAD
+[1.88.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.86.0...v1.87.0
 [1.86.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.1...v1.86.0
 [1.85.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.0...v1.85.1

@@ -132,6 +132,49 @@ workspace uses), so even `--include-secrets` never puts a credential on disk in 
 recipient on another machine or signed in as someone else still can't read them. `certapi` reports on
 stderr what was stripped (or kept).
 
+## Export to markdown notes (Obsidian, Logseq, a docs repo)
+
+Turn the workspace into a folder of linked markdown notes — one per saved request, plus
+environments and chains:
+
+```powershell
+certapi export markdown -o C:\Users\me\Vault --index
+```
+
+**An Obsidian vault is just a folder of markdown files.** There is no plugin to install and no
+service to authenticate against, so `-o` can point straight at a vault — and the same output works
+just as well in Logseq, Foam, a git-backed documentation repository, or a plain wiki.
+
+Each request note carries YAML (YAML Ain't Markup Language) frontmatter (`method`, `host`, `url`,
+`auth`, `lastStatus`, `lastChecked`) that Obsidian's properties view and Dataview both read, then
+the request itself: headers, body, assertions and captures. Notes link to each other with
+`[[wikilinks]]` — a request links to its collection and to any chain that uses it, and a chain
+links to each of its steps — so the export is a browsable graph rather than a pile of files.
+
+```
+Vault/
+  certapi/                    <- --into, default "certapi"
+    index.md                  <- --index
+    Orders/
+      Get orders.md
+    environments/
+      Staging.md
+    chains/
+      Login then fetch.md
+```
+
+**Secrets are redacted by default, and the default matters more here than anywhere else.** Vaults
+sync — Obsidian Sync, iCloud, OneDrive, git — so a note written into one is more likely to leave
+your machine than any other file this tool writes. Credential header values, saved auth secrets and
+variables marked secret are all replaced with *(redacted)*; the header *name* stays, because "this
+request sends a bearer token" is exactly what a catalogue should record. `--include-secrets`
+overrides it, and says so on stderr.
+
+**Re-exporting overwrites the same notes in place** — filenames are derived from names, so you get
+`Get orders.md` again rather than `Get orders 2.md`. That also means a generated note you edited by
+hand is overwritten, which is why the tree lives in its own subfolder; change it with
+`--into <name>` if `certapi` clashes with something in your vault.
+
 ## Round-tripping with the app
 
 Imports land in the live workspace (or a `--workspace` file) that the app reads, so anything you

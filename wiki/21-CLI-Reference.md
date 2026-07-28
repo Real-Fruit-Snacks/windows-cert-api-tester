@@ -385,6 +385,11 @@ the client-certificate path end to end.
   commented placeholder — and imported schemas are named in a warning rather than fetched (see
   [Import and Export](17-Import-and-Export.md))
 - `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
+- `certapi export markdown -o <folder> [--workspace <file>] [--into <name>] [--index]
+  [--include-secrets]` — the workspace as a folder of linked markdown notes, one per saved
+  request plus environments and chains. Points straight at an Obsidian vault (a vault is just a
+  folder of markdown), and works the same for Logseq, Foam or a docs repository. Credential
+  values are redacted by default — vaults sync, so a note is likely to leave the machine.
 - `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
   tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`
   keeps them, written encrypted for the current Windows user.
