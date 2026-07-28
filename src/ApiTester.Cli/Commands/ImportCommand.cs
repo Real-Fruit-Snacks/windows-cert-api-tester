@@ -9,6 +9,7 @@ public static class ImportCommand
                certapi import openapi <file>        [--into <folder>] [--workspace <file>]
                certapi import har <file>             [--into <folder>] [--workspace <file>]
                certapi import postman <file>         [--into <folder>] [--workspace <file>]
+               certapi import insomnia <file>        [--into <folder>] [--workspace <file>]
 
         Adds requests to your collections — the live GUI state by default, or a workspace
         file. --into names a root-level folder (created if needed).
@@ -20,6 +21,13 @@ public static class ImportCommand
         an environment named after the collection (Postman's "secret" type stays secret here,
         encrypted at rest). A file form part imports disabled, since its path came from another
         machine. Anything that cannot carry across is named in a warning, never dropped silently.
+
+        insomnia: reads an Insomnia v4 export (Export Data -> Insomnia v4 (JSON)): folders,
+        methods, URLs, query and header rows (disabled ones stay disabled), text and form bodies,
+        and bearer/basic auth. Insomnia's template syntax is translated -- its {{ _.name }} becomes
+        this product's {{name}} -- and its environments come across as environments. A tag
+        template ({% ... %}) is a small program rather than a value and has no equivalent here, so
+        it is left in the text and named in a warning.
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -97,6 +105,27 @@ public static class ImportCommand
                 if (result.Variables is { } env)
                 {
                     // Merged by name, not duplicated: re-importing the same collection updates
+                    // the environment it created rather than growing a second copy.
+                    var existing = state.Environments.FirstOrDefault(
+                        e => e.Name.Equals(env.Name, StringComparison.OrdinalIgnoreCase));
+                    if (existing is not null) state.Environments.Remove(existing);
+                    state.Environments.Add(env);
+                    stderr.WriteLine($"Imported environment '{env.Name}' ({env.Variables.Count} variable{(env.Variables.Count == 1 ? "" : "s")}).");
+                }
+                foreach (var warning in result.Warnings) stderr.WriteLine("warning: " + warning);
+                added = CountRequests(result.Root); what = result.Root.Name;
+                break;
+            }
+            case "insomnia":
+            {
+                if (!File.Exists(positionals[1])) throw new CliDataException($"File not found: {positionals[1]}");
+                InsomniaImportResult result;
+                try { result = InsomniaImport.Parse(File.ReadAllText(positionals[1])); }
+                catch (FormatException ex) { throw new CliDataException($"Could not parse '{positionals[1]}': {ex.Message}"); }
+                add(result.Root);
+                foreach (var env in result.Environments)
+                {
+                    // Merged by name, exactly as the Postman import does, so re-importing updates
                     // the environment it created rather than growing a second copy.
                     var existing = state.Environments.FirstOrDefault(
                         e => e.Name.Equals(env.Name, StringComparison.OrdinalIgnoreCase));

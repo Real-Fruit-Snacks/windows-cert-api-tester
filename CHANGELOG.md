@@ -6,7 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.76.0] - 2026-07-28
+## [1.77.0] - 2026-07-28
+
+### Added
+- **`certapi import insomnia <file>` reads an Insomnia v4 export** — the other format teams
+  actually have, after Postman. Insomnia writes a *flat* list of resources that point at their
+  parents by identifier rather than a nested tree, and in no guaranteed order, so the folder tree
+  is rebuilt from those links: a request whose folder appears later in the file lands in the right
+  place anyway. Methods, URLs, query and header rows (disabled ones staying disabled), text and
+  form bodies by media type, multipart parts, and bearer/basic authentication all map across, and
+  Insomnia's environments become environments here.
+  The interesting part is templates, because the two products spell variables differently:
+  **`{{ _.name }}` is translated to `{{name}}`** everywhere it appears — URL, query, headers, body,
+  and auth — so imported requests work immediately. A **tag template** (`{% uuid 'v4' %}`,
+  `{% response … %}`) is a small program rather than a value and has no equivalent here; it is left
+  in the text exactly as written and named in a warning at import time, which surfaces the gap when
+  the operator can act on it instead of at send time. An authentication block Insomnia has switched
+  off is ignored rather than applied, and a file part imports disabled — its path came from someone
+  else's machine.
 
 ### Added
 - **`{{env:NAME}}` reads a variable from the process environment**, so a credential can reach a
@@ -1854,7 +1871,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.76.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.77.0...HEAD
+[1.77.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.76.0...v1.77.0
 [1.76.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.75.0...v1.76.0
 [1.75.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.74.0...v1.75.0
 [1.74.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.73.0...v1.74.0

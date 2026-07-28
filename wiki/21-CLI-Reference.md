@@ -373,6 +373,11 @@ the client-certificate path end to end.
   collection-level, and collection variables as an environment (Postman's "secret" type stays
   secret here). `{{variables}}` share syntax and import unchanged; anything unsupported is a named
   warning, never a silent drop (see [Import and Export](17-Import-and-Export.md))
+- `certapi import insomnia <file> [--into <folder>] [--workspace <file>]` — an Insomnia v4 export:
+  folders rebuilt from the flat resource list, disabled rows preserved, text/form bodies, bearer
+  and basic auth, and environments. `{{ _.name }}` is translated to `{{name}}`; a `{% tag %}`
+  template has no equivalent and is left in place with a warning (see
+  [Import and Export](17-Import-and-Export.md))
 - `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
 - `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
   tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`

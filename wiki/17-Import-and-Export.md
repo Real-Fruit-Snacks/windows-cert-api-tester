@@ -48,6 +48,26 @@ part imports disabled (its path came from someone else's machine — point it so
 sending), and anything that cannot carry across faithfully is a **named warning** on stderr, never
 a silent drop.
 
+## Import an Insomnia export
+
+```powershell
+certapi import insomnia .\Insomnia_2026-07-28.json
+certapi import insomnia .\export.json --into "orders" --workspace .\suite.json
+```
+
+Use Insomnia's **Export Data → Insomnia v4 (JSON)**. Folders, methods, URLs, query and header rows
+come across with disabled rows staying disabled; text and form bodies map by their media type; and
+bearer and basic authentication map directly (a block Insomnia has switched off is ignored rather
+than applied). Insomnia's environments become environments here.
+
+Two things about templates are worth knowing, because the two products spell variables differently:
+
+- **`{{ _.name }}` is translated to `{{name}}`** — Insomnia's variable syntax becomes this
+  product's, everywhere it appears: URL, query, headers, body, and auth.
+- **A tag template — `{% uuid 'v4' %}`, `{% response … %}` — is a small program, not a value**, and
+  has no equivalent here. It is left in the text exactly as written and named in a warning at
+  import time, which is more useful than dropping it silently and discovering the gap at send time.
+
 ## Export as OpenAPI
 
 Export your collections (or a folder) as an OpenAPI document — useful for sharing the shape of an
