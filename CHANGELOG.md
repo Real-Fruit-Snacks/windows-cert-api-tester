@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.92.0] - 2026-07-28
+
+### Security
+- **A saved proxy password was written to disk in the clear, and survived an export that claimed to
+  have stripped it.** It lives on a request's own `Transport` rather than beside `AuthSecret`, and
+  that is exactly how it escaped both halves of the secret handling — every other credential was
+  encrypted at rest and removed on export, and this one was neither.
+  Two consequences, both fixed: `state.json` held it as plaintext where a captured token, an auth
+  secret and a secret variable were all encrypted for the current Windows user; and
+  `certapi export workspace` stripped the auth secrets, **reported on stderr what it had
+  stripped**, and left the proxy password in the file — so a workspace emailed to a teammate
+  carried a corporate proxy credential while its author had been told it was sanitised. Worse in
+  the case where it was the *only* secret present: the summary said the workspace "contained no
+  secrets to strip".
+  It is now encrypted at rest and stripped on export in all three places it can live — an open tab,
+  a history entry, and a saved request — and counted in the summary. The rest of the proxy settings
+  (URL, user, mode) survive stripping, because they are configuration rather than credentials and
+  removing them would break the request for whoever imports it.
+  A workspace written before this change holds the password as plaintext, which does not look
+  encrypted, so loading leaves it exactly as it is rather than dropping it: losing a user's setting
+  to a migration would be a worse bug than the one being fixed.
+
+### Fixed
+- **A text response that changed without changing size said so uselessly.** `<status>OK</status>`
+  becoming `<status>NO</status>` alters neither the byte count nor the line count, so the diff
+  printed the identical summary on both sides — `1 lines, 19 bytes` → `1 lines, 19 bytes` — while
+  claiming a change. The verdict was always right, so `--diff-fail` still failed the build; the
+  message simply told the reader nothing. It now says the content differs **and names the line they
+  first diverge on**, which text can do and the byte comparison cannot. This is squarely the XML and
+  SOAP case, which this product imports contracts for.
+
 ## [1.91.2] - 2026-07-28
 
 ### Fixed
@@ -2428,7 +2459,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.2...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.0...HEAD
+[1.92.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.2...v1.92.0
 [1.91.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.1...v1.91.2
 [1.91.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.0...v1.91.1
 [1.91.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.2...v1.91.0

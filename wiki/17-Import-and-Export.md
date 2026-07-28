@@ -118,8 +118,8 @@ certapi export workspace -o team-setup.json
 Hand it to a teammate (or check it into source control) and they import it, or point their tools at it
 with `--workspace team-setup.json`.
 
-Secrets — captured tokens and cookies, a saved request's auth secret, and any variable marked
-**secret** — are **stripped by default**, since an exported workspace is a file people end up
+Secrets — captured tokens and cookies, a saved request's auth secret, **a saved proxy password**,
+and any variable marked **secret** — are **stripped by default**, since an exported workspace is a file people end up
 emailing to each other. The rest of the export is unaffected: a secret variable keeps its key and its
 flag, just not its value. Add `--include-secrets` to keep them instead:
 

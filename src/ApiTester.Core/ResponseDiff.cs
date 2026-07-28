@@ -203,12 +203,33 @@ public static class ResponseDiff
         string afterText = Encoding.UTF8.GetString(after);
         if (string.Equals(beforeText, afterText, StringComparison.Ordinal)) return Array.Empty<BodyDiff>();
 
-        return new[]
+        string beforeSummary = $"{LineCount(beforeText)} lines, {before.Length} bytes";
+        string afterSummary = $"{LineCount(afterText)} lines, {after.Length} bytes";
+
+        // A change that alters neither the line count nor the byte count — `<status>OK</status>`
+        // becoming `<status>NO</status>` — would otherwise print the identical summary on both
+        // sides: a diff line that appears to show no difference while claiming one. The byte
+        // comparison already says "content differs" for exactly this case; text can do better,
+        // because it can say where.
+        if (string.Equals(beforeSummary, afterSummary, StringComparison.Ordinal))
+            afterSummary += $", content differs from line {FirstDifferingLine(beforeText, afterText)}";
+
+        return new[] { new BodyDiff("", DiffKind.Changed, beforeSummary, afterSummary) };
+    }
+
+    /// <summary>The 1-based line on which two differing texts first diverge. When one is a prefix of
+    /// the other they never diverge character by character, so the answer is the line where the
+    /// shorter one runs out — which is where a reader should start looking.</summary>
+    private static int FirstDifferingLine(string before, string after)
+    {
+        int limit = Math.Min(before.Length, after.Length);
+        int line = 1;
+        for (int i = 0; i < limit; i++)
         {
-            new BodyDiff("", DiffKind.Changed,
-                $"{LineCount(beforeText)} lines, {before.Length} bytes",
-                $"{LineCount(afterText)} lines, {after.Length} bytes")
-        };
+            if (before[i] != after[i]) return line;
+            if (before[i] == '\n') line++;
+        }
+        return line;
     }
 
     /// <summary>Split on '\n' only, so CRLF and LF bodies count the same; an empty body is 0 lines

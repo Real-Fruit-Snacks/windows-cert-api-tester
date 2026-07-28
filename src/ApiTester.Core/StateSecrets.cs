@@ -36,11 +36,17 @@ public static class StateSecrets
             c.Value = ProtectValue(c.Value, protector, ref allEncrypted);
 
         foreach (var tab in state.Tabs)
+        {
             tab.AuthSecret = ProtectValueOptional(tab.AuthSecret, protector, ref allEncrypted);
+            tab.Transport.ProxyPassword =
+                ProtectValueOptional(tab.Transport.ProxyPassword, protector, ref allEncrypted);
+        }
 
         foreach (var h in state.History)
         {
             h.AuthSecret = ProtectValueOptional(h.AuthSecret, protector, ref allEncrypted);
+            h.Transport.ProxyPassword =
+                ProtectValueOptional(h.Transport.ProxyPassword, protector, ref allEncrypted);
             if (h.Response is { } resp) resp.Body = ProtectBody(resp.Body, protector, ref allEncrypted);
         }
 
@@ -56,7 +62,12 @@ public static class StateSecrets
 
         static void ProtectNode(CollectionNode node, ISecretProtector p, ref bool allEncrypted)
         {
-            if (node.Request is { } r) r.AuthSecret = ProtectValueOptional(r.AuthSecret, p, ref allEncrypted);
+            if (node.Request is { } r)
+            {
+                r.AuthSecret = ProtectValueOptional(r.AuthSecret, p, ref allEncrypted);
+                r.Transport.ProxyPassword =
+                    ProtectValueOptional(r.Transport.ProxyPassword, p, ref allEncrypted);
+            }
             if (node.KnownGood is { } kg) node.KnownGood = kg with { Body = ProtectBody(kg.Body, p, ref allEncrypted) };
             foreach (var child in node.Children) ProtectNode(child, p, ref allEncrypted);
         }
@@ -195,6 +206,19 @@ public static class StateSecrets
         for (int i = 0; i < state.Tabs.Count; i++)
         {
             var tab = state.Tabs[i];
+
+            if (SecretProtection.LooksProtected(tab.Transport.ProxyPassword))
+            {
+                var proxyPlain = protector.Unprotect(tab.Transport.ProxyPassword!);
+                if (proxyPlain is null)
+                {
+                    tab.Transport.ProxyPassword = null;
+                    warnings.Add($"Could not decrypt the proxy password on open tab {i + 1} ({tab.Method} {tab.Path}) — it was left empty.");
+                    anyDropped = true;
+                }
+                else tab.Transport.ProxyPassword = proxyPlain;
+            }
+
             if (!SecretProtection.LooksProtected(tab.AuthSecret)) continue;
             var plain = protector.Unprotect(tab.AuthSecret!);
             if (plain is null)
@@ -222,6 +246,18 @@ public static class StateSecrets
                     warnings.Add($"Could not decrypt the stored response body on history entry {i + 1} ({h.Method} {h.EffectiveUrl}) — it was left empty.");
                     anyDropped = true;
                 }
+            }
+
+            if (SecretProtection.LooksProtected(h.Transport.ProxyPassword))
+            {
+                var proxyPlain = protector.Unprotect(h.Transport.ProxyPassword!);
+                if (proxyPlain is null)
+                {
+                    h.Transport.ProxyPassword = null;
+                    warnings.Add($"Could not decrypt the proxy password on history entry {i + 1} ({h.Method} {h.EffectiveUrl}) — it was left empty.");
+                    anyDropped = true;
+                }
+                else h.Transport.ProxyPassword = proxyPlain;
             }
 
             if (!SecretProtection.LooksProtected(h.AuthSecret)) continue;
@@ -264,6 +300,18 @@ public static class StateSecrets
 
         static void UnprotectNode(CollectionNode node, ISecretProtector p, string path, List<string> warnings, ref bool anyDropped)
         {
+            if (node.Request is { } pr && SecretProtection.LooksProtected(pr.Transport.ProxyPassword))
+            {
+                var proxyPlain = p.Unprotect(pr.Transport.ProxyPassword!);
+                if (proxyPlain is null)
+                {
+                    pr.Transport.ProxyPassword = null;
+                    warnings.Add($"Could not decrypt the proxy password on saved request \"{path}\" — it was left empty.");
+                    anyDropped = true;
+                }
+                else pr.Transport.ProxyPassword = proxyPlain;
+            }
+
             if (node.Request is { } r && SecretProtection.LooksProtected(r.AuthSecret))
             {
                 var plain = p.Unprotect(r.AuthSecret!);
@@ -305,13 +353,22 @@ public static class StateSecrets
         state.SessionCookies.Clear();
 
         int authSecrets = 0;
+        // A proxy password is a credential like any other, and it lives on the saved request's own
+        // transport rather than beside the auth secret — which is exactly why it was missed here.
+        int proxyPasswords = 0;
         foreach (var tab in state.Tabs)
+        {
             if (!string.IsNullOrEmpty(tab.AuthSecret)) { tab.AuthSecret = null; authSecrets++; }
+            if (!string.IsNullOrEmpty(tab.Transport.ProxyPassword))
+            { tab.Transport.ProxyPassword = null; proxyPasswords++; }
+        }
 
         int bodies = 0;
         foreach (var h in state.History)
         {
             if (!string.IsNullOrEmpty(h.AuthSecret)) { h.AuthSecret = null; authSecrets++; }
+            if (!string.IsNullOrEmpty(h.Transport.ProxyPassword))
+            { h.Transport.ProxyPassword = null; proxyPasswords++; }
             // History is a record of what happened: an entry that keeps its method, URL, status and
             // headers but not its body is still a useful record, exactly as a tab that keeps
             // everything but its auth secret is still a useful tab. Every other field is untouched.
@@ -323,19 +380,21 @@ public static class StateSecrets
         }
 
         foreach (var root in state.Collections)
-            authSecrets += StripNode(root, ref bodies);
+            authSecrets += StripNode(root, ref bodies, ref proxyPasswords);
 
         int variables = 0;
         foreach (var env in state.Environments)
             foreach (var v in env.Variables)
                 if (v.Secret && !string.IsNullOrEmpty(v.Value)) { v.Value = ""; variables++; }
 
-        return new SecretStripSummary(tokens, cookies, authSecrets, variables, bodies);
+        return new SecretStripSummary(tokens, cookies, authSecrets, variables, bodies, proxyPasswords);
 
-        static int StripNode(CollectionNode node, ref int bodies)
+        static int StripNode(CollectionNode node, ref int bodies, ref int proxyPasswords)
         {
             int count = 0;
             if (node.Request is { } r && !string.IsNullOrEmpty(r.AuthSecret)) { r.AuthSecret = null; count++; }
+            if (node.Request is { } pr && !string.IsNullOrEmpty(pr.Transport.ProxyPassword))
+            { pr.Transport.ProxyPassword = null; proxyPasswords++; }
             // Unlike a history body, a known-good snapshot IS the diff baseline: emptying its body
             // rather than removing it would make every later `certapi send --diff known-good` report
             // a spurious whole-body difference — it would lie, the same way CollectionNode.RecordResult
@@ -346,7 +405,7 @@ public static class StateSecrets
                 node.KnownGood = null;
                 bodies++;
             }
-            foreach (var child in node.Children) count += StripNode(child, ref bodies);
+            foreach (var child in node.Children) count += StripNode(child, ref bodies, ref proxyPasswords);
             return count;
         }
     }
@@ -354,10 +413,12 @@ public static class StateSecrets
 
 /// <summary>How many secrets and stored response bodies a strip removed, so the caller can say what
 /// left the building.</summary>
-public sealed record SecretStripSummary(int Tokens, int Cookies, int AuthSecrets, int Variables, int ResponseBodies)
+public sealed record SecretStripSummary(int Tokens, int Cookies, int AuthSecrets, int Variables,
+                                       int ResponseBodies, int ProxyPasswords = 0)
 {
     /// <summary>True when anything at all was stripped.</summary>
-    public bool Any => Tokens > 0 || Cookies > 0 || AuthSecrets > 0 || Variables > 0 || ResponseBodies > 0;
+    public bool Any => Tokens > 0 || Cookies > 0 || AuthSecrets > 0 || Variables > 0
+                    || ResponseBodies > 0 || ProxyPasswords > 0;
 
     /// <summary>A human list of what went, e.g. "2 captured tokens, 1 saved auth secret".
     /// Empty string when nothing was stripped.</summary>
@@ -369,6 +430,7 @@ public sealed record SecretStripSummary(int Tokens, int Cookies, int AuthSecrets
         if (AuthSecrets > 0) parts.Add(Pluralize(AuthSecrets, "saved auth secret"));
         if (Variables > 0) parts.Add(Pluralize(Variables, "secret variable"));
         if (ResponseBodies > 0) parts.Add(Pluralize(ResponseBodies, "stored response body", "stored response bodies"));
+        if (ProxyPasswords > 0) parts.Add(Pluralize(ProxyPasswords, "saved proxy password"));
         return string.Join(", ", parts);
 
         static string Pluralize(int count, string noun, string? plural = null) =>

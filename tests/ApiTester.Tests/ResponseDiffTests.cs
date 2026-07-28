@@ -16,6 +16,61 @@ public class ResponseDiffTests
         new(status, Array.Empty<KeyValuePair<string, string>>(), body, "application/octet-stream");
 
     [Fact]
+    public void A_text_change_that_alters_neither_size_nor_line_count_still_says_something()
+    {
+        // The realistic case: an XML or SOAP body where one value becomes another of the same
+        // length. Both summaries used to render identically — "1 lines, 19 bytes" on both sides —
+        // so the diff line claimed a change while appearing to show none.
+        var before = Snap(200, "<status>OK</status>", "application/xml");
+        var after = Snap(200, "<status>NO</status>", "application/xml");
+
+        var result = ResponseDiff.Compare(before, after);
+
+        Assert.False(result.Identical);
+        var diff = Assert.Single(result.Body);
+        Assert.NotEqual(diff.Before, diff.After);          // the property that was broken
+        Assert.Contains("content differs", diff.After!);
+        Assert.Contains("line 1", diff.After!);
+    }
+
+    [Fact]
+    public void That_summary_names_the_line_the_texts_first_diverge_on()
+    {
+        var before = Snap(200, "alpha\nbeta\ngamma", "text/plain");
+        var after = Snap(200, "alpha\nBETA\ngamma", "text/plain");
+
+        var diff = Assert.Single(ResponseDiff.Compare(before, after).Body);
+
+        Assert.Contains("line 2", diff.After!);
+    }
+
+    [Fact]
+    public void A_text_change_that_does_alter_the_counts_keeps_the_plain_summary()
+    {
+        // The counts already differ, so they carry the information on their own; appending
+        // "content differs" there would be noise.
+        var before = Snap(200, "one", "text/plain");
+        var after = Snap(200, "one\ntwo", "text/plain");
+
+        var diff = Assert.Single(ResponseDiff.Compare(before, after).Body);
+
+        Assert.DoesNotContain("content differs", diff.After!);
+        Assert.NotEqual(diff.Before, diff.After);
+    }
+
+    [Fact]
+    public void One_text_being_a_prefix_of_the_other_still_reports_a_line()
+    {
+        // The two never diverge character by character, so "first differing character" has no
+        // answer; the honest one is the line where the shorter body ran out.
+        var before = Snap(200, "same\nsame", "text/plain");
+        var after = Snap(200, "same\nsame\nextra", "text/plain");
+
+        var diff = Assert.Single(ResponseDiff.Compare(before, after).Body);
+        Assert.NotEqual(diff.Before, diff.After);
+    }
+
+    [Fact]
     public void Identical_responses_report_no_differences()
     {
         var a = Snap(200, """{"id":1}""", headers: ("Content-Type", "application/json"));

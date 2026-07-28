@@ -744,8 +744,8 @@ a security scheme description only, never the secrets.**
 ### workspace
 
 Writes the whole workspace as a portable JSON file, with window geometry stripped. Secrets —
-captured tokens and cookies, saved auth values, secret environment variables, and stored response
-bodies — are **stripped by default**, since an exported workspace is a file people email to each
+captured tokens and cookies, saved auth values, saved proxy passwords, secret environment variables,
+and stored response bodies — are **stripped by default**, since an exported workspace is a file people email to each
 other. `--include-secrets` keeps them, written **encrypted for the current Windows user**, so even
 then a recipient on another machine cannot read them. The command reports on stderr what was
 stripped or kept.
