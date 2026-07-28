@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.92.1] - 2026-07-28
+
+### Security
+- **A password written into a URL reached the terminal, the JSON output, and the investigation
+  note.** `https://svc:hunter2@api.internal/orders` and `--proxy http://svc:hunter2@proxy.corp:8080`
+  are both ordinary ways to pass a credential, and both were echoed back verbatim: in `doctor`'s
+  header line and its proxy stage, in `doctor --json`, and — worst — in the markdown note that
+  `--md-vault` files into a folder built to **sync**. The same note is the one the documentation
+  tells you to paste into a ticket.
+  This is the query-string leak fixed in 1.89.0, in the one form that redactor missed. The rule now
+  masks the password in a URL's `user:password@host` prefix wherever a URL is shown, and **keeps the
+  username** — knowing a request authenticates as `svc` is useful, and only the secret half has to
+  go. A username with no password is left alone, because there is nothing secret to hide and
+  blanking it would lose real information.
+  Two details worth recording. The redaction is deliberately string surgery rather than `Uri`
+  parsing, because it runs over values a user typed — including ones that will not parse, which must
+  still be redacted rather than passed through whole. And the shortcut that decided whether a line
+  needed redacting at all was "does it contain a `?`", which was correct when a query string was the
+  only way a credential rode in a URL and silently wrong once this form counted; it now asks whether
+  the line contains a URL.
+
 ## [1.92.0] - 2026-07-28
 
 ### Security
@@ -2459,7 +2480,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.1...HEAD
+[1.92.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.0...v1.92.1
 [1.92.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.2...v1.92.0
 [1.91.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.1...v1.91.2
 [1.91.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.0...v1.91.1

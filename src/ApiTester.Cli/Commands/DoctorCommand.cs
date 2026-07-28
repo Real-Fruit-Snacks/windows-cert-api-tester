@@ -102,7 +102,9 @@ public static class DoctorCommand
 
     private static void Render(DoctorReport report, TextWriter stdout, bool quiet)
     {
-        stdout.WriteLine($"certapi doctor · {report.Url}");
+        // The URL is echoed back, and it may carry `user:password@` — which is printed to a
+        // terminal, pasted into tickets, and serialised into --json.
+        stdout.WriteLine($"certapi doctor · {MarkdownSecrets.RedactUrl(report.Url)}");
         stdout.WriteLine();
         foreach (var stage in report.Stages)
         {
@@ -156,7 +158,7 @@ public static class DoctorCommand
     private static string ToJson(DoctorReport report) =>
         JsonSerializer.Serialize(new
         {
-            url = report.Url,
+            url = MarkdownSecrets.RedactUrl(report.Url),
             ok = report.Ok,
             failedStage = report.FirstFailure?.Name,
             stages = report.Stages.Select(s => new

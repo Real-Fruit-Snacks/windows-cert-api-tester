@@ -140,6 +140,34 @@ public class DoctorMarkdownTests
         Assert.Contains("page=1", note);           // a harmless parameter is left alone
     }
 
+    [Theory]
+    [InlineData("https://svc:hunter2@api.internal/health")]
+    [InlineData("https://svc:hunter2@api.internal/health?page=1")]
+    public void A_password_in_the_url_itself_does_not_reach_the_note(string url)
+    {
+        // The oldest way to put a credential in a URL, and the easiest to miss because it does not
+        // look like a parameter. This note is filed into a folder that syncs.
+        var report = new DoctorReport(url, new[]
+        {
+            DoctorStage.Fail("tls", $"handshake failed for {url}", TimeSpan.FromMilliseconds(10)),
+        });
+
+        string note = DoctorMarkdown.Render(report, When);
+
+        Assert.DoesNotContain("hunter2", note);
+        Assert.Contains("svc:REDACTED@", note);      // the username survives, as a header name does
+        Assert.Contains("api.internal", note);
+    }
+
+    [Fact]
+    public void A_username_with_no_password_is_left_alone()
+    {
+        // There is no secret half to hide, and blanking it would lose real information.
+        var report = new DoctorReport("https://svc@api.internal/health", Array.Empty<DoctorStage>());
+
+        Assert.Contains("svc@api.internal", DoctorMarkdown.Render(report, When));
+    }
+
     [Fact]
     public void Include_secrets_keeps_the_value()
     {
@@ -201,6 +229,19 @@ public class MarkdownSecretsTests
         // people to pass --include-secrets reflexively — worse than the risk it addresses.
         Assert.Equal("https://x/a?keyword=abc", MarkdownSecrets.RedactUrl("https://x/a?keyword=abc"));
         Assert.Equal("https://x/a?tokenCount=3", MarkdownSecrets.RedactUrl("https://x/a?tokenCount=3"));
+    }
+
+    [Theory]
+    [InlineData("https://svc:hunter2@host/x", "https://svc:REDACTED@host/x")]
+    [InlineData("http://svc:hunter2@proxy.corp:8080", "http://svc:REDACTED@proxy.corp:8080")]
+    [InlineData("https://svc@host/x", "https://svc@host/x")]                 // no password
+    [InlineData("https://host/x", "https://host/x")]                          // no userinfo
+    [InlineData("https://svc:hunter2@host/x?token=t", "https://svc:REDACTED@host/x?token=REDACTED")]
+    [InlineData("not a url", "not a url")]
+    [InlineData("https://host/path@with@ats", "https://host/path@with@ats")]  // '@' after the authority
+    public void A_password_in_the_authority_is_masked(string url, string expected)
+    {
+        Assert.Equal(expected, MarkdownSecrets.RedactUrl(url));
     }
 
     [Fact]

@@ -131,8 +131,10 @@ a catalogue is current state, an investigation is history, and a vault that quie
 week's failure with this week's would destroy the record exactly as a pattern became visible.
 
 `--md-open` opens the note afterwards; if nothing is registered for `.md` it prints the path
-instead of failing. Credential-looking query values (`?api_key=…`, `?token=…`) are redacted, since
-vaults sync — `--include-secrets` keeps them. If the note cannot be written the command says so and
+instead of failing. Credentials in a URL are redacted, since vaults sync — both query values
+(`?api_key=…`, `?token=…`) and a password in the address itself
+(`https://svc:…@api.internal`, and the same in a `--proxy` URL). The **username is kept**, as a
+header name is; only the secret half goes. `--include-secrets` keeps everything. If the note cannot be written the command says so and
 still reports the diagnosis: the answer you asked for is not worth losing to a read-only folder.
 
 ## Seeing the actual bytes: `--wire`

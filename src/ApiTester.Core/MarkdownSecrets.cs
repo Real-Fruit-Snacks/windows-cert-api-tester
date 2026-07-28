@@ -36,6 +36,8 @@ public static class MarkdownSecrets
     {
         if (includeSecrets || string.IsNullOrEmpty(url)) return url;
 
+        url = RedactUserInfo(url);
+
         int mark = url.IndexOf('?');
         if (mark < 0 || mark == url.Length - 1) return url;
 
@@ -64,6 +66,35 @@ public static class MarkdownSecrets
 
     private static bool IsSecretParameter(string name) =>
         SecretParameters.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Mask the password in a URL's <c>user:password@host</c> prefix.
+    ///
+    /// <para>This is the oldest way to put a credential in a URL and the easiest to forget, because
+    /// it does not look like a parameter — <c>https://svc:hunter2@api.internal/orders</c> and
+    /// <c>--proxy http://svc:hunter2@proxy.corp:8080</c> both carry one, and both get printed back
+    /// in reports. The username is kept for the same reason a header name is: knowing the request
+    /// authenticates as <c>svc</c> is useful, and only the secret half has to go.</para>
+    ///
+    /// <para>Deliberately string surgery rather than <see cref="Uri"/> parsing: this runs over
+    /// values a user typed, including ones that will not parse, and a URL that cannot be parsed must
+    /// still be redacted rather than passed through whole.</para></summary>
+    private static string RedactUserInfo(string url)
+    {
+        int schemeEnd = url.IndexOf("://", StringComparison.Ordinal);
+        if (schemeEnd < 0) return url;
+
+        int authorityStart = schemeEnd + 3;
+        // The userinfo, if any, ends at the first '@' before the authority does.
+        int authorityEnd = url.IndexOfAny(new[] { '/', '?', '#' }, authorityStart);
+        if (authorityEnd < 0) authorityEnd = url.Length;
+
+        int at = url.LastIndexOf('@', authorityEnd - 1, authorityEnd - authorityStart);
+        if (at < 0) return url;
+
+        int colon = url.IndexOf(':', authorityStart, at - authorityStart);
+        // No colon means a username with no password — nothing secret to hide.
+        return colon < 0 ? url : string.Concat(url.AsSpan(0, colon + 1), "REDACTED", url.AsSpan(at));
+    }
 
     /// <summary>Whether a header's value is a credential. The name always survives — that a request
     /// sends an <c>Authorization</c> header is exactly what a catalogue should record.</summary>

@@ -114,7 +114,10 @@ public static class DoctorMarkdown
     /// leak two lines further down.</summary>
     private static string Redact(string text, bool includeSecrets)
     {
-        if (includeSecrets || text.IndexOf('?') < 0) return text;
+        // The cheap way out is "no URL here at all". It used to be "no '?' here", which was right
+        // when a query string was the only way a credential rode along in a URL — and wrong once
+        // `user:password@host` counted too, because that form contains no question mark.
+        if (includeSecrets || !text.Contains("://", StringComparison.Ordinal)) return text;
 
         var sb = new StringBuilder(text.Length);
         foreach (string word in text.Split(' '))

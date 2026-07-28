@@ -129,7 +129,12 @@ public static class ConnectionDoctor
         // the proxy can see, and blame DNS for a connection that would have worked.
         start = clock.Elapsed;
         var (proxyUri, proxyWhy) = DecideProxy(uri, options);
-        stages.Add(DoctorStage.Pass("proxy", proxyUri is null ? $"DIRECT ({proxyWhy})" : $"{proxyUri} ({proxyWhy})",
+        // Redacted, because a proxy URL may carry credentials — `--proxy http://svc:pw@proxy:8080`
+        // is ordinary — and this line is printed to the terminal, serialised into --json, and
+        // written into the markdown note that `--md-vault` files into a folder that syncs.
+        stages.Add(DoctorStage.Pass("proxy", proxyUri is null
+                ? $"DIRECT ({proxyWhy})"
+                : $"{MarkdownSecrets.RedactUrl(proxyUri.ToString())} ({proxyWhy})",
             clock.Elapsed - start));
 
         // ---- stage 3: DNS, for whichever host is actually dialled ----------------------------
