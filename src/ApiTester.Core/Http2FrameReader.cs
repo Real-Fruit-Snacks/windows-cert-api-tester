@@ -253,7 +253,18 @@ internal static class Hpack
             if (pad <= block.Length) block = block[..^pad];
         }
         if (type == 1 && (flags & 0x20) != 0 && block.Length >= 5) block = block[5..];   // HEADERS PRIORITY
-        if (type == 5 && block.Length >= 4) block = block[4..];                          // PUSH_PROMISE id
+
+        // PUSH_PROMISE's promised stream identifier is mandatory and precedes the block. Naming it
+        // is most of the point of the frame — "the server is about to push stream 4" — and a frame
+        // too short to contain it is malformed, so it is reported as truncated rather than having
+        // its identifier bytes parsed as though they were headers.
+        string promised = "";
+        if (type == 5)
+        {
+            if (block.Length < 4) return "(truncated)";
+            promised = $"promised={((block[0] & 0x7f) << 24) | (block[1] << 16) | (block[2] << 8) | block[3]}  ";
+            block = block[4..];
+        }
 
         var fields = new List<string>();
         int count = 0, undecodable = 0, at = 0;
@@ -292,7 +303,7 @@ internal static class Hpack
             fields.Add(value is null ? $"{name}: (opaque)" : $"{name}: {value}");
         }
 
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(promised);
         sb.Append($"{count} field(s), {block.Length} bytes");
         if (fields.Count > 0) sb.Append("  ").Append(string.Join("; ", fields));
         if (undecodable > 0) sb.Append($"  (+{undecodable} needing the connection's HPACK history)");

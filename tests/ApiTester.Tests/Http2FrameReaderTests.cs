@@ -215,6 +215,74 @@ public class Http2FrameReaderTests
         Assert.Contains("2 field(s)", frame.Detail);
     }
 
+    // ---------------------------------------------------------------- PUSH_PROMISE
+
+    [Fact]
+    public void A_push_promise_reports_the_stream_it_promises_and_its_headers()
+    {
+        // PUSH_PROMISE puts a 4-byte promised stream identifier BEFORE the header block. Reading
+        // the block without stepping over it would decode four bytes of stream number as HPACK.
+        var payload = new List<byte> { 0, 0, 0, 2 };      // promised stream 2
+        payload.Add(0x82);                                 // :method GET
+        payload.Add(0x87);                                 // :scheme https
+
+        var frame = Assert.Single(Http2FrameReader.Read(
+            Frame(5, 0x04, 1, payload.ToArray()), WireDirection.Received).Frames);
+
+        Assert.Equal("PUSH_PROMISE", frame.TypeName);
+        Assert.Contains("promised=2", frame.Detail);     // the whole point of the frame
+        Assert.Contains(":method: GET", frame.Detail);
+        Assert.Contains(":scheme: https", frame.Detail);
+        Assert.Contains("2 field(s)", frame.Detail);
+    }
+
+    [Fact]
+    public void A_padded_push_promise_strips_the_padding_and_the_promised_id_in_the_right_order()
+    {
+        // RFC 9113 §6.6 field order: Pad Length, Promised Stream ID, header block, padding.
+        // Getting that order wrong shifts every field, and this frame is the only place the two
+        // strips combine — which is why it had no coverage and needed some.
+        var payload = new List<byte> { 3 };                        // Pad Length = 3
+        payload.AddRange(new byte[] { 0, 0, 0, 4 });               // promised stream 4
+        payload.Add(0x84);                                          // :path /
+        payload.AddRange(new byte[] { 0, 0, 0 });                   // the padding itself
+
+        var frame = Assert.Single(Http2FrameReader.Read(
+            Frame(5, 0x04 | 0x08, 1, payload.ToArray()), WireDirection.Received).Frames);
+
+        Assert.Contains("promised=4", frame.Detail);
+        Assert.Contains(":path: /", frame.Detail);
+        Assert.Contains("1 field(s)", frame.Detail);
+    }
+
+    [Fact]
+    public void A_push_promise_names_only_the_flags_that_apply_to_it()
+    {
+        // END_STREAM and PRIORITY are HEADERS flags. PUSH_PROMISE shares the bit values but not
+        // the meanings, so naming them here would be a plausible-looking lie.
+        var payload = new byte[] { 0, 0, 0, 2, 0x82 };
+        var frame = Assert.Single(Http2FrameReader.Read(
+            Frame(5, 0x04 | 0x08 | 0x01 | 0x20, 1, payload), WireDirection.Received).Frames);
+
+        Assert.Contains("END_HEADERS", frame.FlagNames);
+        Assert.Contains("PADDED", frame.FlagNames);
+        Assert.DoesNotContain("END_STREAM", frame.FlagNames);
+        Assert.DoesNotContain("PRIORITY", frame.FlagNames);
+    }
+
+    [Fact]
+    public void A_push_promise_too_short_to_hold_its_promised_id_does_not_invent_fields()
+    {
+        var frame = Assert.Single(Http2FrameReader.Read(
+            Frame(5, 0x04, 1, 0, 0), WireDirection.Received).Frames);
+
+        // Every other frame type says "(truncated)" for a payload too short to hold its mandatory
+        // fields; this one used to parse the two identifier bytes as though they were a header
+        // block and report "0 field(s), 2 bytes", which reads as a well-formed empty frame.
+        Assert.Equal("PUSH_PROMISE", frame.TypeName);
+        Assert.Equal("(truncated)", frame.Detail);
+    }
+
     [Fact]
     public void A_header_block_never_leaks_a_credential_without_the_explicit_flag()
     {

@@ -199,6 +199,8 @@ This is the layer that explains the failures HTTP/2 has and HTTP/1.1 does not:
   (`ENHANCE_YOUR_CALM`, `PROTOCOL_ERROR`, …) and *debug data*, which is the one place a gateway
   explains itself in words.
 - **One request killed while others survive** — `RST_STREAM` names the stream and the reason.
+- **A server pushing resources you did not ask for** — `PUSH_PROMISE` names the stream it is
+  about to push and the headers it will carry.
 - **Limits you did not know applied** — `SETTINGS` carries `MAX_CONCURRENT_STREAMS` and
   `INITIAL_WINDOW_SIZE`, which is often the whole answer to "why does it slow down past N".
 

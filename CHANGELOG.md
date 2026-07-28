@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.91.2] - 2026-07-28
+
+### Fixed
+- **A malformed `PUSH_PROMISE` was reported as a well-formed empty one.** The frame's promised
+  stream identifier is mandatory and four bytes long; a payload too short to hold it had those
+  bytes parsed as though they were a header block, producing `0 field(s), 2 bytes` — which reads
+  as "a valid frame that promised nothing" rather than "this frame is broken". It now says
+  `(truncated)`, matching what every other frame type already did for a short payload.
+- **The frame view now names the stream a `PUSH_PROMISE` promises** (`promised=4`), which is most
+  of the point of the frame — a reader wants to know *which* stream the server is about to push,
+  not merely that a push was announced.
+
+### Added
+- **Tests for `PUSH_PROMISE`, which had none.** It is the only frame where two field-strips
+  combine — RFC 9113 orders them Pad Length, Promised Stream ID, header block, padding — so
+  getting the order wrong shifts every header, and nothing guarded it. The order was verified
+  against the specification by hand first and turned out to be correct; writing the tests is what
+  turned that reading into something enforced, and is what exposed the truncation defect above.
+  Also covered: that `PUSH_PROMISE` names only the flags that apply to it. It shares bit values
+  with `HEADERS` but not their meanings, so reporting `END_STREAM` or `PRIORITY` there would be a
+  plausible-looking lie.
+
 ## [1.91.1] - 2026-07-28
 
 ### Fixed
@@ -2406,7 +2428,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.2...HEAD
+[1.91.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.1...v1.91.2
 [1.91.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.0...v1.91.1
 [1.91.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.2...v1.91.0
 [1.90.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.1...v1.90.2
