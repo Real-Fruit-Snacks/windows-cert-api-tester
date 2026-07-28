@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.76.0] - 2026-07-28
+
+### Added
+- **`{{env:NAME}}` reads a variable from the process environment**, so a credential can reach a
+  request without ever being stored — not in the workspace, not in an exported file, not in source
+  control. It is the answer for a continuous-integration job or a shared repository: the request
+  says *which* secret it needs, and the secret lives wherever the pipeline keeps secrets. It works
+  everywhere `{{variables}}` already do — the desktop application, `send`, `run`, chains, and the
+  MCP server — because all of them resolve through one seam.
+  Three deliberate rules: a saved workspace variable of the same name **wins**, so someone who
+  genuinely stored a variable called `env:TOKEN` is not overruled by the namespace; a missing
+  environment variable is **reported as unresolved and left intact**, never quietly expanded to an
+  empty credential (`{{env:}}` with no name behaves the same way); and the `env:` prefix is
+  case-insensitive while the variable name is passed to the operating system exactly as written.
+
+### Note
+- **The resolver change above was committed one release early.** The v1.75.0 commit was assembled
+  while this work was already on disk and swept `VariableResolver.cs` in with it, so the code
+  shipped in v1.75.0 under a message about certificate expiry, without its tests. Continuous
+  integration built and tested that exact tree and passed, and the change is additive — the
+  existing two-argument resolver is untouched — but the tests that prove it are only landing now,
+  with this release. Recorded here rather than rewritten out of history, since v1.75.0 was already
+  published.
+
 ## [1.75.0] - 2026-07-28
 
 ### Added
@@ -1830,7 +1854,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.75.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.76.0...HEAD
+[1.76.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.75.0...v1.76.0
 [1.75.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.74.0...v1.75.0
 [1.74.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.73.0...v1.74.0
 [1.73.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.72.0...v1.73.0

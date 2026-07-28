@@ -54,7 +54,35 @@ At send time the variable map is built from:
 1. The **active environment**'s variables, plus
 2. any `--var` **overrides**, plus
 3. values **captured** from earlier responses (see [Capturing Values](12-Capturing-Values.md)) — a
-   login can save `{{token}}` that later requests use.
+   login can save `{{token}}` that later requests use, plus
+4. the **environment of the process itself**, through the `env:` namespace — see below.
+
+## Secrets that are never stored: `{{env:NAME}}`
+
+A token written `{{env:NAME}}` is read from an **environment variable** at send time:
+
+```powershell
+$env:API_TOKEN = "…"
+certapi send https://api.internal/orders -H "Authorization: Bearer {{env:API_TOKEN}}"
+```
+
+Nothing about the value is stored — not in the workspace, not in an exported file, not in source
+control. That makes it the right way to hold a credential in a continuous-integration job or a
+shared repository: the request text says *which* secret it needs, and the secret itself lives
+wherever your pipeline keeps secrets.
+
+It works anywhere `{{variables}}` do — the app, `send`, `run`, chains, and the MCP server — because
+they all resolve through the same seam.
+
+Three rules worth knowing:
+
+- **A saved variable of the same name wins.** If your workspace genuinely has a variable called
+  `env:TOKEN`, that value is used, and the namespace does not overrule it.
+- **A missing variable is reported, never blanked.** `{{env:NOT_SET}}` is left in the text and
+  listed as unresolved, exactly like any other unknown token — it never silently becomes an empty
+  credential. `{{env:}}` with no name is treated the same way.
+- **The `env:` prefix is case-insensitive; the variable name is not** — the name is passed to the
+  operating system as written, so `NAME` and `name` differ wherever the platform says they do.
 
 ## Marking a variable secret
 
