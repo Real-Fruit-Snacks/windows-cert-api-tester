@@ -23,7 +23,15 @@ public static class WsCommand
           --cert-file <path>      Client certificate from a file (.pfx/.p12 or .pem/.crt)
           --cert-password <pw>    Password for a .pfx/.p12 certificate file
           --key-file <path>       Private-key file for a PEM cert whose key is in a separate file
-          --insecure              Ignore server certificate errors (wss)
+          --insecure              Ignore server certificate errors (wss); a host pinned with
+                                  `certapi trust add` needs no --insecure
+
+        """ + "\n" + TransportFlags.StreamHelp + "\n" + """
+
+        Session:
+          --workspace <file>      Read trust pins and captured tokens from a workspace file
+                                  instead of the live state
+          --no-auto-token         Don't attach a captured bearer token to the handshake
 
         Global: --debug and --log-file <path> work here too.
 
@@ -41,6 +49,9 @@ public static class WsCommand
         string store = args.Value("--store") ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         bool quiet = args.Flag("-q", "--quiet");
+        string? workspace = args.Value("--workspace");
+        bool noAutoToken = args.Flag("--no-auto-token");
+        var transport = TransportFlags.ParseStreamSubset(args, insecure);
         string? expectRaw = args.Value("--expect");
         int? expect = null;
         if (expectRaw is not null)
@@ -63,6 +74,12 @@ public static class WsCommand
             headerPairs.Add(new(raw[..colon].Trim(), raw[(colon + 1)..].Trim()));
         }
 
+        // Pins and captured tokens come from the same state file every other command reads.
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
+        var predicates = new TrustPredicates(state);
+        if (!noAutoToken && TokenService.AutoAttach(state, url, headerPairs, out _) is not null && !quiet)
+            stderr.WriteLine($"using captured token for {TokenService.HostOf(url)}");
+
         // Outgoing messages: explicit --message values first, then any lines piped on stdin.
         var toSend = new List<string>(messages);
         string? line;
@@ -76,7 +93,8 @@ public static class WsCommand
             try
             {
                 if (!quiet) stderr.WriteLine($"connecting to {url} …");
-                await session.ConnectAsync(url, cert, headerPairs, insecure, services.Cancel);
+                await session.ConnectAsync(url, cert, headerPairs, insecure, transport,
+                    predicates.For(new Uri(url).Host), services.Cancel);
                 if (!quiet) stderr.WriteLine("connected.");
             }
             catch (Exception ex) when (ex is System.Net.WebSockets.WebSocketException

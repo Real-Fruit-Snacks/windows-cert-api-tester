@@ -112,7 +112,7 @@ public partial class OAuthWindow : Window
             RefreshToken = Blank(RefreshTokenBox.Text)
         };
         SetStatus("Requesting a token…", error: false);
-        return OAuthClient.RequestTokenAsync(req, _cert, _insecure, ct);
+        return OAuthClient.RequestTokenAsync(req, _cert, _insecure, ct: ct);
     }
 
     private async Task<OAuthTokenResult> RunAuthorizationCodeAsync(string tokenUrl, CancellationToken ct)
@@ -154,7 +154,7 @@ public partial class OAuthWindow : Window
             RedirectUri = redirectUri,
             CodeVerifier = verifier
         };
-        return await OAuthClient.RequestTokenAsync(req, _cert, _insecure, ct);
+        return await OAuthClient.RequestTokenAsync(req, _cert, _insecure, ct: ct);
     }
 
     private static OAuthTokenResult Fail(string message) =>

@@ -32,6 +32,10 @@ echo '{"ping":1}' | certapi ws wss://api.example.com/socket --expect 1
 - **`--expect <n>`** — stop after receiving `n` messages (deterministic for scripts). With no
   `--expect`, the client listens until the server closes or `Ctrl+C`.
 - **`-H`** handshake headers, and the usual `--cert` / `--cert-file` / `--insecure`.
+- The full transport story applies here too: a host pinned with `certapi trust add` needs no
+  `--insecure`, a captured bearer token attaches to the handshake automatically
+  (`--no-auto-token` turns that off), and the same `--proxy` / `--noproxy` / `--revocation`
+  flags as `send` work unchanged.
 
 Received messages go to **stdout**; notices to **stderr**. Exit 0 on a clean close.
 
@@ -46,6 +50,7 @@ certapi sse https://api.example.com/stream --max-events 5 --json
 - **`--json`** — print one JSON (JavaScript Object Notation) object per event
   (`{event,data,id,retry}`), i.e. ndjson (newline-delimited JSON).
 - **`-H`** request headers, plus the usual cert/insecure flags.
+- Pins, automatic tokens, proxy control, and revocation checking work exactly as on `ws` above.
 
 Events go to stdout; the connecting/ended notices to stderr.
 

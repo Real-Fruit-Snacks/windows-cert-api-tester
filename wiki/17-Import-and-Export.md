@@ -28,6 +28,26 @@ certapi import openapi .\petstore.json --workspace .\suite.json
 
 Paths, methods, base servers, and operation names come across so you can start sending immediately.
 
+## Import a Postman collection
+
+The format most teams already have in hand. Point at a Collection v2.0/v2.1 export:
+
+```powershell
+certapi import postman .\orders.postman_collection.json
+certapi import postman .\orders.postman_collection.json --into "orders" --workspace .\suite.json
+```
+
+Folders, methods, both of Postman's URL forms, query rows, and headers come across, with disabled
+rows staying disabled. Bodies map by mode — raw (with the language deciding the content type),
+urlencoded, and formdata — and auth maps for bearer, basic, and apikey, with request-level auth
+beating folder- and collection-level, exactly as Postman resolves it. `{{variables}}` share their
+syntax between the two products, so request text imports unchanged, and collection-level variables
+become an environment named after the collection — a variable Postman marked `secret` is stored
+encrypted here, the same as any other secret at rest. Two deliberate cautions: a **file** form
+part imports disabled (its path came from someone else's machine — point it somewhere real before
+sending), and anything that cannot carry across faithfully is a **named warning** on stderr, never
+a silent drop.
+
 ## Export as OpenAPI
 
 Export your collections (or a folder) as an OpenAPI document — useful for sharing the shape of an

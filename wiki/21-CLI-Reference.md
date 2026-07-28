@@ -197,8 +197,11 @@ more than one was needed, and `--json` carries `attempts` when it is above 1.
 
 `certapi token [options]` — fetch an OAuth 2.0 token.
 
-- `--grant client_credentials|password|refresh` (default client_credentials)
+- `--grant client_credentials|password|refresh|device` (default client_credentials)
 - `--token-url <url>` **(required)**, `--client-id`, `--client-secret`
+- `--grant device` + `--device-url <url>` — the RFC 8628 device-code flow: prints a verification
+  URL and code, then polls the token endpoint until you approve in a browser anywhere (another
+  machine included); Ctrl+C abandons it. Made for headless boxes and SSH sessions.
 - `--client-auth body|basic` — send client creds in the body (default) or a Basic header
 - `--scope "<a b c>"`, `--username`/`--password` (password grant), `--refresh-token` (refresh grant)
 - `--param k=v` — extra form parameter (repeatable)
@@ -206,7 +209,9 @@ more than one was needed, and `--json` carries `attempts` when it is above 1.
   interface) origin so later `send`
   attaches it; `--workspace <file>` to save into a workspace file
 - `--json` — full result; `-q` quiet
-- TLS/cert flags apply (the token endpoint itself may be mTLS)
+- TLS/cert flags apply (the token endpoint itself may be mTLS); a pinned endpoint needs no
+  `--insecure`, and the same `--proxy`/`--noproxy` and `--revocation` flags as [`send`](#send)
+  apply to the fetch
 
 The interactive **authorization-code** grant is app-only (see [Authentication](08-Authentication.md)).
 
@@ -324,14 +329,17 @@ There is no window for the bench: it is a command-line concern.
 `certapi sse <url> [options]` — stream Server-Sent Events.
 
 - `-H "k: v"`, `--max-events <n>`, `--json` (ndjson — newline-delimited JSON), `-q`
-- cert flags + `--insecure`
+- cert flags + `--insecure`; a pinned host needs no `--insecure`, a captured token attaches
+  automatically (`--no-auto-token` turns that off, `--workspace <file>` names where pins and
+  tokens come from), and the same `--proxy`/`--noproxy`/`--revocation` flags as [`send`](#send)
+  apply
 
 ## ws
 
 `certapi ws <url> [options]` — WebSocket console.
 
 - `-m, --message <text>` (repeatable; stdin lines also sent), `--expect <n>`, `-H`, `-q`
-- cert flags + `--insecure`
+- cert flags + `--insecure`; the same pin/token/proxy/revocation story as [`sse`](#sse) above
 
 ---
 
@@ -356,6 +364,13 @@ the client-certificate path end to end.
 
 - `certapi import curl "<curl command>" [--into <folder>] [--workspace <file>]`
 - `certapi import openapi <file> [--into <folder>] [--workspace <file>]`
+- `certapi import har <file> [--into <folder>] [--workspace <file>]`
+- `certapi import postman <file> [--into <folder>] [--workspace <file>]` — a Postman Collection
+  (v2.0/v2.1 export): folders, both URL forms, query rows, headers (disabled stays disabled),
+  raw/urlencoded/formdata bodies, bearer/basic/apikey auth with request-level beating folder- and
+  collection-level, and collection variables as an environment (Postman's "secret" type stays
+  secret here). `{{variables}}` share syntax and import unchanged; anything unsupported is a named
+  warning, never a silent drop (see [Import and Export](17-Import-and-Export.md))
 - `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
 - `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
   tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`
@@ -366,6 +381,8 @@ the client-certificate path end to end.
 `certapi serve <upstream> --port <n> [options]` — local mTLS gateway (see
 [Local Gateway](19-Local-Gateway.md)).
 
+- An upstream pinned with [`trust add`](#trust) is reachable without `--insecure` — the gateway
+  consults the same pins every other connection does
 - `--upstream <prefix>=<url>` — mount another upstream at a path prefix behind the same port
   (repeatable; longest prefix wins; the positional `<upstream>` is the `/` fallback)
 - `--token <value>` — require callers to send this bearer token before anything is forwarded

@@ -24,19 +24,14 @@ public static class SseClient
         X509Certificate2? clientCertificate = null,
         IEnumerable<KeyValuePair<string, string>>? headers = null,
         bool ignoreServerCertificateErrors = false,
+        TransportOptions? transport = null,
+        Func<X509Certificate2?, bool>? trustServerCertificate = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var handler = new SocketsHttpHandler
-        {
-            DefaultProxyCredentials = CredentialCache.DefaultCredentials,
-            PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan
-        };
-        var sslOptions = new SslClientAuthenticationOptions();
-        if (ignoreServerCertificateErrors)
-            sslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-        if (clientCertificate is not null)
-            sslOptions.ClientCertificates = new X509CertificateCollection { clientCertificate };
-        handler.SslOptions = sslOptions;
+        var options = transport ?? new TransportOptions();
+        if (ignoreServerCertificateErrors) options = options with { IgnoreServerCertificateErrors = true };
+        var handler = StreamTransport.CreateHandler(clientCertificate, options, trustServerCertificate);
+        handler.PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan;
 
         using var http = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
         using var message = new HttpRequestMessage(HttpMethod.Get, url);
@@ -108,17 +103,28 @@ public sealed class WebSocketSession : IAsyncDisposable
         X509Certificate2? clientCertificate = null,
         IEnumerable<KeyValuePair<string, string>>? headers = null,
         bool ignoreServerCertificateErrors = false,
+        TransportOptions? transport = null,
+        Func<X509Certificate2?, bool>? trustServerCertificate = null,
         CancellationToken ct = default)
     {
-        if (clientCertificate is not null)
-            _ws.Options.ClientCertificates = new X509Certificate2Collection { clientCertificate };
-        if (ignoreServerCertificateErrors)
-            _ws.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
         if (headers is not null)
             foreach (var h in headers) _ws.Options.SetRequestHeader(h.Key, h.Value);
 
-        await _ws.ConnectAsync(new Uri(url), ct);
+        // The handshake goes through an invoker built on the shared stream-transport handler
+        // rather than ClientWebSocketOptions' own certificate/validation knobs: the invoker owns
+        // the whole transport, which is what lets a WebSocket honor the same proxy, revocation,
+        // and trust-pin settings as every other connection this product opens. (When an invoker
+        // is supplied, ClientWebSocket refuses those options anyway — they must live here.)
+        var options = transport ?? new TransportOptions();
+        if (ignoreServerCertificateErrors) options = options with { IgnoreServerCertificateErrors = true };
+        var handler = StreamTransport.CreateHandler(clientCertificate, options, trustServerCertificate);
+        // Kept for the session's lifetime, not a using: the upgraded connection still belongs to
+        // the invoker's handler, so disposing it here would tear down the socket under the session.
+        _invoker = new HttpMessageInvoker(handler, disposeHandler: true);
+        await _ws.ConnectAsync(new Uri(url), _invoker, ct);
     }
+
+    private HttpMessageInvoker? _invoker;
 
     public Task SendTextAsync(string text, CancellationToken ct = default) =>
         _ws.SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text, endOfMessage: true, ct);
@@ -169,6 +175,7 @@ public sealed class WebSocketSession : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         _ws.Dispose();
+        _invoker?.Dispose();
         return ValueTask.CompletedTask;
     }
 }

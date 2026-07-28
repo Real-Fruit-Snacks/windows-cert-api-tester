@@ -100,7 +100,18 @@ certapi send https://api.example.com/orders
 ```
 
 `--grant password|refresh`, `--client-auth basic`, `--param k=v`, and `--json` are all supported. The
-interactive authorization-code grant is app-only (it needs a browser). See the
+interactive authorization-code grant is app-only (it needs a browser); its headless counterpart is
+the **device-code flow** (RFC 8628), which was designed for exactly the machine that cannot open
+one:
+
+```powershell
+certapi token --grant device --device-url https://auth.example.com/device --token-url https://auth.example.com/token `
+  --client-id app --scope "api.read" --save --for https://api.example.com
+```
+
+It prints a verification URL and a short code, then polls until you approve the sign-in from a
+browser anywhere — your phone included. `Ctrl+C` abandons it; the server's polling interval and
+expiry are honored, including the `slow_down` back-off. See the
 [CLI Reference](21-CLI-Reference.md#token).
 
 ## Capturing a browser login

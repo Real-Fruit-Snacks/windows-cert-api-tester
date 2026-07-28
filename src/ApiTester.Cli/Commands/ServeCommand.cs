@@ -246,8 +246,14 @@ public static class ServeCommand
             cors, ParseOrigins(corsOrigins), rewriteCookies, rewriteLocation, allowUpgrade,
             LocalOrigin: new Uri($"{scheme}://127.0.0.1:{port}")) { SecureOrigin = tls, CorsMaxAgeSeconds = corsMaxAge };
 
+        // Pins come from the same state file saved-website names resolve against; loaded here (not
+        // lazily) because the gateway's upstream connections need them for their whole lifetime.
+        // With this, an upstream pinned via `certapi trust add` is reachable without --insecure —
+        // the gateway was the last connection in the product that could not say that.
+        var trustState = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
+        var trustPredicates = new TrustPredicates(trustState);
         using var gateway = services.GatewayFactory(
-            routes, cert, insecure, TimeSpan.FromSeconds(timeoutSeconds), transport);
+            routes, cert, insecure, TimeSpan.FromSeconds(timeoutSeconds), transport, trustPredicates.For);
         // An upgrade cannot go through the gateway at all — HttpClient cannot carry one — so it
         // gets its own relay, built only when upgrades are actually allowed.
         var relay = allowUpgrade ? new GatewayWebSocketRelay(cert, insecure) : null;

@@ -124,7 +124,7 @@ public partial class StreamWindow : Window
         _ws = session;
         try
         {
-            await session.ConnectAsync(url, _cert, null, _insecure, _cts!.Token);
+            await session.ConnectAsync(url, _cert, null, _insecure, ct: _cts!.Token);
             Append("—", "Connected. Type a message below and press Enter to send.");
             SetConnectedUi(canSend: true);
 
@@ -156,7 +156,7 @@ public partial class StreamWindow : Window
         int count = 0;
         try
         {
-            await foreach (var ev in SseClient.StreamAsync(url, _cert, null, _insecure, _cts!.Token))
+            await foreach (var ev in SseClient.StreamAsync(url, _cert, null, _insecure, ct: _cts!.Token))
             {
                 count++;
                 string label = ev.Event is { Length: > 0 } name ? $"event: {name}" : "event";

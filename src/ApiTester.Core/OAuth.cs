@@ -10,7 +10,7 @@ using System.Text.Json;
 namespace ApiTester.Core;
 
 /// <summary>The OAuth 2.0 grant types this client can run against a token endpoint.</summary>
-public enum OAuthGrant { ClientCredentials, Password, RefreshToken, AuthorizationCode }
+public enum OAuthGrant { ClientCredentials, Password, RefreshToken, AuthorizationCode, DeviceCode }
 
 /// <summary>How the client authenticates to the token endpoint.</summary>
 public enum OAuthClientAuth
@@ -23,7 +23,7 @@ public enum OAuthClientAuth
 
 /// <summary>Everything needed to ask a token endpoint for a token. Only the fields a given grant
 /// uses need to be set (e.g. Username/Password for the password grant).</summary>
-public sealed class OAuthRequest
+public sealed record OAuthRequest
 {
     public OAuthGrant Grant { get; init; }
     public string TokenEndpoint { get; init; } = "";
@@ -43,6 +43,10 @@ public sealed class OAuthRequest
     public string? Code { get; init; }
     public string? RedirectUri { get; init; }
     public string? CodeVerifier { get; init; }   // PKCE
+
+    // Device-code grant (RFC 8628).
+    public string? DeviceAuthorizationEndpoint { get; init; }
+    public string? DeviceCode { get; init; }
 
     /// <summary>Extra form parameters (audience, resource, custom vendor fields).</summary>
     public IReadOnlyList<KeyValuePair<string, string>>? ExtraParams { get; init; }
@@ -77,6 +81,8 @@ public static class OAuthClient
         OAuthRequest req,
         X509Certificate2? clientCertificate = null,
         bool ignoreServerCertificateErrors = false,
+        TransportOptions? transport = null,
+        Func<X509Certificate2?, bool>? trustServerCertificate = null,
         CancellationToken ct = default)
     {
         var form = new List<KeyValuePair<string, string>>
@@ -98,6 +104,9 @@ public static class OAuthClient
                 Add(form, "redirect_uri", req.RedirectUri);
                 Add(form, "code_verifier", req.CodeVerifier);
                 break;
+            case OAuthGrant.DeviceCode:
+                Add(form, "device_code", req.DeviceCode);
+                break;
         }
         Add(form, "scope", req.Scope);
 
@@ -116,11 +125,9 @@ public static class OAuthClient
         if (req.ExtraParams is { } extra)
             foreach (var kv in extra) form.Add(kv);
 
-        var handler = new SocketsHttpHandler { DefaultProxyCredentials = CredentialCache.DefaultCredentials };
-        var ssl = new SslClientAuthenticationOptions();
-        if (ignoreServerCertificateErrors) ssl.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-        if (clientCertificate is not null) ssl.ClientCertificates = new X509CertificateCollection { clientCertificate };
-        handler.SslOptions = ssl;
+        var options = transport ?? new TransportOptions();
+        if (ignoreServerCertificateErrors) options = options with { IgnoreServerCertificateErrors = true };
+        var handler = StreamTransport.CreateHandler(clientCertificate, options, trustServerCertificate);
 
         using var http = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(100) };
         using var message = new HttpRequestMessage(HttpMethod.Post, req.TokenEndpoint)
@@ -148,6 +155,106 @@ public static class OAuthClient
         catch (HttpRequestException ex)
         {
             return Failure("request_failed", ex.Message, "");
+        }
+    }
+
+    /// <summary>Runs the whole RFC 8628 device-authorization flow: asks the device endpoint for a
+    /// code, hands the user instructions to <paramref name="onPrompt"/>, then polls the token
+    /// endpoint at the server's stated interval until the user approves, refuses, or the code
+    /// expires. `authorization_pending` keeps polling; `slow_down` adds five seconds per the RFC;
+    /// anything else — a token or a terminal error — is the answer. The countdown is logical
+    /// (expires_in minus the intervals actually waited), never a wall-clock race, and
+    /// <paramref name="delay"/> exists so a test can run the flow with no waiting at all.</summary>
+    public static async Task<OAuthTokenResult> RequestDeviceTokenAsync(
+        OAuthRequest req,
+        Action<OAuthDevicePrompt> onPrompt,
+        X509Certificate2? clientCertificate = null,
+        bool ignoreServerCertificateErrors = false,
+        TransportOptions? transport = null,
+        Func<X509Certificate2?, bool>? trustServerCertificate = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(req.DeviceAuthorizationEndpoint))
+            return Failure("invalid_request", "The device grant needs a device-authorization endpoint.", "");
+        delay ??= Task.Delay;
+
+        var options = transport ?? new TransportOptions();
+        if (ignoreServerCertificateErrors) options = options with { IgnoreServerCertificateErrors = true };
+        var handler = StreamTransport.CreateHandler(clientCertificate, options, trustServerCertificate);
+        using var http = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(100) };
+
+        // ---- step 1: the device-authorization request ------------------------------------
+        var form = new List<KeyValuePair<string, string>>();
+        if (req.ClientAuth == OAuthClientAuth.Body || string.IsNullOrEmpty(req.ClientSecret))
+            Add(form, "client_id", req.ClientId);
+        Add(form, "scope", req.Scope);
+        if (req.ExtraParams is { } extra) foreach (var kv in extra) form.Add(kv);
+
+        string raw;
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, req.DeviceAuthorizationEndpoint)
+            { Content = new FormUrlEncodedContent(form) };
+            message.Headers.TryAddWithoutValidation("Accept", "application/json");
+            if (req.ClientAuth == OAuthClientAuth.Basic && req.ClientId is { Length: > 0 })
+                message.Headers.TryAddWithoutValidation("Authorization", "Basic " +
+                    Convert.ToBase64String(Encoding.UTF8.GetBytes($"{req.ClientId}:{req.ClientSecret}")));
+            using var response = await http.SendAsync(message, ct);
+            raw = await response.Content.ReadAsStringAsync(ct);
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Failure("timeout", "The device-authorization request timed out.", "");
+        }
+        catch (HttpRequestException ex)
+        {
+            return Failure("request_failed", ex.Message, "");
+        }
+
+        JsonElement device;
+        try { device = JsonDocument.Parse(raw).RootElement; }
+        catch (JsonException) { return Failure("invalid_response", "The device endpoint did not return JSON.", raw); }
+        if (device.ValueKind != JsonValueKind.Object)
+            return Failure("invalid_response", "The device response was not a JSON object.", raw);
+        if (Str(device, "error") is { } deviceError)
+            return new OAuthTokenResult(false, null, null, null, null, null, null,
+                deviceError, Str(device, "error_description"), raw);
+
+        string? deviceCode = Str(device, "device_code");
+        string? userCode = Str(device, "user_code");
+        string? verificationUri = Str(device, "verification_uri");
+        if (deviceCode is null || userCode is null || verificationUri is null)
+            return Failure("invalid_response",
+                "The device response was missing device_code, user_code, or verification_uri.", raw);
+
+        int interval = Int(device, "interval") ?? 5;
+        int remaining = Int(device, "expires_in") ?? 1800;
+        onPrompt(new OAuthDevicePrompt(
+            userCode, verificationUri, Str(device, "verification_uri_complete"), interval, remaining));
+
+        // ---- step 2: poll the token endpoint until the user decides ----------------------
+        var poll = req with { Grant = OAuthGrant.DeviceCode, DeviceCode = deviceCode, Scope = null };
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (remaining <= 0)
+                return Failure("expired_token", "The device code expired before the user approved it.", "");
+            await delay(TimeSpan.FromSeconds(interval), ct);
+            remaining -= Math.Max(interval, 1);
+
+            var result = await RequestTokenAsync(poll, clientCertificate, ignoreServerCertificateErrors,
+                transport, trustServerCertificate, ct);
+            switch (result.Error)
+            {
+                case "authorization_pending":
+                    continue;
+                case "slow_down":
+                    interval += 5;   // RFC 8628 §3.5: the polling interval MUST increase by 5 seconds
+                    continue;
+                default:
+                    return result;   // a token, or a terminal error — either way, the answer
+            }
         }
     }
 
@@ -185,6 +292,7 @@ public static class OAuthClient
         OAuthGrant.Password => "password",
         OAuthGrant.RefreshToken => "refresh_token",
         OAuthGrant.AuthorizationCode => "authorization_code",
+        OAuthGrant.DeviceCode => "urn:ietf:params:oauth:grant-type:device_code",
         _ => "client_credentials"
     };
 
@@ -204,6 +312,12 @@ public static class OAuthClient
         return null;
     }
 }
+
+/// <summary>What the user must be told for a device-code flow to proceed: visit the URI, enter the
+/// code (or just visit the complete form when the server offers one).</summary>
+public sealed record OAuthDevicePrompt(
+    string UserCode, string VerificationUri, string? VerificationUriComplete,
+    int IntervalSeconds, int ExpiresInSeconds);
 
 /// <summary>Helpers for the interactive authorization-code grant: PKCE (RFC 7636) and building the
 /// authorization URL that a browser is sent to.</summary>

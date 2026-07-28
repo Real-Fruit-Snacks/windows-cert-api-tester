@@ -15,9 +15,13 @@ public static class TokenCommand
           --grant client_credentials   Machine-to-machine (client id + secret)
           --grant password             Resource-owner password (--username / --password)
           --grant refresh              Exchange a --refresh-token for a new access token
+          --grant device               Device-code flow (RFC 8628): prints a verification URL and
+                                       code, then polls until you approve in a browser anywhere.
+                                       Needs --device-url and --client-id; Ctrl+C abandons it.
 
         Endpoint & client:
           --token-url <url>            The token endpoint (required)
+          --device-url <url>           The device-authorization endpoint (device grant only)
           --client-id <id>
           --client-secret <secret>
           --client-auth <body|basic>   Send client creds in the body (default) or a Basic header
@@ -35,6 +39,9 @@ public static class TokenCommand
         TLS / certificates (the token endpoint itself may require mTLS):
           --cert <thumb|subject>  --cert-file <path>  --cert-password <pw>  --key-file <path>
           --store <location>      --insecure
+        A token endpoint pinned with `certapi trust add` needs no --insecure.
+
+        """ + "\n" + TransportFlags.StreamHelp + "\n" + """
 
         Output:
           --json                       Print the full token result (access/refresh/expiry/scope)
@@ -75,6 +82,8 @@ public static class TokenCommand
         bool insecure = args.Flag("--insecure");
         bool json = args.Flag("--json");
         bool quiet = args.Flag("-q", "--quiet");
+        string? deviceUrl = args.Value("--device-url");
+        var transport = TransportFlags.ParseStreamSubset(args, insecure);
         // Resolve the certificate before Positionals()/validation so its options aren't leftovers.
         var cert = CliCert.Resolve(args, store, services, stderr);
 
@@ -89,6 +98,8 @@ public static class TokenCommand
                 throw new CliUsageException("the password grant needs --username and --password.");
             case OAuthGrant.RefreshToken when string.IsNullOrEmpty(refreshToken):
                 throw new CliUsageException("the refresh grant needs --refresh-token.");
+            case OAuthGrant.DeviceCode when string.IsNullOrWhiteSpace(deviceUrl) || string.IsNullOrEmpty(clientId):
+                throw new CliUsageException("the device grant needs --device-url and --client-id.");
         }
         if (save && forUrls.Count == 0)
             throw new CliUsageException("--save needs at least one --for <api-url> so the token can be scoped to an origin.");
@@ -105,6 +116,7 @@ public static class TokenCommand
         {
             Grant = grant,
             TokenEndpoint = tokenUrl,
+            DeviceAuthorizationEndpoint = deviceUrl,
             ClientId = clientId,
             ClientSecret = clientSecret,
             ClientAuth = clientAuth,
@@ -115,11 +127,32 @@ public static class TokenCommand
             ExtraParams = extra.Count > 0 ? extra : null
         };
 
+        // Pins come from the same state file --save writes to; read here so an internal auth
+        // server pinned with `trust add` is reachable without --insecure, like everywhere else.
+        // --save may be about to CREATE the named workspace, and a file that does not exist yet
+        // has no pins in it — that must stay exit 0, not become a data error.
+        var trustState = workspace is not null && !System.IO.File.Exists(workspace)
+            ? new AppState()
+            : CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
+        Func<System.Security.Cryptography.X509Certificates.X509Certificate2?, bool> trust = c =>
+            c is not null &&
+            (TrustService.IsTrusted(trustState, TokenService.HostOf(tokenUrl), c.Thumbprint!) ||
+             (deviceUrl is not null && TrustService.IsTrusted(trustState, TokenService.HostOf(deviceUrl), c.Thumbprint!)));
+
         services.Log.Debug($"OAuth {grant} → {tokenUrl} · client {clientId ?? "—"} · auth {clientAuth} · cert {(cert is null ? "none" : cert.Subject)}");
         if (!quiet) stderr.WriteLine($"requesting a token ({GrantLabel(grant)}) from {tokenUrl} …");
 
-        var result = OAuthClient.RequestTokenAsync(request, cert, insecure, services.Cancel)
-            .GetAwaiter().GetResult();
+        var result = grant == OAuthGrant.DeviceCode
+            ? OAuthClient.RequestDeviceTokenAsync(request,
+                // The prompt is the flow: it goes to stderr even under -q, or the user could
+                // never approve anything.
+                prompt => stderr.WriteLine(prompt.VerificationUriComplete is { } complete
+                    ? $"To sign in, visit: {complete}  (code {prompt.UserCode}, expires in {prompt.ExpiresInSeconds}s)"
+                    : $"To sign in, visit {prompt.VerificationUri} and enter code: {prompt.UserCode}  (expires in {prompt.ExpiresInSeconds}s)"),
+                cert, insecure, transport, trust, delay: null, services.Cancel)
+                .GetAwaiter().GetResult()
+            : OAuthClient.RequestTokenAsync(request, cert, insecure, transport, trust, services.Cancel)
+                .GetAwaiter().GetResult();
 
         if (!result.Success)
         {
@@ -212,7 +245,8 @@ public static class TokenCommand
         null or "" or "client_credentials" or "client-credentials" or "cc" => OAuthGrant.ClientCredentials,
         "password" or "pw" => OAuthGrant.Password,
         "refresh" or "refresh_token" or "refresh-token" => OAuthGrant.RefreshToken,
-        _ => throw new CliUsageException($"unknown --grant '{raw}'. Use client_credentials, password, or refresh.")
+        "device" or "device_code" or "device-code" => OAuthGrant.DeviceCode,
+        _ => throw new CliUsageException($"unknown --grant '{raw}'. Use client_credentials, password, refresh, or device.")
     };
 
     private static string GrantLabel(OAuthGrant g) => g switch
@@ -220,6 +254,7 @@ public static class TokenCommand
         OAuthGrant.ClientCredentials => "client credentials",
         OAuthGrant.Password => "password",
         OAuthGrant.RefreshToken => "refresh token",
+        OAuthGrant.DeviceCode => "device code",
         _ => g.ToString()
     };
 }

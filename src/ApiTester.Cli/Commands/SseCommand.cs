@@ -22,7 +22,15 @@ public static class SseCommand
           --cert-file <path>      Client certificate from a file (.pfx/.p12 or .pem/.crt)
           --cert-password <pw>    Password for a .pfx/.p12 certificate file
           --key-file <path>       Private-key file for a PEM cert whose key is in a separate file
-          --insecure              Ignore server certificate errors
+          --insecure              Ignore server certificate errors; a host pinned with
+                                  `certapi trust add` needs no --insecure
+
+        """ + "\n" + TransportFlags.StreamHelp + "\n" + """
+
+        Session:
+          --workspace <file>      Read trust pins and captured tokens from a workspace file
+                                  instead of the live state
+          --no-auto-token         Don't attach a captured bearer token to the request
 
         Global: --debug and --log-file <path> work here too.
 
@@ -40,6 +48,9 @@ public static class SseCommand
         bool insecure = args.Flag("--insecure");
         bool json = args.Flag("--json");
         bool quiet = args.Flag("-q", "--quiet");
+        string? workspace = args.Value("--workspace");
+        bool noAutoToken = args.Flag("--no-auto-token");
+        var transport = TransportFlags.ParseStreamSubset(args, insecure);
         string? maxRaw = args.Value("--max-events");
         int? maxEvents = null;
         if (maxRaw is not null)
@@ -63,6 +74,12 @@ public static class SseCommand
             headerPairs.Add(new(raw[..colon].Trim(), raw[(colon + 1)..].Trim()));
         }
 
+        // Pins and captured tokens come from the same state file every other command reads.
+        var state = CliWorkspace.Load(workspace, services.LiveStatePath, stderr);
+        var predicates = new TrustPredicates(state);
+        if (!noAutoToken && TokenService.AutoAttach(state, url, headerPairs, out _) is not null && !quiet)
+            stderr.WriteLine($"using captured token for {TokenService.HostOf(url)}");
+
         if (!quiet) stderr.WriteLine($"connecting to {url} …");
         services.Log.Debug($"SSE GET {url} · cert {(cert is null ? "none" : cert.Subject)} · insecure {insecure}");
 
@@ -73,7 +90,8 @@ public static class SseCommand
             int count = 0;
             try
             {
-                await foreach (var ev in SseClient.StreamAsync(url, cert, headerPairs, insecure, services.Cancel))
+                await foreach (var ev in SseClient.StreamAsync(url, cert, headerPairs, insecure,
+                                   transport, predicates.For(new Uri(url).Host), services.Cancel))
                 {
                     if (json)
                         stdout.WriteLine(System.Text.Json.JsonSerializer.Serialize(new

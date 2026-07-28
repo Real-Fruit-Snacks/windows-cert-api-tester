@@ -6,6 +6,47 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.68.0] - 2026-07-27
+
+### Added
+- **`certapi import postman` reads a Postman Collection (v2.0/v2.1 export)** — the format most
+  teams actually have in hand. Folders come across as folders; requests keep their method, both of
+  Postman's URL forms, query rows, and headers, with disabled rows staying disabled. Bodies map by
+  mode — raw (the declared language decides the content type), urlencoded, and formdata — and auth
+  maps for bearer, basic, and apikey (as the header or query row Postman meant), with
+  request-level auth beating folder-level beating collection-level, exactly as Postman resolves
+  it. `{{variables}}` share their syntax between the two products, so request text imports
+  unchanged, and collection-level variables become an environment named after the collection — a
+  variable Postman marked `secret` is stored encrypted here like every other secret at rest. Two
+  deliberate cautions: a file form part imports disabled, because its path came from someone
+  else's machine and silently uploading whatever sits there would be worse than asking; and
+  anything that cannot carry across faithfully — an `awsv4` auth, a `graphql` body — is a named
+  warning on stderr, never a silent drop.
+- **`certapi token --grant device` runs the OAuth 2.0 device-code flow (RFC 8628)** — the grant
+  designed for the machine this tool lives on: one with no browser, or reached over SSH. It asks
+  the `--device-url` endpoint for a code, prints the verification URL and code (preferring the
+  complete-URL form when the server offers one), then polls the token endpoint until the sign-in
+  is approved from a browser anywhere — honoring the server's polling interval, the `slow_down`
+  back-off (+5 seconds each, per the RFC), the code's expiry, and Ctrl+C. The token flows into
+  the same `--save`/`--for` reuse every other grant feeds.
+
+### Fixed
+- **`ws`, `sse`, and `token` were the last network commands living outside this year's transport
+  work, and `serve`'s upstream connection could not use trust pins.** A source audit showed each
+  building its own bare connection: a host pinned with `certapi trust add` still demanded
+  `--insecure` on a WebSocket, an event stream, a token fetch, and behind the gateway; none of
+  the three commands could name a proxy, narrow one with `--noproxy`, or check revocation. All
+  four now go through the same shared transport tables as everything else: pins work without
+  `--insecure`, `--proxy`/`--proxy-user`/`--no-proxy`/`--noproxy` and
+  `--revocation`/`--revocation-strict` are accepted with the same strict parsing as `send`, and
+  `ws`/`sse` attach a captured bearer token to the handshake automatically (`--no-auto-token`
+  turns it off, `--workspace` names the state file). Retries, redirects, and HTTP-version pins
+  are deliberately not among the new flags on streams: a re-subscribe has side effects a retry
+  must not hide.
+- **The command-line reference's import list showed `curl` and `openapi` but not `har`** — the
+  same looks-complete-but-isn't defect the `serve` section had; the row is there now, next to the
+  new `postman` one.
+
 ## [1.67.0] - 2026-07-27
 
 ### Added
@@ -1656,7 +1697,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.67.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.68.0...HEAD
+[1.68.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.67.0...v1.68.0
 [1.67.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.1...v1.67.0
 [1.66.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.0...v1.66.1
 [1.66.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.65.0...v1.66.0

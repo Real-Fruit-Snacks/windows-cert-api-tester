@@ -8,9 +8,18 @@ public static class ImportCommand
         Usage: certapi import curl "<curl command>" [--into <folder>] [--workspace <file>]
                certapi import openapi <file>        [--into <folder>] [--workspace <file>]
                certapi import har <file>             [--into <folder>] [--workspace <file>]
+               certapi import postman <file>         [--into <folder>] [--workspace <file>]
 
         Adds requests to your collections — the live GUI state by default, or a workspace
         file. --into names a root-level folder (created if needed).
+
+        postman: reads a Postman Collection (v2.0/v2.1 JSON export): folders, methods, URLs,
+        query rows, headers (disabled ones stay disabled), raw/urlencoded/formdata bodies, and
+        bearer/basic/apikey auth, with request-level auth beating folder- and collection-level.
+        {{variables}} share their syntax and import unchanged; collection-level variables become
+        an environment named after the collection (Postman's "secret" type stays secret here,
+        encrypted at rest). A file form part imports disabled, since its path came from another
+        machine. Anything that cannot carry across is named in a warning, never dropped silently.
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -76,6 +85,27 @@ public static class ImportCommand
                 var node = CollectionNode.FromParsed(pc);
                 add(node);
                 added = CountRequests(node); what = node.Name;
+                break;
+            }
+            case "postman":
+            {
+                if (!File.Exists(positionals[1])) throw new CliDataException($"File not found: {positionals[1]}");
+                PostmanImportResult result;
+                try { result = PostmanImport.Parse(File.ReadAllText(positionals[1])); }
+                catch (FormatException ex) { throw new CliDataException($"Could not parse '{positionals[1]}': {ex.Message}"); }
+                add(result.Root);
+                if (result.Variables is { } env)
+                {
+                    // Merged by name, not duplicated: re-importing the same collection updates
+                    // the environment it created rather than growing a second copy.
+                    var existing = state.Environments.FirstOrDefault(
+                        e => e.Name.Equals(env.Name, StringComparison.OrdinalIgnoreCase));
+                    if (existing is not null) state.Environments.Remove(existing);
+                    state.Environments.Add(env);
+                    stderr.WriteLine($"Imported environment '{env.Name}' ({env.Variables.Count} variable{(env.Variables.Count == 1 ? "" : "s")}).");
+                }
+                foreach (var warning in result.Warnings) stderr.WriteLine("warning: " + warning);
+                added = CountRequests(result.Root); what = result.Root.Name;
                 break;
             }
             default: throw new CliUsageException(Help);

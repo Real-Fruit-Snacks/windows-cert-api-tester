@@ -155,6 +155,75 @@ public static class TransportFlags
         };
     }
 
+    /// <summary>The help block for the stream-transport subset — what `ws`, `sse`, and `token`
+    /// carry. Spliced into their help the way <see cref="Help"/> is spliced into send/run/fuzz, so
+    /// the three cannot drift from each other or from this parser.</summary>
+    public const string StreamHelp = """
+        Transport:
+          --proxy <url>           Route through this proxy (e.g. http://proxy.corp:8080)
+          --no-proxy              Ignore the system/PAC proxy
+          --proxy-user <u:pass>   Proxy credentials
+          --noproxy <list>        Hosts that bypass the proxy, comma-separated, NO_PROXY-style
+                                  (an explicit list overrides the NO_PROXY environment variable)
+          --revocation <mode>     Check whether the server's certificate has been revoked:
+                                  none (default), offline, or online — same rules as `send`
+          --revocation-strict     Make an undeterminable revocation status fatal (needs
+                                  --revocation offline or online)
+        """;
+
+    /// <summary>The subset for connections outside <c>ApiClient</c>'s request pipeline — SSE
+    /// streams, WebSocket handshakes, OAuth token fetches: proxy, bypass, and revocation. Retries,
+    /// redirects, and HTTP-version pins are deliberately not consumed here: a stream re-subscribe
+    /// has side effects a retry must not hide, and quietly accepting a flag these commands ignore
+    /// would be the `mock --http` bug class in reverse. Shares every strict-parse rule with
+    /// <see cref="Parse"/> via the same helpers.</summary>
+    public static TransportOptions ParseStreamSubset(
+        Args args, bool ignoreServerCertificateErrors, Func<string, string?>? environment = null)
+    {
+        string? proxyUrl = args.Value("--proxy");
+        bool noProxy = args.Flag("--no-proxy");
+        string? proxyUser = args.Value("--proxy-user");
+        string? noProxySpec = args.Value("--noproxy");
+        string? revocationRaw = args.Value("--revocation");
+        bool revocationStrict = args.Flag("--revocation-strict");
+
+        if (proxyUrl is not null && noProxy)
+            throw new CliUsageException("--proxy and --no-proxy are mutually exclusive.");
+
+        string? user = null, password = null;
+        if (proxyUser is not null)
+        {
+            if (proxyUrl is null)
+                throw new CliUsageException("--proxy-user needs --proxy (there is no proxy to authenticate to).");
+            int colon = proxyUser.IndexOf(':');
+            if (colon < 0)
+                throw new CliUsageException($"--proxy-user expects user:password, got '{proxyUser}'.");
+            user = proxyUser[..colon];
+            password = proxyUser[(colon + 1)..];
+        }
+
+        var (fromFlag, fromEnvironment) = ResolveNoProxy(noProxySpec, noProxy, environment);
+
+        var revocation = revocationRaw is null ? RevocationMode.None : ParseRevocation(revocationRaw);
+        // These commands have no saved-request baseline that could already carry a mode, so the
+        // strict-without-a-mode refusal that ApiClient.ValidateTransport owns for send/run is
+        // decidable — and therefore decided — right here at parse time.
+        if (revocationStrict && revocation == RevocationMode.None)
+            throw new CliUsageException("--revocation-strict needs --revocation offline or online.");
+
+        return new TransportOptions
+        {
+            Proxy = proxyUrl is not null ? ProxyMode.Explicit : noProxy ? ProxyMode.None : ProxyMode.System,
+            ProxyUrl = proxyUrl,
+            ProxyUser = user,
+            ProxyPassword = password,
+            NoProxy = fromFlag.Count > 0 ? fromFlag : fromEnvironment,
+            Revocation = revocation,
+            RevocationStrict = revocationStrict,
+            IgnoreServerCertificateErrors = ignoreServerCertificateErrors
+        };
+    }
+
     /// <summary>Parses --revocation strictly — none/offline/online, case-insensitively, or a usage
     /// error naming the offending value. Shared by <see cref="Parse"/> (send/run/fuzz/serve) and
     /// <c>certapi grpc</c> directly, which builds its own <see cref="TransportOptions"/> and has no

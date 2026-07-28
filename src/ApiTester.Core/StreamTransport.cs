@@ -1,0 +1,53 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+
+namespace ApiTester.Core;
+
+/// <summary>The one handler factory for connections that live outside <see cref="ApiClient"/>'s
+/// request pipeline — Server-Sent Event streams, WebSocket handshakes, and OAuth token fetches.
+/// Each of those used to build its own bare <see cref="SocketsHttpHandler"/> with none of the
+/// transport work the rest of the product carries; this routes them through the same three shared
+/// tables everything else uses (<see cref="ProxyConfiguration.Apply"/>,
+/// <see cref="RevocationCheck.Apply"/>, <see cref="RevocationCheck.Decide"/>), so a proxy,
+/// revocation, or trust-pin setting honored on `send` can no longer be silently ignored on a
+/// stream. Retries, redirects, and HTTP-version pinning stay out on purpose: a stream re-subscribe
+/// has side effects a retry must not hide, and those belong to the request pipeline that owns
+/// them.</summary>
+public static class StreamTransport
+{
+    /// <param name="trustServerCertificate">Consulted when the server's certificate fails ordinary
+    /// validation, so a host pinned with `certapi trust add` is reachable without --insecure — the
+    /// same seam <see cref="ApiClient"/> uses.</param>
+    public static SocketsHttpHandler CreateHandler(
+        X509Certificate2? clientCertificate,
+        TransportOptions options,
+        Func<X509Certificate2?, bool>? trustServerCertificate = null)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            DefaultProxyCredentials = CredentialCache.DefaultCredentials
+        };
+        ProxyConfiguration.Apply(handler, options);
+
+        var ssl = new SslClientAuthenticationOptions
+        {
+            // Always installed, not only under --insecure: with RevocationMode.None, no strict
+            // flag, and no pin, Decide accepts exactly when the ordinary rules would have, so the
+            // default path is behaviorally the platform's own validation.
+            RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
+                RevocationCheck.Decide(
+                    options.Revocation, options.RevocationStrict, options.IgnoreServerCertificateErrors,
+                    errors, RevocationCheck.ChainFlagsOf(chain),
+                    trustServerCertificate is null
+                        ? null
+                        : () => trustServerCertificate(cert as X509Certificate2)).Accepted
+        };
+        RevocationCheck.Apply(ssl, options.Revocation);
+        if (clientCertificate is not null)
+            ssl.ClientCertificates = new X509CertificateCollection { clientCertificate };
+        handler.SslOptions = ssl;
+        return handler;
+    }
+}

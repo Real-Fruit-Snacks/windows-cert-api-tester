@@ -77,9 +77,14 @@ public sealed class MtlsGateway : IDisposable
     {
     }
 
+    /// <param name="trustForHost">The per-host pinned-thumbprint predicate factory
+    /// (<see cref="TrustPredicates.For"/>), so an upstream pinned with `certapi trust add` is
+    /// reachable without --insecure — the same seam every other connection uses. Null keeps the
+    /// pre-pin behavior.</param>
     public MtlsGateway(GatewayRoutes routes, X509Certificate2? clientCertificate,
                        bool ignoreServerCertificateErrors, TimeSpan timeout,
-                       TransportOptions? transport = null)
+                       TransportOptions? transport = null,
+                       Func<string, Func<X509Certificate2?, bool>>? trustForHost = null)
     {
         _routes = routes;
         _clients = new Dictionary<string, HttpClient>(StringComparer.OrdinalIgnoreCase);
@@ -88,12 +93,14 @@ public sealed class MtlsGateway : IDisposable
             string authority = Authority(route.Upstream);
             if (!_clients.ContainsKey(authority))
                 _clients[authority] = CreateClient(
-                    clientCertificate, ignoreServerCertificateErrors, timeout, transport);
+                    clientCertificate, ignoreServerCertificateErrors, timeout, transport,
+                    trustForHost?.Invoke(route.Upstream.Host));
         }
     }
 
     private static HttpClient CreateClient(X509Certificate2? clientCertificate,
-        bool ignoreServerCertificateErrors, TimeSpan timeout, TransportOptions? transport)
+        bool ignoreServerCertificateErrors, TimeSpan timeout, TransportOptions? transport,
+        Func<X509Certificate2?, bool>? trustServerCertificate)
     {
         // A gateway built without transport options gets the defaults, which is RevocationMode.None —
         // exactly the behavior this gateway had before revocation checking existed.
@@ -110,12 +117,15 @@ public sealed class MtlsGateway : IDisposable
                 // honored on `send` but ignored on `serve` would be exactly the inconsistency the
                 // previous release's proxy unification (ProxyConfiguration) fixed for the proxy
                 // switch. The gateway relays bytes rather than reporting diagnostics, so it enforces
-                // the outcome without reporting a status — there is no pinned-thumbprint seam here,
-                // so pinnedThumbprintMatches is always null.
-                RemoteCertificateValidationCallback = (_, _, chain, errors) =>
+                // the outcome without reporting a status. The pinned-thumbprint delegate is the
+                // upstream host's `certapi trust add` pin, when the caller supplied one.
+                RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
                     RevocationCheck.Decide(
                         options.Revocation, options.RevocationStrict, ignoreServerCertificateErrors,
-                        errors, RevocationCheck.ChainFlagsOf(chain), pinnedThumbprintMatches: null).Accepted
+                        errors, RevocationCheck.ChainFlagsOf(chain),
+                        trustServerCertificate is null
+                            ? null
+                            : () => trustServerCertificate(cert as X509Certificate2)).Accepted
             }
         };
         RevocationCheck.Apply(handler.SslOptions, options.Revocation);

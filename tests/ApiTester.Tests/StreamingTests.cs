@@ -44,7 +44,7 @@ public class StreamingTests
 
         using var cts = new CancellationTokenSource();
         var received = new List<string>();
-        await foreach (var ev in SseClient.StreamAsync(server.BaseUrl, clientCert, null, true, cts.Token))
+        await foreach (var ev in SseClient.StreamAsync(server.BaseUrl, clientCert, null, true, ct: cts.Token))
         {
             received.Add(ev.Data);
             cts.Cancel();   // stop after the first event
