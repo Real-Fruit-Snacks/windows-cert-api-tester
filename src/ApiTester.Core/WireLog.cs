@@ -76,6 +76,62 @@ public sealed class WireLog
         return sb.ToString();
     }
 
+    /// <summary>The same conversation read as HTTP/2 frames rather than as bytes — the layer an
+    /// analyser shows, and the one that explains a stalled or refused h2 request: a flow-control
+    /// window that never reopened, a GOAWAY carrying an error code, a SETTINGS value smaller than
+    /// expected.
+    /// <para>Each direction is a separate stream of frames (a frame can span several chunks, and
+    /// the two directions interleave arbitrarily), so both are parsed independently and then merged
+    /// back into one timeline by when their first byte crossed the wire.</para></summary>
+    public string RenderFrames(bool includeSecrets = false)
+    {
+        var sent = Concatenate(WireDirection.Sent);
+        var received = Concatenate(WireDirection.Received);
+
+        var read = new[]
+        {
+            Http2FrameReader.Read(sent.Bytes, WireDirection.Sent, sent.Offsets, includeSecrets),
+            Http2FrameReader.Read(received.Bytes, WireDirection.Received, received.Offsets, includeSecrets),
+        };
+
+        var frames = read.SelectMany(r => r.Frames).OrderBy(f => f.At).ToList();
+        if (frames.Count == 0)
+        {
+            // Saying "no frames" would read as a failure; the usual cause is simply that this was
+            // an HTTP/1.1 connection, where the byte view is the readable one.
+            return "No HTTP/2 frames in this exchange — it is not an HTTP/2 connection. "
+                 + "Use the byte view (--wire) instead.\n";
+        }
+
+        var sb = new StringBuilder();
+        foreach (var frame in frames) sb.AppendLine(frame.ToString());
+
+        if (!read[0].PrefaceSeen)
+            sb.AppendLine()
+              .AppendLine("Note: this capture began after the connection was established, so the "
+                        + "HPACK dynamic table cannot be replayed and compressed header values are "
+                        + "reported rather than decoded.");
+        int trailing = read.Sum(r => r.TrailingBytes);
+        if (trailing > 0) sb.AppendLine($"({trailing} byte(s) left over — a frame the capture cut short.)");
+        if (Truncated) sb.AppendLine("… truncated: the capture limit was reached.");
+        return sb.ToString();
+    }
+
+    /// <summary>One direction's bytes end to end, with a map from byte offset to the moment that
+    /// byte crossed the wire, so each frame can keep a real timestamp.</summary>
+    private (byte[] Bytes, List<(int Offset, TimeSpan At)> Offsets) Concatenate(WireDirection direction)
+    {
+        var buffer = new List<byte>();
+        var offsets = new List<(int, TimeSpan)>();
+        foreach (var chunk in Chunks)
+        {
+            if (chunk.Direction != direction) continue;
+            offsets.Add((buffer.Count, chunk.At));
+            buffer.AddRange(chunk.Bytes);
+        }
+        return (buffer.ToArray(), offsets);
+    }
+
     /// <summary>Whether a chunk is worth showing as text: mostly printable, no NUL bytes. A
     /// heuristic, deliberately — HTTP/1.1 headers are text, an HTTP/2 frame is not, and a body may
     /// be either.</summary>

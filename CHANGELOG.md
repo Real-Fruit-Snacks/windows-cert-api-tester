@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.86.0] - 2026-07-28
+
+### Added
+- **`certapi send --http2 --frames` reads the exchange as HTTP/2 frames** rather than as bytes —
+  type, stream, flags and length per frame, on one timeline with both directions interleaved and a
+  real timestamp each. This is the layer that explains the failures HTTP/2 has and HTTP/1.1 does
+  not: a `WINDOW_UPDATE` that never arrives (flow control stalls a transfer with no error anywhere,
+  and a four-second gap between frames is visible as one), a `GOAWAY` with its error code *and its
+  debug data* — the one place a gateway explains itself in words — a `RST_STREAM` naming the stream
+  that was killed, and the `SETTINGS` values that are often the whole answer to "why does it slow
+  down past N concurrent requests". It implies `--wire`, since it is a second reading of the same
+  capture, and needs no driver or administrator rights for the same reason `--wire` does not.
+  On an HTTP/1.1 connection it says so instead of printing an empty report, and if the request is
+  pinned to another version it names the flag to add rather than silently switching protocols —
+  changing the protocol would change the very thing being measured.
+  **Header decoding is scoped to what is actually knowable, and says so.** HPACK compresses headers
+  against a table both ends build from the connection's first byte; because connections are pooled,
+  a capture usually joins one already running, and that table cannot be reconstructed. So only
+  references into HPACK's fixed 61-entry static table (where `:method`, `:scheme` and `:status`
+  normally come from) and uncompressed literals are reported as values. Everything else is counted
+  and named rather than guessed, with the report stating how many fields it could not read — and
+  stating nothing at all when the capture did start at the connection's first byte, because then
+  there is no caveat. The block is still walked in full, so the field count is exact either way.
+  Credential headers are redacted as in the byte view unless `--wire-include-secrets` is given.
+  The frame decoder is a pure function over bytes, tested against hand-built frames with no socket
+  involved — including the cases that are easy to get quietly wrong: a frame split across two
+  reads, the reserved bit of a stream identifier, `0x01` meaning `END_STREAM` on DATA but `ACK` on
+  SETTINGS, padding and priority fields that shift every header if misread, and multi-byte HPACK
+  integers. A separate test runs a real HTTP/2 request against a live server and decodes what the
+  tap recorded, which is what proves the decoder is pointed at the right bytes.
+
 ### Fixed
 - **Sixteen releases had lost their own changelog entries.** Everything from 1.68.0 to 1.84.0 was
   merged under a single heading: each release was written by editing the heading already at the top
@@ -2126,7 +2157,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.86.0...HEAD
+[1.86.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.1...v1.86.0
 [1.85.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.0...v1.85.1
 [1.85.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.84.0...v1.85.0
 [1.84.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.83.0...v1.84.0

@@ -146,6 +146,51 @@ you guessing. Use `--trace` there instead.
 One consequence worth knowing: a request with `--wire` does not reuse a pooled connection (the
 tapped connection is not shared), so you see the handshake as well as the exchange.
 
+## Reading an HTTP/2 connection: `--frames`
+
+`--wire` shows bytes. On HTTP/2 the bytes are binary framing, so there is a reading of the same
+capture that matches what an analyser shows:
+
+```powershell
+certapi send https://api.internal/orders --cert "CN=My Client" --http2 --frames
+```
+
+```
+>> [    0.0 ms] SETTINGS      stream=0   len=18     MAX_CONCURRENT_STREAMS=100 INITIAL_WINDOW_SIZE=65535
+>> [    0.1 ms] HEADERS       stream=1   len=42     END_STREAM|END_HEADERS  4 field(s), 42 bytes  :method: GET; :scheme: https
+<< [   31.4 ms] SETTINGS      stream=0   len=0      ACK
+<< [   31.9 ms] HEADERS       stream=1   len=88     END_HEADERS  6 field(s), 88 bytes  :status: 200
+<< [   32.1 ms] DATA          stream=1   len=512    END_STREAM
+```
+
+This is the layer that explains the failures HTTP/2 has and HTTP/1.1 does not:
+
+- **A request that hangs** — look for a `WINDOW_UPDATE` that never arrives. Flow control is
+  per-stream and per-connection; a server that stops issuing credit stalls the transfer with no
+  error anywhere. The timestamps are per frame, so a four-second gap is visible as one.
+- **A connection dropped without an HTTP status** — `GOAWAY` carries an error code
+  (`ENHANCE_YOUR_CALM`, `PROTOCOL_ERROR`, …) and *debug data*, which is the one place a gateway
+  explains itself in words.
+- **One request killed while others survive** — `RST_STREAM` names the stream and the reason.
+- **Limits you did not know applied** — `SETTINGS` carries `MAX_CONCURRENT_STREAMS` and
+  `INITIAL_WINDOW_SIZE`, which is often the whole answer to "why does it slow down past N".
+
+`--frames` implies `--wire`, and needs `--http2`. On an HTTP/1.1 connection it says so rather than
+printing an empty report.
+
+**What header decoding does and does not claim.** HTTP/2 compresses headers with HPACK, against a
+table both ends build up from the connection's first byte. Because connections are pooled and
+reused, a capture usually joins one already in progress, and that table cannot be reconstructed —
+so certapi decodes only what is knowable without it: references into HPACK's fixed 61-entry static
+table (which is where `:method`, `:scheme`, `:status` and friends normally come from) and headers
+sent uncompressed. Anything else is *counted and named* rather than guessed, and the report says
+how many fields it could not read. When the capture did start at the connection's first byte, it
+says nothing — because then there is no caveat. Credential headers are redacted here exactly as in
+the byte view, unless `--wire-include-secrets` is given.
+
+For the header *contents*, the ordinary response output and `--diagnostics` already show them
+decoded; the frame view is for the framing.
+
 ## "Can I decrypt certapi's traffic in Wireshark?" — no, and you don't need to
 
 The usual way to read encrypted traffic in Wireshark is a **key log file**: the application writes

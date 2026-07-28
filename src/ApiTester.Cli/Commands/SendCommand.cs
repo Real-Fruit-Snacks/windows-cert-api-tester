@@ -97,6 +97,10 @@ public static class SendCommand
                                   it says so instead of printing nothing
           --wire-file <path>      Write that transcript to a file instead of stdout
           --wire-include-secrets  Keep credential header values in it (redacted by default)
+          --frames                Read the same exchange as HTTP/2 frames instead of bytes: type,
+                                  stream, flags, SETTINGS values, window updates and GOAWAY error
+                                  codes — the layer that explains a stalled or refused h2 request.
+                                  Implies --wire; needs --http2
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -201,7 +205,9 @@ public static class SendCommand
         bool wire = args.Flag("--wire");
         string? wireFile = args.Value("--wire-file");
         bool wireIncludeSecrets = args.Flag("--wire-include-secrets");
+        bool frames = args.Flag("--frames");
         if (wireFile is not null) wire = true;
+        if (frames) wire = true;                 // the frame view is a reading of the same capture
         if (wireIncludeSecrets && !wire)
             throw new CliUsageException("--wire-include-secrets only applies together with --wire.");
         // Resolve the certificate here (Windows store or a file) so its options are consumed
@@ -440,12 +446,19 @@ public static class SendCommand
             else wireLog = new WireLog();
         }
 
+        // --frames reads the capture as HTTP/2. Nothing forces the connection to be HTTP/2, and
+        // quietly switching the protocol would change the very thing the user is measuring — so
+        // say what to add rather than deciding for them.
+        if (frames && transport.Version is not HttpVersionMode.Http2 and not HttpVersionMode.Auto)
+            stderr.WriteLine("note: --frames reads HTTP/2 framing, but this request is pinned to " +
+                             $"{transport.Version.ToString().ToUpperInvariant()}. Add --http2 to get frames.");
+
         var response = services.Client.SendAsync(request, cert,
             transport: transport,
             trustServerCertificate: trustCert,
             cookies: cookieJar, wireLog: wireLog, cancellationToken: services.Cancel).GetAwaiter().GetResult();
 
-        if (wireLog is not null) WriteWire(wireLog, wireFile, wireIncludeSecrets, stdout, stderr);
+        if (wireLog is not null) WriteWire(wireLog, wireFile, wireIncludeSecrets, frames, stdout, stderr);
         services.Log.Debug("result: " + (response.Error is null
             ? $"{response.StatusCode} {response.ReasonPhrase}".Trim()
             : $"[{response.Error.Kind}] {response.Error.Message}")
@@ -670,9 +683,10 @@ public static class SendCommand
     /// <summary>Write the byte transcript where it was asked for. To a file when named — a large
     /// exchange is easier to read in an editor — and otherwise to stdout with the response, since
     /// the transcript IS the output the user asked for.</summary>
-    private static void WriteWire(WireLog log, string? file, bool includeSecrets, TextWriter stdout, TextWriter stderr)
+    private static void WriteWire(WireLog log, string? file, bool includeSecrets, bool frames,
+                                  TextWriter stdout, TextWriter stderr)
     {
-        string rendered = log.Render(includeSecrets);
+        string rendered = frames ? log.RenderFrames(includeSecrets) : log.Render(includeSecrets);
         if (file is null) { stdout.Write(rendered); return; }
         try
         {
