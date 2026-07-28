@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Sixteen releases had lost their own changelog entries.** Everything from 1.68.0 to 1.84.0 was
+  merged under a single heading: each release was written by editing the heading already at the top
+  of the file instead of inserting a new one above it, so the previous version's section was
+  effectively renamed to the new version and its notes absorbed. A reader looking up what changed
+  in, say, 1.80.0 found nothing, while 1.85.0 appeared to contain ten releases of work. The
+  software was never affected — only the record of it.
+  All seventeen sections are now restored, reconstructed from the tags themselves (each tagged
+  version's file still held the merged text, and consecutive tags differ by exactly one release's
+  worth of notes, so the split is exact rather than a retelling). The rewrite was verified to be
+  purely additive: strip the heading lines and the file is byte-identical to what it was before.
+- **A test now enforces the invariant that gave this away.** The compare-link footer was correct
+  throughout — it had links for versions that had no sections — so the changelog is now checked
+  against itself: every link has a section, every section has a link, no version appears twice, and
+  the version being built is documented. The check fails on the old file and passes on the
+  repaired one.
+
 ## [1.85.1] - 2026-07-28
 
 ### Changed
@@ -70,6 +87,7 @@ All notable changes to this project are documented here. The format follows
   - **A tapped connection is never pooled.** The direct handler is cached and shared between sends,
     so a tapped one must not enter that cache or one request's bytes would appear in another's
     transcript. A `--wire` request therefore owns its connection and shows the handshake too.
+## [1.84.0] - 2026-07-28
 
 ### Added
 - **`--trace` reports what the network stack itself did**, on any command: DNS resolution, the TCP
@@ -94,6 +112,7 @@ All notable changes to this project are documented here. The format follows
   on an HTTPS request (a plain-HTTP probe sees no TLS events at all, which means "this request did
   not use it", not "the runtime lacks it"), and the runtime's internal sources are unstable enough
   by name to be opt-in only.
+## [1.83.0] - 2026-07-28
 
 ### Added
 - **A mock scenario can require credentials**, so an agent, an app, or a teammate pointed at the
@@ -116,6 +135,7 @@ All notable changes to this project are documented here. The format follows
   session, or both; misbehaves on demand with delays, drips, aborts, resets, and per-call
   sequences; serves deliberately broken certificates; and can demand credentials — which together
   make every client-side path this product ships reproducible from a terminal.
+## [1.82.0] - 2026-07-28
 
 ### Added
 - **`certapi mock --tls-mode expired | wrong-host | self-signed` serves a deliberately broken
@@ -134,6 +154,7 @@ All notable changes to this project are documented here. The format follows
   begin before the authority that issued it. The expired certificate's whole validity window
   therefore sits inside the mock authority's own — twelve hours ago to one hour ago — rather than
   starting a year back as a first attempt did.
+## [1.81.0] - 2026-07-28
 
 ### Added
 - **The mock can now misbehave on demand, which is the point of a test server.** A scenario's
@@ -157,6 +178,7 @@ All notable changes to this project are documented here. The format follows
   saying so. The declared `Content-Length` deliberately stays the whole body's length even when
   the body is dripped or abandoned: that mismatch is the fault being injected, and correcting it
   would hide it.
+## [1.80.0] - 2026-07-28
 
 ### Added
 - **`certapi mock --routes <file>` makes the mock answer like *your* API.** Until now the mock
@@ -178,6 +200,7 @@ All notable changes to this project are documented here. The format follows
   `--routes` and `--har` compose deliberately: the declared routes cover the handful of paths you
   care about, and anything they miss falls through to the recorded session. A header value carrying
   a newline cannot forge a second response, the same defence the replay path already had.
+## [1.79.0] - 2026-07-28
 
 ### Added
 - **Configuration files with named profiles, so a long command line becomes a short one.** A
@@ -208,6 +231,7 @@ All notable changes to this project are documented here. The format follows
   which is the default, and the resolved profile exactly as a command would see it. It prints
   `(set)` for a password or proxy credential rather than the value — a diagnostic must never be the
   thing that leaks a secret.
+## [1.78.0] - 2026-07-28
 
 ### Added
 - **`certapi import wsdl <file>` turns a SOAP contract into saved requests** — one POST per
@@ -229,6 +253,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Note
 - This completes the ten-release reachability program that began with `certapi doctor` in v1.69.0.
+## [1.77.0] - 2026-07-28
 
 ### Added
 - **`certapi import insomnia <file>` reads an Insomnia v4 export** — the other format teams
@@ -246,6 +271,7 @@ All notable changes to this project are documented here. The format follows
   the operator can act on it instead of at send time. An authentication block Insomnia has switched
   off is ignored rather than applied, and a file part imports disabled — its path came from someone
   else's machine.
+## [1.76.0] - 2026-07-28
 
 ### Added
 - **`{{env:NAME}}` reads a variable from the process environment**, so a credential can reach a
@@ -286,6 +312,7 @@ All notable changes to this project are documented here. The format follows
   reported as expired.
   The day count floors rather than rounds, deliberately: with 23 hours left, "expires in 1 day"
   would overstate the time remaining on the one day it matters most, so it reports "today".
+## [1.74.0] - 2026-07-28
 
 ### Added
 - **`certapi serve --record <file.har>` captures every exchange the gateway forwards, and
@@ -303,6 +330,7 @@ All notable changes to this project are documented here. The format follows
   and the recording is written once at shutdown, after in-flight requests finish, so a relay never
   pays a file write per request. Buffering only happens when recording; the default relay still
   streams bodies straight through, untouched.
+## [1.73.0] - 2026-07-28
 
 ### Added
 - **`--http3` pins a request to HTTP/3 over QUIC**, beside `--http1.1` and `--http2` (the three
@@ -320,6 +348,7 @@ All notable changes to this project are documented here. The format follows
   fail loudly. The request editor's version drop-down grew a member, which tripped the round-trip
   coverage gate built in v1.66.0 exactly as designed — the mapping had to be decided in both
   directions before the suite would pass again.
+## [1.72.0] - 2026-07-28
 
 ### Added
 - **`--proxy` speaks SOCKS: `socks5://`, `socks4a://`, and `socks4://` are accepted everywhere the
@@ -333,6 +362,7 @@ All notable changes to this project are documented here. The format follows
   the suite, with the tunnel's own accept counter showing the bytes went through it and a bypass
   rule shown still sending matching hosts around it. The refusal message for an unsupported scheme
   now names what is accepted.
+## [1.71.0] - 2026-07-28
 
 ### Fixed
 - **Every redirect hop in an exported HTTP Archive claimed to have taken no time at all.** The
@@ -354,6 +384,7 @@ All notable changes to this project are documented here. The format follows
   also now says plainly why `send` reports one total and no breakdown: its connections are
   pooled, so a second request has no lookup, connect, or handshake left to measure, and printing
   zeros would suggest those were instant rather than absent.
+## [1.70.0] - 2026-07-28
 
 ### Added
 - **`certapi proxy [<url>]` — which proxy do I actually get?** It prints how this machine is
@@ -370,6 +401,7 @@ All notable changes to this project are documented here. The format follows
   in this tool." A WPAD network with no script, an unreachable script, and a script with an
   error in it are each reported as themselves rather than as a generic failure. `--json` prints
   the whole report for scripts.
+## [1.69.0] - 2026-07-28
 
 ### Added
 - **`certapi doctor <url>` — the answer to "why can't I reach this?"** It makes the connection one
@@ -403,6 +435,7 @@ All notable changes to this project are documented here. The format follows
   only the proxy can resolve — blaming DNS for a connection that would have worked. The proxy
   decision now comes first, and DNS reports on whichever host is actually dialled, saying plainly
   that the target is resolved by the proxy rather than here. A regression test pins it.
+## [1.68.0] - 2026-07-27
 
 ### Added
 - **`certapi import postman` reads a Postman Collection (v2.0/v2.1 export)** — the format most
