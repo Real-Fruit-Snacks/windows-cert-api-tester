@@ -190,6 +190,16 @@ public class RevocationCheckTests
             X509ChainStatusFlags.NoError, (bool?)null,
             true, RevocationStatus.Checked, null
         },
+        // The pin path under checking: an ordinary chain problem with no revocation flags is
+        // still rescued by a matching pin — the same rescue mode None gives, now reported as
+        // Checked because checking ran and found no revocation problem.
+        new object?[]
+        {
+            "an untrusted root with no revocation flags is accepted when a pin matches",
+            RevocationMode.Online, false, SslPolicyErrors.RemoteCertificateChainErrors,
+            X509ChainStatusFlags.UntrustedRoot, true,
+            true, RevocationStatus.Checked, null
+        },
     };
 
     [Theory]
@@ -244,5 +254,54 @@ public class RevocationCheckTests
     public void ChainFlagsOf_a_null_chain_reports_no_error()
     {
         Assert.Equal(X509ChainStatusFlags.NoError, RevocationCheck.ChainFlagsOf(null));
+    }
+
+    [Fact]
+    public void ChainFlagsOf_a_selfsigned_chain_keeps_the_untrusted_root_flag()
+    {
+        using var cert = SelfSignedCertificateFactory.CreateCertificateAuthority("ChainFlags");
+        using var chain = new X509Chain();
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.Build(cert);
+
+        var flags = RevocationCheck.ChainFlagsOf(chain);
+
+        // The same flag arrives from both the aggregate status and the per-element scan, so the
+        // accumulation must keep it present rather than cancelling it out on the second sighting.
+        Assert.True(flags.HasFlag(X509ChainStatusFlags.UntrustedRoot));
+    }
+
+    [Fact]
+    public void ChainFlagsOf_keeps_a_chain_level_flag_no_element_carries()
+    {
+        // A leaf whose issuer is nowhere to be found: the chain cannot reach a root, and
+        // PartialChain is recorded on the chain's aggregate status only — no element carries it.
+        // That makes this the one case where the aggregate scan is load-bearing rather than
+        // redundant with the per-element scan, so it is the case that proves the aggregate scan
+        // actually accumulates. (A flag both scans see — UntrustedRoot on a self-signed chain —
+        // cannot prove that: either scan alone reproduces it.)
+        using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("AbsentIssuer");
+        using var leaf = SelfSignedCertificateFactory.CreateSignedCertificate("leaf", ca, true, false, new[] { "leaf" });
+        using var chain = new X509Chain();
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.Build(leaf); // the CA is deliberately not in ExtraStore
+
+        var flags = RevocationCheck.ChainFlagsOf(chain);
+
+        Assert.True(flags.HasFlag(X509ChainStatusFlags.PartialChain));
+    }
+
+    [Fact]
+    public void ChainFlagsOf_a_disposed_chain_reports_no_error_rather_than_throwing()
+    {
+        // The documented promise: a diagnostics helper must never be what breaks a handshake,
+        // even when the callback's chain has already been torn down under it.
+        var chain = new X509Chain();
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        using (var cert = SelfSignedCertificateFactory.CreateCertificateAuthority("Disposed"))
+            chain.Build(cert);
+        chain.Dispose();
+
+        Assert.Equal(X509ChainStatusFlags.NoError, RevocationCheck.ChainFlagsOf(chain));
     }
 }

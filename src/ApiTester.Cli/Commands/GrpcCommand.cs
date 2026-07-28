@@ -69,7 +69,7 @@ public static class GrpcCommand
                                     given there is ignored.
 
         TLS / certificates:
-        """ + "\n" + CliCert.HelpLines + """
+        """ + "\n" + CliCert.HelpLines + "\n" + """
           --insecure               Ignore server certificate errors
 
         Transport (a gRPC channel is HTTP/2 by definition, so HTTP-version pinning, redirects,

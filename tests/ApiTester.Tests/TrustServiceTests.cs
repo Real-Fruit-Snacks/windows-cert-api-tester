@@ -136,6 +136,44 @@ public class TrustServiceTests
     }
 
     [Fact]
+    public void A_fresh_entry_defaults_to_empty_host_and_thumbprint_rather_than_garbage()
+    {
+        // What a JSON entry missing either field deserializes to; anything but "" could
+        // accidentally match a real lookup.
+        var entry = new TrustedServerCert();
+
+        Assert.Equal("", entry.Host);
+        Assert.Equal("", entry.Thumbprint);
+    }
+
+    [Theory]
+    [InlineData("", "ABC123")]
+    [InlineData("internal.corp", "")]
+    [InlineData("", "")]
+    public void An_empty_host_or_thumbprint_is_never_trusted(string host, string thumbprint)
+    {
+        var state = new AppState();
+        // Even against a hand-edited state file carrying an empty-host entry: the guard must
+        // refuse the lookup before matching could ever see such an entry.
+        state.TrustedServerCerts.Add(new TrustedServerCert { Host = "", Thumbprint = "ABC123" });
+
+        Assert.False(TrustService.IsTrusted(state, host, thumbprint));
+    }
+
+    [Theory]
+    [InlineData("", "ABC123")]
+    [InlineData("internal.corp", "")]
+    [InlineData("", "")]
+    public void Trusting_an_empty_host_or_thumbprint_writes_nothing(string host, string thumbprint)
+    {
+        var state = new AppState();
+
+        TrustService.Trust(state, host, thumbprint, "CN=x");
+
+        Assert.Empty(state.TrustedServerCerts);
+    }
+
+    [Fact]
     public async Task Unpinned_selfsigned_loopback_server_is_rejected_as_untrusted()
     {
         using var ca = SelfSignedCertificateFactory.CreateCertificateAuthority("CA");

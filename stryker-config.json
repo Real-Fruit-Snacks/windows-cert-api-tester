@@ -11,7 +11,7 @@
       "**/SecretProtection.cs",
       "**/BrowserRewriter.cs"
     ],
-    "test-case-filter": "Category!=StoreRoundTrip",
+    "test-case-filter": "Category!=StoreRoundTrip&FullyQualifiedName!~Many_distinct_certificates_do_not_break_the_bounded_cache",
     "reporters": [ "progress", "html", "json" ],
     "thresholds": { "high": 90, "low": 75, "break": 0 },
     "concurrency": 4

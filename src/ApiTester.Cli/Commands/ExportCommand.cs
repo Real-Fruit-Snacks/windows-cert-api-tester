@@ -18,6 +18,7 @@ public static class ExportCommand
         redacted header values are never written.
           --host <h>          keep only entries for this host (case-insensitive)
           --no-template-ids   keep identifier-looking path segments literal instead of {id}
+        -o (long form --output) names the file to write in every form above.
         workspace: writes the whole workspace as a portable JSON file (window geometry stripped).
         Secrets — captured tokens and cookies, saved auth values, secret environment
         variables, and stored response bodies (history and known-good) — are stripped by default,

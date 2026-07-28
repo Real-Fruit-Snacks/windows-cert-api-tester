@@ -271,4 +271,124 @@ public class ProxyBypassTests
 
         Assert.Equal(new[] { "internal.corp", "10.0.0.0/8" }, rules.Select(r => r.Text));
     }
+
+    // --- refusal paths and boundaries, pinned after mutation testing showed every bracket-form
+    // --- error path and both port boundaries were previously untested ------------------------
+
+    [Fact]
+    public void A_whitespace_only_entry_is_refused_at_the_rule_level()
+    {
+        // ProxyBypass.TryParse skips separator noise before rules ever see it, so the rule-level
+        // refusal is only reachable by calling the rule parser directly.
+        Assert.False(ProxyBypassRule.TryParse("   ", out var rule, out var problem));
+
+        Assert.Null(rule);
+        Assert.NotNull(problem);
+        Assert.NotEmpty(problem!);
+    }
+
+    [Fact]
+    public void An_unclosed_bracket_is_refused_naming_the_entry()
+    {
+        Assert.False(ProxyBypass.TryParse("[::1", out var rules, out var problem));
+
+        Assert.Empty(rules);
+        Assert.NotNull(problem);
+        Assert.Contains("[::1", problem);
+    }
+
+    [Fact]
+    public void A_bracketed_ipv6_literal_with_no_port_matches_that_address_on_any_port()
+    {
+        Assert.True(ProxyBypass.TryParse("[::1]", out var rules, out var problem));
+        Assert.Null(problem);
+
+        Assert.True(ProxyBypass.IsBypassed(rules, new Uri("https://[::1]:8443/")));
+        Assert.True(ProxyBypass.IsBypassed(rules, new Uri("https://[::1]/")));
+    }
+
+    [Theory]
+    [InlineData("[::1]:1")]
+    [InlineData("[::1]:65535")]
+    public void The_bracket_form_accepts_both_port_boundaries(string entry)
+    {
+        Assert.True(ProxyBypass.TryParse(entry, out _, out var problem));
+        Assert.Null(problem);
+    }
+
+    [Theory]
+    [InlineData("[::1]:0")]
+    [InlineData("[::1]:65536")]
+    [InlineData("[::1]junk")]
+    public void The_bracket_form_refuses_a_bad_port_or_trailing_junk(string entry)
+    {
+        Assert.False(ProxyBypass.TryParse(entry, out var rules, out var problem));
+
+        Assert.Empty(rules);
+        Assert.NotNull(problem);
+        Assert.Contains(entry, problem);
+    }
+
+    [Theory]
+    [InlineData("internal.corp:1")]
+    [InlineData("internal.corp:65535")]
+    public void The_host_form_accepts_both_port_boundaries(string entry)
+    {
+        Assert.True(ProxyBypass.TryParse(entry, out _, out var problem));
+        Assert.Null(problem);
+    }
+
+    [Fact]
+    public void A_port_with_no_host_is_refused()
+    {
+        Assert.False(ProxyBypass.TryParse(":8080", out var rules, out var problem));
+
+        Assert.Empty(rules);
+        Assert.NotNull(problem);
+        Assert.Contains(":8080", problem);
+    }
+
+    [Theory]
+    [InlineData("*.")]
+    [InlineData(".")]
+    public void A_wildcard_or_dot_with_no_host_left_is_refused(string entry)
+    {
+        Assert.False(ProxyBypass.TryParse(entry, out var rules, out var problem));
+
+        Assert.Empty(rules);
+        Assert.NotNull(problem);
+        Assert.Contains(entry, problem);
+    }
+
+    [Fact]
+    public void A_host_containing_whitespace_is_refused()
+    {
+        // "a b.com" carries whitespace in some but not all of its characters — the shape that
+        // distinguishes an any-whitespace check from an all-whitespace one.
+        Assert.False(ProxyBypass.TryParse("a b.com", out var rules, out var problem));
+
+        Assert.Empty(rules);
+        Assert.NotNull(problem);
+        Assert.Contains("a b.com", problem);
+    }
+
+    [Fact]
+    public void A_null_spec_parses_to_no_rules()
+    {
+        Assert.True(ProxyBypass.TryParse(null, out var rules, out var problem));
+
+        Assert.Null(problem);
+        Assert.Empty(rules);
+    }
+
+    [Fact]
+    public void EnvironmentSpec_is_null_when_both_variables_are_whitespace_only()
+    {
+        // The single-variable whitespace case falls through to a null fallback, which the final
+        // normalization would turn into null regardless; only whitespace in BOTH variables reaches
+        // that normalization with a non-null value, so only this case actually pins it.
+        string? spec = ProxyBypass.EnvironmentSpec(_ => "   ");
+
+        Assert.Null(spec);
+    }
 }

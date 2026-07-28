@@ -110,6 +110,40 @@ public class BrowserRewriterTests
     }
 
     [Fact]
+    public void An_origin_matching_one_entry_of_a_multi_entry_allowlist_is_allowed()
+    {
+        // Two entries where only one matches: the shape that distinguishes any-entry-matches
+        // from every-entry-matches.
+        var request = Request("OPTIONS",
+            ("Origin", "https://second.example"),
+            ("Access-Control-Request-Method", "PUT"));
+
+        var response = BrowserRewriter.TryPreflight(request,
+            Options(cors: true, allowedOrigins: new[] { "https://first.example", "https://second.example" }));
+
+        Assert.NotNull(response);
+        Assert.Equal(204, response!.StatusCode);
+        Assert.Equal("https://second.example", Value(response.Headers, "Access-Control-Allow-Origin"));
+    }
+
+    [Fact]
+    public void An_empty_allowlist_allows_no_origin_at_all()
+    {
+        // Explicitly empty is not null: null means "echo whatever asked", empty means the
+        // operator listed nothing, so nothing may pass.
+        var request = Request("OPTIONS",
+            ("Origin", "https://app.example"),
+            ("Access-Control-Request-Method", "PUT"));
+
+        var response = BrowserRewriter.TryPreflight(request,
+            Options(cors: true, allowedOrigins: Array.Empty<string>()));
+
+        Assert.NotNull(response);
+        Assert.Equal(403, response!.StatusCode);
+        Assert.Empty(response.Headers);
+    }
+
+    [Fact]
     public void A_preflight_that_does_not_ask_for_private_network_access_gets_no_such_header()
     {
         var request = Request("OPTIONS",
@@ -433,6 +467,29 @@ public class BrowserRewriterTests
         // loopback origin. Dropping it silently would look like an unrelated bug to the operator.
         Assert.Equal(expected, Value(result, "Set-Cookie"));
         Assert.Contains(warnings, w => w.Contains(name));
+    }
+
+    [Fact]
+    public void Empty_cookie_attributes_from_doubled_or_trailing_semicolons_are_dropped()
+    {
+        var result = BrowserRewriter.RewriteResponseHeaders(
+            Headers(("Set-Cookie", "id=7;; Path=/;")), null, Route(),
+            Options(rewriteCookies: true), out var warnings);
+
+        Assert.Equal("id=7; Path=/", Value(result, "Set-Cookie"));
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void A_degenerate_cookie_with_no_equals_sign_passes_through_unharmed()
+    {
+        // Not a legal Set-Cookie, but a server can send one; the rewriter must relay it, not crash.
+        var result = BrowserRewriter.RewriteResponseHeaders(
+            Headers(("Set-Cookie", "flag; Path=/")), null, Route(),
+            Options(rewriteCookies: true), out var warnings);
+
+        Assert.Equal("flag; Path=/", Value(result, "Set-Cookie"));
+        Assert.Empty(warnings);
     }
 
     [Fact]

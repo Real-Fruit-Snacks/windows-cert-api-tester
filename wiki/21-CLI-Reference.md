@@ -24,7 +24,7 @@ Usage: certapi <command> [options]
 | [`import`](#import) | Import a cURL command or an OpenAPI file |
 | [`export`](#export) | Export collections as OpenAPI, or the whole workspace |
 | [`serve <upstream>`](#serve) | Run a local mTLS gateway that forwards to an upstream |
-| [`grpc`](#grpc) | Discover and call a gRPC service (unary/server-streaming) |
+| [`grpc`](#grpc) | Discover and call a gRPC service (unary, server-, client-, or bidirectional-streaming) |
 | [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
 

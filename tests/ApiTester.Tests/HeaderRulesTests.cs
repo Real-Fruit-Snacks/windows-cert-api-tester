@@ -297,6 +297,31 @@ public class HeaderRulesTests
         Assert.DoesNotContain("--remove-response-header", problem);
     }
 
+    [Fact]
+    public void A_remove_request_problem_is_reported_before_a_set_response_one()
+    {
+        // The middle of the documented scan order, which the first-versus-last case above
+        // cannot see: --remove-request-header is scanned before --response-header.
+        var rules = HeaderRules.TryCreate(
+            Set(), Remove("Connection"), Set(("Host", "v")), Remove(), out var problem);
+
+        Assert.Null(rules);
+        Assert.NotNull(problem);
+        Assert.Contains("--remove-request-header", problem);
+    }
+
+    [Fact]
+    public void A_set_response_problem_is_reported_before_a_remove_response_one()
+    {
+        var rules = HeaderRules.TryCreate(
+            Set(), Remove(), Set(("Connection", "v")), Remove("Host"), out var problem);
+
+        Assert.Null(rules);
+        Assert.NotNull(problem);
+        Assert.Contains("--response-header", problem);
+        Assert.DoesNotContain("--remove-response-header", problem);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

@@ -55,6 +55,30 @@ public class SecretProtectionTests
         Assert.Equal(plaintext, protector.Unprotect(second!));
     }
 
+    [Fact]
+    public void Protect_then_unprotect_round_trips_the_empty_string()
+    {
+        // An empty secret is still a secret: it must come back as "", not null, or a caller
+        // would mistake it for an undecryptable value and drop it.
+        var protector = new DpapiSecretProtector();
+
+        var stored = protector.Protect("");
+
+        Assert.NotNull(stored);
+        Assert.Equal("", protector.Unprotect(stored!));
+    }
+
+    [Fact]
+    public void LooksProtected_accepts_exactly_the_documented_32_byte_minimum()
+    {
+        // The boundary itself, pinned so it cannot drift: 32 decoded bytes looks protected,
+        // 31 does not.
+        Assert.True(SecretProtection.LooksProtected(
+            SecretProtection.Prefix + Convert.ToBase64String(new byte[32])));
+        Assert.False(SecretProtection.LooksProtected(
+            SecretProtection.Prefix + Convert.ToBase64String(new byte[31])));
+    }
+
     [Theory]
     [InlineData("this is legacy plaintext with no marker at all")]
     [InlineData("enc:v1:")]

@@ -6,6 +6,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.66.1] - 2026-07-27
+
+### Fixed
+- **`certapi help grpc` ran two options together on one line.** The shared certificate-options
+  block is spliced into three commands' help text; the gRPC command's splice was missing a line
+  break, so `--insecure` was appended to the end of `--key-file`'s description instead of starting
+  its own line. `bench` and `trust` were spliced correctly and are unchanged.
+- **Three descriptions still said `certapi grpc` handles only unary and server-streaming calls** —
+  the command-line reference's summary table, the desktop application's help window, and nothing
+  else; every other mention was already right. Client-streaming and bidirectional support shipped
+  in v1.60.0, and these two summaries were written before that. Both now name all four kinds.
+- **`certapi help export` never mentioned that `-o` has a long form, `--output`.** The parser has
+  always accepted both; the help text now says so. This came out of a sweep in the other
+  direction from the usual one — not "is every documented flag accepted" (the acceptance suite
+  already checks that) but "is every accepted flag documented".
+
+### Changed
+- **Beyond that one line of help text, nothing changes for a user in this release.** It closes
+  out the mutation-testing pass the
+  v1.66.0 assurance work set up: Stryker.NET ran to completion over the six security-critical
+  files (revocation, proxy bypass, header rules, trust pins, secret protection, and the browser
+  gateway's rewriter), and every surviving mutant was triaged as a real test gap, a provably
+  equivalent mutation, or deliberately unpinned diagnostic wording. The real gaps are now closed
+  by tests (survivors down from 67 to 48, never-covered mutations from 20 to 5, and every
+  remaining one individually accounted for): every refusal path and both port boundaries of the `--noproxy`
+  parser, the empty-host/empty-thumbprint guards on certificate pinning, a pinned thumbprint
+  rescuing an ordinary chain problem *while revocation checking is on*, the multi-entry and
+  explicitly-empty CORS origin allowlists (an empty allowlist allows nothing; before, no test
+  distinguished it from "echo anything"), the gateway surviving a degenerate `Set-Cookie` with no
+  `=` in it, the encrypted-secret marker's exact 32-byte boundary, and the empty string
+  round-tripping through secret protection as `""` rather than being dropped as undecryptable.
+  Each of these was a place where the product was right but nothing would have failed had it
+  quietly stopped being right.
+
 ## [1.66.0] - 2026-07-27
 
 ### Changed
@@ -1560,7 +1594,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.1...HEAD
+[1.66.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.0...v1.66.1
 [1.66.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.65.0...v1.66.0
 [1.65.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.64.0...v1.65.0
 [1.64.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.63.0...v1.64.0
