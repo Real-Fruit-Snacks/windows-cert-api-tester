@@ -6,12 +6,67 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.67.0] - 2026-07-27
+
+### Added
+- **The MCP server caught up with the product.** `certapi mcp` predates most of this year's
+  features, and an audit against both the product and the Model Context Protocol's own revisions
+  found it behind on each. Four new tools close the product side:
+  - **`run_chain`** runs a saved chain by name — the "log in, then call the API" pattern that is
+    exactly what an agent does — through the same engine as `certapi run --chain` and the desktop
+    application, each step seeing what earlier steps captured.
+  - **`list_environments`** names the workspace's environments for `run_saved`/`run_chain`'s `env`
+    argument. Names and variable counts only; a variable's value is never returned.
+  - **`grpc_list` and `grpc_call`** bring gRPC to agents: discovery via server reflection or a
+    descriptor set the operator pins at launch with the new `--protoset` flag (the agent can never
+    name files), and calls of all four method kinds — unary, server-streaming, client-streaming,
+    bidirectional — with streaming responses bounded by `maxMessages` (default 100). The same
+    pinned certificate and host allowlist govern every call.
+- **Saved requests, environments, and chains are now published as read-only MCP resources**
+  (`certapi://requests/…`, `certapi://environments/…`, `certapi://chains`), so a host can show the
+  agent what exists without spending tool calls. A request's auth secret reads as `(redacted)` and
+  a secret variable's value is withheld — the same stance `certapi export workspace` takes.
+- **`certapi mcp` gained the transport flags every other network command already had**: the
+  `--proxy`/`--proxy-user`/`--no-proxy`/`--noproxy` group, `--revocation`/`--revocation-strict`
+  (it was the last network command without revocation checking), and the `--retry` group. All of
+  them apply to every call the tools make.
+- **The protocol layer moved up to the 2025-06-18 revision** while still accepting clients on
+  2024-11-05 and 2025-03-26: tools carry behavioral annotations (read-only / destructive /
+  idempotent / open-world hints) so a host's permission model has structure instead of prose,
+  results include `structuredContent` alongside the text form with `outputSchema` declared where
+  the shape is stable, server notes arrive as `logging` notifications gated by `logging/setLevel`,
+  and an unknown client protocol version is answered with the newest supported one rather than
+  echoed back as if it were understood.
+
 ### Fixed
+- **The MCP server ignored pinned server certificates.** Every other network command consults
+  `certapi trust add` pins when a server's certificate fails ordinary validation; `mcp` did not,
+  so the only way to reach a pinned internal host was `--insecure` — the blunt instrument pinning
+  exists to replace. Pins from the workspace now work exactly as they do for `send`/`run`.
+- **`run_saved` now runs a saved request exactly as `certapi run` would.** It previously
+  re-implemented the send: the saved request's transport settings (proxy, retries, HTTP version,
+  revocation, bypass list) were silently dropped, its assertions were never evaluated, its capture
+  rules never applied, and only Bearer/Basic auth survived. It now runs through the same
+  `RequestRunner` path as `run`, the desktop application, and chains — saved transport honored,
+  all auth types, assertions reported in the result, captures applied and visible to later calls
+  in the session. A saved request that names no certificate of its own now presents the pinned
+  session certificate.
 - **The command-line reference's `serve` section listed some flags but not others, with nothing
   to say the list was partial** — `--upstream`, `--token`, the `--tls` group, and the `--browser`
   bundle were absent while the CORS, header-rule, and revocation rows were present, which read as
   "this is everything". The distinctive flags are all rows now; the full detail stays in the
   Local Gateway handbook, which the section already points to.
+
+### Changed
+- **The MCP session model is now explicit: the workspace is read once at launch, and nothing is
+  ever written back.** Captured tokens, cookies, and `{{variables}}` live in memory for the
+  session — which is what lets a chain's login serve a later tool call — and die with the
+  process. Previously the workspace was re-read on each call and captures were not applied at
+  all, so the model was neither fresh nor durable; now it is deliberately one thing.
+- **Redirects are never followed by MCP tool calls**, whatever a saved request's own setting
+  says: a 3xx comes back as data, so every hop an agent takes is an explicit call the host
+  allowlist judged. Previously true for `send_request`; now guaranteed across `run_saved` and
+  `run_chain` too.
 
 ## [1.66.1] - 2026-07-27
 
@@ -1601,7 +1656,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.67.0...HEAD
+[1.67.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.1...v1.67.0
 [1.66.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.0...v1.66.1
 [1.66.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.65.0...v1.66.0
 [1.65.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.64.0...v1.65.0

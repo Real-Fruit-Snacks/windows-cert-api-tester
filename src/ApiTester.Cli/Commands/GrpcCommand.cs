@@ -492,7 +492,7 @@ public static class GrpcCommand
 
     /// <summary>What each of the four method kinds is called — used both by the "several -d/--data
     /// values against a single-message method" usage error and by debug logging.</summary>
-    private static string KindName(bool clientStreaming, bool serverStreaming) =>
+    internal static string KindName(bool clientStreaming, bool serverStreaming) =>
         (clientStreaming, serverStreaming) switch
         {
             (false, false) => "unary",
@@ -507,7 +507,7 @@ public static class GrpcCommand
     /// several matches or none is a data error naming the candidates or the services actually
     /// available, worded via <paramref name="sourceLabel"/> so the message stays honest about where
     /// that list came from ("the server advertises" vs. "the descriptor set declares").</summary>
-    private static string ResolveServiceName(IReadOnlyList<GrpcServiceInfo> discovered, string given, string sourceLabel)
+    internal static string ResolveServiceName(IReadOnlyList<GrpcServiceInfo> discovered, string given, string sourceLabel)
     {
         var exact = discovered.FirstOrDefault(s => s.Name == given);
         if (exact is not null) return exact.Name;

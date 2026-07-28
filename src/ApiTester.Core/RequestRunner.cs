@@ -16,6 +16,16 @@ public sealed class RequestRunContext
     /// <summary>Resolves a saved request's stored thumbprint to a certificate. Null answers nothing,
     /// which fails that request the way a missing certificate does.</summary>
     public Func<string, X509Certificate2?>? FindCertificate { get; init; }
+    /// <summary>The certificate for a request that names no thumbprint of its own. Null — every
+    /// existing caller — keeps today's behavior: no thumbprint, no certificate. The MCP server sets
+    /// it to the certificate the operator pinned at launch, so a saved request that never chose a
+    /// certificate still presents the session's identity.</summary>
+    public X509Certificate2? DefaultCertificate { get; init; }
+    /// <summary>Refuses a resolved URL before anything touches the network — the problem string to
+    /// report, or null to proceed. Null — every existing caller — allows everything. The MCP server
+    /// sets it to its host allowlist; checked per request, after variables resolve, so a chain step
+    /// whose URL comes from an earlier step's capture is still gated.</summary>
+    public Func<string, string?>? AllowUrl { get; init; }
     public bool NoAutoToken { get; init; }
     public bool StrictVars { get; init; }
     public bool Record { get; init; }
@@ -137,6 +147,11 @@ public static class RequestRunner
         string host = TokenService.HostOf(url);
         string? body = string.IsNullOrEmpty(m.Body) ? null : R(m.Body!);
 
+        // Gated before the auto-token attach below, not just before the send: a captured token
+        // must never even be offered to a host the gate refuses.
+        if (ctx.AllowUrl?.Invoke(url) is { } refused)
+            return (new ApiResponse { Error = new ApiError(ApiErrorKind.Unknown, refused) }, url);
+
         if (!ctx.NoAutoToken && m.AuthType == "Auto" &&
             TokenService.AutoAttach(ctx.State, url, headers, out _) is { } used)
         {
@@ -152,7 +167,7 @@ public static class RequestRunner
             ctx.Note?.Invoke($"warning: unresolved variables: {tokens}");
         }
 
-        X509Certificate2? cert = null;
+        X509Certificate2? cert = ctx.DefaultCertificate;
         if (!string.IsNullOrEmpty(m.CertThumbprint))
         {
             cert = ctx.FindCertificate?.Invoke(m.CertThumbprint!);

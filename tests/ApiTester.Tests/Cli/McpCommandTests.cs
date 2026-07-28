@@ -205,4 +205,381 @@ public class McpCommandTests
             finally { File.Delete(ws); }
         }
     }
+
+    // ---------------------------------------------------------------- v1.67.0: parity & new tools
+
+    private static string SaveWorkspace(AppState state, string tag)
+    {
+        var ws = Path.Combine(Path.GetTempPath(), $"certapi-mcp-{tag}-{Guid.NewGuid():N}.json");
+        state.SaveTo(ws);
+        return ws;
+    }
+
+    [Fact]
+    public async Task Send_request_reaches_a_pinned_host_without_insecure()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            var host = new Uri(upstream.BaseUrl).Host;
+
+            var state = new AppState();
+            TrustService.Trust(state, host, server);
+            var ws = SaveWorkspace(state, "pin");
+            try
+            {
+                // The sharp edge this closes: --insecure is OFF, and the pin alone must carry it,
+                // exactly as it does for send/run/fuzz/bench.
+                var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                    insecure: false, timeout: 30, includeLocalMachine: false, workspace: ws,
+                    noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+                var result = Tool(tools, "send_request").Handler(Args($"{{\"url\":\"{upstream.BaseUrl}\"}}"));
+
+                Assert.False(result.IsError);
+                using var doc = JsonDocument.Parse(result.Json);
+                Assert.Equal(200, doc.RootElement.GetProperty("status").GetInt32());
+            }
+            finally { File.Delete(ws); }
+        }
+    }
+
+    [Fact]
+    public async Task Send_request_without_a_pin_or_insecure_refuses_a_selfsigned_host()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            var host = new Uri(upstream.BaseUrl).Host;
+            var ws = SaveWorkspace(new AppState(), "nopin");
+            try
+            {
+                var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                    insecure: false, timeout: 30, includeLocalMachine: false, workspace: ws,
+                    noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+                var result = Tool(tools, "send_request").Handler(Args($"{{\"url\":\"{upstream.BaseUrl}\"}}"));
+
+                Assert.True(result.IsError);
+            }
+            finally { File.Delete(ws); }
+        }
+    }
+
+    [Fact]
+    public async Task Run_saved_applies_saved_assertions_and_captures_like_run_would()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var oauth = await LoopbackMtlsServer.StartOAuthTokenAsync(
+                server, client.Thumbprint!, "cid", "shh");
+
+            var node = new CollectionNode
+            {
+                Id = "login1", Name = "login", IsFolder = false,
+                Request = new RequestModel
+                {
+                    Method = "POST", Path = oauth.BaseUrl, IgnoreServerCert = true,
+                    ContentType = "application/x-www-form-urlencoded",
+                    Body = "grant_type=client_credentials&client_id=cid&client_secret=shh",
+                    Captures = { new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" } },
+                    Assertions = { new AssertionRule { Enabled = true, Target = AssertTarget.Status, Op = AssertOp.Equals, Value = "200" } }
+                }
+            };
+            var state = new AppState();
+            state.Collections.Add(node);
+            var ws = SaveWorkspace(state, "fidelity");
+            try
+            {
+                var host = new Uri(oauth.BaseUrl).Host;
+                var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                    insecure: false, timeout: 30, includeLocalMachine: false, workspace: ws,
+                    noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+                var result = Tool(tools, "run_saved").Handler(Args("{\"path\":\"login\"}"));
+
+                Assert.False(result.IsError);
+                using var doc = JsonDocument.Parse(result.Json);
+                // The saved request named no certificate, so the pinned one carried it — the
+                // DefaultCertificate seam, observable as an accepted mTLS handshake.
+                Assert.Equal(200, doc.RootElement.GetProperty("status").GetInt32());
+                Assert.True(doc.RootElement.GetProperty("passed").GetBoolean());
+                var assertion = doc.RootElement.GetProperty("assertions")[0];
+                Assert.True(assertion.GetProperty("passed").GetBoolean());
+                var capture = doc.RootElement.GetProperty("captures")[0];
+                Assert.Equal("token", capture.GetProperty("variable").GetString());
+                Assert.True(capture.GetProperty("ok").GetBoolean());
+            }
+            finally { File.Delete(ws); }
+        }
+    }
+
+    [Fact]
+    public async Task Run_saved_reports_a_failing_saved_assertion_as_not_passed()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"ok\":true}");
+            var node = new CollectionNode
+            {
+                Id = "r1", Name = "strict", IsFolder = false,
+                Request = new RequestModel
+                {
+                    Method = "GET", Path = upstream.BaseUrl, IgnoreServerCert = true,
+                    Assertions = { new AssertionRule { Enabled = true, Target = AssertTarget.Status, Op = AssertOp.Equals, Value = "418" } }
+                }
+            };
+            var state = new AppState();
+            state.Collections.Add(node);
+            var ws = SaveWorkspace(state, "assertfail");
+            try
+            {
+                var host = new Uri(upstream.BaseUrl).Host;
+                var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                    insecure: false, timeout: 30, includeLocalMachine: false, workspace: ws,
+                    noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+                var result = Tool(tools, "run_saved").Handler(Args("{\"path\":\"strict\"}"));
+
+                // The transport succeeded, so the tool call is not an error — but the request
+                // did not pass, and the assertion says why. That is `certapi run`'s contract.
+                Assert.False(result.IsError);
+                using var doc = JsonDocument.Parse(result.Json);
+                Assert.Equal(200, doc.RootElement.GetProperty("status").GetInt32());
+                Assert.False(doc.RootElement.GetProperty("passed").GetBoolean());
+                Assert.False(doc.RootElement.GetProperty("assertions")[0].GetProperty("passed").GetBoolean());
+            }
+            finally { File.Delete(ws); }
+        }
+    }
+
+    [Fact]
+    public async Task Run_chain_captures_flow_into_a_later_tool_call_in_the_same_session()
+    {
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            await using var oauth = await LoopbackMtlsServer.StartOAuthTokenAsync(
+                server, client.Thumbprint!, "cid", "shh");
+            await using var echo = await LoopbackMtlsServer.StartEchoAsync(server, client.Thumbprint!);
+
+            var login = new CollectionNode
+            {
+                Id = "login1", Name = "login", IsFolder = false,
+                Request = new RequestModel
+                {
+                    Method = "POST", Path = oauth.BaseUrl, IgnoreServerCert = true,
+                    ContentType = "application/x-www-form-urlencoded",
+                    Body = "grant_type=client_credentials&client_id=cid&client_secret=shh",
+                    Captures = { new CaptureRule { Variable = "token", Source = CaptureSource.Body, Path = "access_token" } }
+                }
+            };
+            var fetch = new CollectionNode
+            {
+                Id = "fetch1", Name = "fetch", IsFolder = false,
+                Request = new RequestModel { Method = "GET", Path = echo.BaseUrl, IgnoreServerCert = true }
+            };
+            fetch.Request!.QueryParams.Add(new ParamRow { Key = "api_key", Value = "{{token}}" });
+
+            var state = new AppState();
+            state.Collections.Add(login);
+            state.Collections.Add(fetch);
+            state.Chains.Add(new RequestChain
+            {
+                Name = "sess", EnvironmentName = "Sess",
+                Steps = { new ChainStep { RequestId = "login1" } }
+            });
+            var ws = SaveWorkspace(state, "chain");
+            try
+            {
+                var host = new Uri(oauth.BaseUrl).Host;
+                var tools = McpCommand.BuildTools(client, new HostAllowlist(new[] { host }),
+                    insecure: false, timeout: 30, includeLocalMachine: false, workspace: ws,
+                    noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+                var chainResult = Tool(tools, "run_chain").Handler(Args("{\"name\":\"sess\"}"));
+                Assert.False(chainResult.IsError);
+                using (var doc = JsonDocument.Parse(chainResult.Json))
+                {
+                    Assert.True(doc.RootElement.GetProperty("passed").GetBoolean());
+                    var step = doc.RootElement.GetProperty("steps")[0];
+                    Assert.True(step.GetProperty("passed").GetBoolean());
+                    Assert.True(step.GetProperty("captures")[0].GetProperty("ok").GetBoolean());
+                }
+
+                // The whole point of the session model: what the chain captured resolves
+                // {{variables}} in a LATER tool call, with no state ever written to disk.
+                var fetchResult = Tool(tools, "run_saved").Handler(Args("{\"path\":\"fetch\",\"env\":\"Sess\"}"));
+                Assert.False(fetchResult.IsError);
+                using var fetchDoc = JsonDocument.Parse(fetchResult.Json);
+                string echoed = fetchDoc.RootElement.GetProperty("body").GetString()!;
+                Assert.Contains("api_key=", echoed);
+                Assert.DoesNotContain("%7B%7B", echoed);   // {{token}} resolved, not escaped
+
+                // And the workspace file on disk is byte-for-byte what the session started from.
+                var reloaded = AppState.LoadFrom(ws);
+                Assert.Empty(reloaded.Environments.Where(e => e.Name == "Sess"));
+            }
+            finally { File.Delete(ws); }
+        }
+    }
+
+    [Fact]
+    public void Run_chain_gates_every_step_against_the_allowlist()
+    {
+        var node = new CollectionNode
+        {
+            Id = "r1", Name = "blocked", IsFolder = false,
+            Request = new RequestModel { Method = "GET", Path = "https://127.0.0.1:1/", IgnoreServerCert = true }
+        };
+        var state = new AppState();
+        state.Collections.Add(node);
+        state.Chains.Add(new RequestChain
+        {
+            Name = "walled",
+            Steps = { new ChainStep { RequestId = "r1" }, new ChainStep { RequestId = "r1" } }
+        });
+        var ws = SaveWorkspace(state, "gate");
+        try
+        {
+            var tools = McpCommand.BuildTools(null, new HostAllowlist(new[] { "allowed.invalid" }),
+                insecure: true, timeout: 5, includeLocalMachine: false, workspace: ws,
+                noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+            var result = Tool(tools, "run_chain").Handler(Args("{\"name\":\"walled\"}"));
+
+            using var doc = JsonDocument.Parse(result.Json);
+            Assert.False(doc.RootElement.GetProperty("passed").GetBoolean());
+            var step = doc.RootElement.GetProperty("steps")[0];
+            Assert.Contains("not allowed", step.GetProperty("error").GetString());
+            Assert.Single(doc.RootElement.GetProperty("skipped").EnumerateArray());
+        }
+        finally { File.Delete(ws); }
+    }
+
+    [Fact]
+    public void List_environments_returns_names_and_counts_but_never_values()
+    {
+        var state = new AppState();
+        state.Environments.Add(new ApiEnvironment
+        {
+            Id = "e1", Name = "Prod",
+            Variables =
+            {
+                new Variable { Key = "base", Value = "https://api.example" },
+                new Variable { Key = "apikey", Value = "SUPERSECRETVALUE", Secret = true }
+            }
+        });
+        state.ActiveEnvironmentId = "e1";
+        var ws = SaveWorkspace(state, "envs");
+        try
+        {
+            var tools = McpCommand.BuildTools(null, new HostAllowlist(Array.Empty<string>()),
+                insecure: false, timeout: 5, includeLocalMachine: false, workspace: ws,
+                noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+            var result = Tool(tools, "list_environments").Handler(Args("{}"));
+
+            Assert.False(result.IsError);
+            using var doc = JsonDocument.Parse(result.Json);
+            var env = doc.RootElement.GetProperty("environments")[0];
+            Assert.Equal("Prod", env.GetProperty("name").GetString());
+            Assert.True(env.GetProperty("active").GetBoolean());
+            Assert.Equal(2, env.GetProperty("variables").GetInt32());
+            Assert.DoesNotContain("SUPERSECRETVALUE", result.Json);
+        }
+        finally { File.Delete(ws); }
+    }
+
+    [Fact]
+    public void Resources_expose_the_workspace_with_secrets_redacted()
+    {
+        var state = new AppState();
+        state.Collections.Add(new CollectionNode
+        {
+            Id = "r1", Name = "orders", IsFolder = false,
+            Request = new RequestModel
+            {
+                Method = "GET", Path = "https://api.example/orders",
+                AuthType = "Bearer", AuthSecret = "hunter2"
+            }
+        });
+        state.Environments.Add(new ApiEnvironment
+        {
+            Id = "e1", Name = "Prod",
+            Variables =
+            {
+                new Variable { Key = "base", Value = "https://api.example" },
+                new Variable { Key = "apikey", Value = "SUPERSECRETVALUE", Secret = true }
+            }
+        });
+        state.Chains.Add(new RequestChain { Name = "sess", Steps = { new ChainStep { RequestId = "r1" } } });
+
+        var resources = McpCommand.BuildResources(state);
+
+        var request = resources.Single(r => r.Uri.StartsWith("certapi://requests/", StringComparison.Ordinal));
+        string requestText = request.Read();
+        Assert.Contains("(redacted)", requestText);
+        Assert.DoesNotContain("hunter2", requestText);
+
+        var env = resources.Single(r => r.Uri.StartsWith("certapi://environments/", StringComparison.Ordinal));
+        string envText = env.Read();
+        Assert.Contains("https://api.example", envText);
+        Assert.Contains("value withheld", envText);
+        Assert.DoesNotContain("SUPERSECRETVALUE", envText);
+
+        var chains = resources.Single(r => r.Uri == "certapi://chains");
+        Assert.Contains("sess", chains.Read());
+    }
+
+    [Fact]
+    public async Task Grpc_list_and_a_unary_call_work_through_the_allowlist()
+    {
+        await using var server = await ApiTester.Tests.Grpc.GrpcTestServer.StartAsync();
+        var host = server.Uri.Host;
+        var ws = SaveWorkspace(new AppState(), "grpc");
+        try
+        {
+            var tools = McpCommand.BuildTools(null, new HostAllowlist(new[] { host }),
+                insecure: false, timeout: 30, includeLocalMachine: false, workspace: ws,
+                noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+            var list = Tool(tools, "grpc_list").Handler(Args($"{{\"address\":\"{server.Address}\"}}"));
+            Assert.False(list.IsError);
+            Assert.Contains("certapi.test.Echo", list.Json);
+            Assert.Contains("\"kind\":\"unary\"", list.Json);
+            Assert.Contains("bidirectional", list.Json);
+
+            var call = Tool(tools, "grpc_call").Handler(Args(
+                $"{{\"address\":\"{server.Address}\",\"method\":\"Echo/Unary\",\"data\":\"{{\\\"text\\\":\\\"hi\\\",\\\"count\\\":2}}\"}}"));
+            Assert.False(call.IsError);
+            using var doc = JsonDocument.Parse(call.Json);
+            Assert.Equal(0, doc.RootElement.GetProperty("statusCode").GetInt32());
+            Assert.Equal("hi", doc.RootElement.GetProperty("message").GetProperty("text").GetString());
+        }
+        finally { File.Delete(ws); }
+    }
+
+    [Fact]
+    public void Grpc_call_refuses_an_address_off_the_allowlist()
+    {
+        var ws = SaveWorkspace(new AppState(), "grpcgate");
+        try
+        {
+            var tools = McpCommand.BuildTools(null, new HostAllowlist(new[] { "allowed.invalid" }),
+                insecure: false, timeout: 5, includeLocalMachine: false, workspace: ws,
+                noAutoToken: false, new CliServices { LiveStatePath = ws });
+
+            var result = Tool(tools, "grpc_call").Handler(Args(
+                "{\"address\":\"http://127.0.0.1:5000\",\"method\":\"Echo/Unary\"}"));
+
+            Assert.True(result.IsError);
+            Assert.Contains("not allowed", result.Json);
+        }
+        finally { File.Delete(ws); }
+    }
 }

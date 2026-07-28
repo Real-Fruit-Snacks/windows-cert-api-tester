@@ -459,6 +459,16 @@ going through the gateway.
 
 `certapi mcp [options]` — MCP server for AI agents (see [MCP Server](20-MCP-Server.md)).
 
+- Tools: `send_request`, `run_saved`, `run_chain`, `list_saved`, `list_environments`,
+  `list_certificates`, `grpc_list`, `grpc_call`, `self_test`; saved requests, environments, and
+  chains are also published as read-only resources with secrets redacted
+- `--allow <host>` — allowed upstream host (repeatable), enforced on every call including each
+  chain step; omit to allow any host (prints a warning)
+- `--protoset <file>` — descriptor set for the gRPC tools, pinned at launch
+- The same `--proxy`/`--noproxy`, `--revocation`/`--revocation-strict`, and `--retry` flags as
+  [`send`](#send) apply to every call the tools make; redirects are never followed, a host pinned
+  with `trust add` needs no `--insecure`, and the workspace is read once and never written back
+
 ---
 
 `certapi --version` prints the version.
