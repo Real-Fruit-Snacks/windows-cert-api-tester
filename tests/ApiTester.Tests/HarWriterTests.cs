@@ -15,6 +15,90 @@ public class HarWriterTests
             ContentType = contentType
         };
 
+    // ---------------------------------------------------------------- credentials in the URL
+
+    private static ApiRequest RequestTo(string url) => new()
+    {
+        Method = HttpMethod.Get,
+        Url = url,
+        Headers = new List<KeyValuePair<string, string>>
+            { new("Authorization", "Bearer header-secret") },
+    };
+
+    [Fact]
+    public void A_credential_in_the_query_string_is_redacted_like_the_header_beside_it()
+    {
+        // An archive is a file people attach to tickets and hand to teammates — the same reason the
+        // Authorization header is redacted. `?api_key=` is a credential that merely looks like part
+        // of an address, and it was being written out in full next to the redacted header.
+        var entry = HarWriter.FromExchange(
+            RequestTo("https://api.internal/orders?api_key=url-secret&page=2"),
+            MakeResponse(), includeSecrets: false);
+
+        Assert.DoesNotContain("url-secret", entry.Request.Url);
+        Assert.Contains("api_key=REDACTED", entry.Request.Url);
+        Assert.Contains("page=2", entry.Request.Url);      // a harmless parameter survives
+    }
+
+    [Fact]
+    public void The_query_array_cannot_disagree_with_the_url_it_came_from()
+    {
+        // The archive states the request twice; a reader (or a replay) may consult either.
+        var entry = HarWriter.FromExchange(
+            RequestTo("https://api.internal/orders?token=url-secret"),
+            MakeResponse(), includeSecrets: false);
+
+        var token = entry.Request.QueryString.Single(q => q.Name == "token");
+        Assert.Equal("REDACTED", token.Value);
+        Assert.DoesNotContain("url-secret", entry.Request.Url);
+    }
+
+    [Fact]
+    public void A_password_in_the_address_itself_is_redacted_too()
+    {
+        var entry = HarWriter.FromExchange(
+            RequestTo("https://svc:hunter2@api.internal/orders"),
+            MakeResponse(), includeSecrets: false);
+
+        Assert.DoesNotContain("hunter2", entry.Request.Url);
+        Assert.Contains("svc:REDACTED@", entry.Request.Url);
+    }
+
+    [Fact]
+    public void Include_secrets_keeps_the_url_exactly_as_sent()
+    {
+        // The escape hatch has to be complete, or a replay that needs fidelity has no way to get it.
+        string url = "https://svc:hunter2@api.internal/orders?api_key=url-secret";
+        var entry = HarWriter.FromExchange(RequestTo(url), MakeResponse(), includeSecrets: true);
+
+        Assert.Equal(url, entry.Request.Url);
+        Assert.Equal("url-secret", entry.Request.QueryString.Single(q => q.Name == "api_key").Value);
+    }
+
+    [Fact]
+    public void The_redirect_form_redacts_too_which_is_the_one_the_cli_actually_calls()
+    {
+        // FromExchangeWithRedirects overwrites the URL that FromExchange built, so redacting only
+        // inside FromExchange applied the fix and then undid it one line later. Every `--har` on
+        // the command line goes through this path, and the unit tests above went through the other
+        // one — which is how that survived until an actual capture was inspected.
+        var entry = Assert.Single(HarWriter.FromExchangeWithRedirects(
+            RequestTo("https://api.internal/orders?api_key=url-secret"),
+            MakeResponse(), includeSecrets: false));
+
+        Assert.DoesNotContain("url-secret", entry.Request.Url);
+        Assert.Equal("REDACTED", entry.Request.QueryString.Single(q => q.Name == "api_key").Value);
+    }
+
+    [Fact]
+    public void A_url_with_nothing_secret_in_it_is_untouched()
+    {
+        string url = "https://api.internal/orders?page=2&sort=name";
+        var entry = HarWriter.FromExchange(RequestTo(url), MakeResponse(), includeSecrets: false);
+
+        Assert.Equal(url, entry.Request.Url);
+    }
+
     private static ApiResponse MakeResponse(int status = 200, string? reason = "OK",
         IEnumerable<KeyValuePair<string, string>>? headers = null, byte[]? body = null, string? contentType = null,
         TimeSpan? elapsed = null, ConnectionInfo? connection = null, IReadOnlyList<RedirectHop>? redirects = null)

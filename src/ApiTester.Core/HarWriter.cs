@@ -46,7 +46,13 @@ public static class HarWriter
         double timeMs = response.Elapsed.TotalMilliseconds;
 
         var requestHeaders = Redact(request.Headers.Select(h => new HarNameValue(h.Key, h.Value)), includeSecrets);
-        var (_, rawQuery) = QueryString.Split(request.Url);
+
+        // The URL is redacted for the same reason the headers beside it are, and it was not:
+        // `?api_key=…` and `https://svc:pw@host/…` are credentials that happen to look like part
+        // of an address. The query array is derived from the REDACTED url rather than the original,
+        // so the two halves of the archive can never disagree about what the request was.
+        string recordedUrl = RecordedUrl(request.Url, includeSecrets);
+        var (_, rawQuery) = QueryString.Split(recordedUrl);
         var queryString = QueryString.Parse(rawQuery).Select(q => new HarNameValue(q.Key, q.Value)).ToList();
 
         HarPostData? postData = null;
@@ -62,7 +68,7 @@ public static class HarWriter
         if (response.StatusCode is >= 300 and < 400)
         {
             var location = response.Headers.FirstOrDefault(h => string.Equals(h.Key, "Location", StringComparison.OrdinalIgnoreCase));
-            redirectUrl = location.Value ?? "";
+            redirectUrl = RecordedUrl(location.Value ?? "", includeSecrets);
         }
 
         var content = BuildContent(response.Body, response.ContentType);
@@ -85,7 +91,7 @@ public static class HarWriter
             Request = new HarRequest
             {
                 Method = request.Method.Method,
-                Url = request.Url,
+                Url = recordedUrl,
                 HttpVersion = "HTTP/1.1",
                 Headers = requestHeaders,
                 QueryString = queryString,
@@ -115,7 +121,8 @@ public static class HarWriter
 
         foreach (var hop in response.Redirects)
         {
-            var (_, rawQuery) = QueryString.Split(hop.From);
+            string hopUrl = RecordedUrl(hop.From, includeSecrets);
+            var (_, rawQuery) = QueryString.Split(hopUrl);
             var queryString = QueryString.Parse(rawQuery).Select(q => new HarNameValue(q.Key, q.Value)).ToList();
 
             // A hop's own duration, not zero: every HAR viewer renders `time` as a bar, and a zero
@@ -129,7 +136,7 @@ public static class HarWriter
                 Request = new HarRequest
                 {
                     Method = request.Method.Method,
-                    Url = hop.From,
+                    Url = hopUrl,
                     HttpVersion = "HTTP/1.1",
                     Headers = requestHeaders,
                     QueryString = queryString,
@@ -142,7 +149,7 @@ public static class HarWriter
                     HttpVersion = "HTTP/1.1",
                     Headers = new List<HarNameValue>(),
                     Content = new HarContent { Size = 0 },
-                    RedirectUrl = hop.To
+                    RedirectUrl = RecordedUrl(hop.To, includeSecrets)
                 },
                 // -1 is HAR's own "not applicable", which is the truth for send/receive here; wait
                 // carries the measured time. An unmeasured hop (Elapsed default) still reports -1
@@ -153,7 +160,10 @@ public static class HarWriter
         }
 
         var finalEntry = FromExchange(request, response, includeSecrets);
-        string finalUrl = response.Redirects.Count > 0 ? response.Redirects[^1].To : request.Url;
+        // Redacted here as well as inside FromExchange: this deliberately overwrites what that
+        // built, so leaving it raw would undo the redaction a line after applying it.
+        string finalUrl = RecordedUrl(
+            response.Redirects.Count > 0 ? response.Redirects[^1].To : request.Url, includeSecrets);
         finalEntry.Request.Url = finalUrl;
         var (_, finalRawQuery) = QueryString.Split(finalUrl);
         finalEntry.Request.QueryString = QueryString.Parse(finalRawQuery).Select(q => new HarNameValue(q.Key, q.Value)).ToList();
@@ -190,6 +200,16 @@ public static class HarWriter
     /// <summary>Drop top-level <c>access_token</c>/<c>password</c> properties from a JSON object
     /// body before it is written into a redacted HAR. Never throws — a body that isn't a JSON
     /// object is left as-is.</summary>
+    /// <summary>A URL as it should be written into an archive: credentials in the query string and
+    /// in a <c>user:password@host</c> prefix masked, unless the caller asked to keep them.
+    /// <para>One consequence, stated because it is a real trade: an archive replayed with
+    /// <c>mock --har</c> or <c>serve --replay</c> matches on the recorded URL, so a request that is
+    /// distinguished <em>only</em> by a secret query value can no longer be told apart from its
+    /// sibling. That is what <c>--har-include-secrets</c> is for; the default stays "safe to hand
+    /// to someone else", which is what an archive is usually for.</para></summary>
+    private static string RecordedUrl(string url, bool includeSecrets) =>
+        includeSecrets ? url : MarkdownSecrets.RedactUrl(url);
+
     private static string RedactJsonBody(string body)
     {
         try

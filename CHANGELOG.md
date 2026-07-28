@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.92.2] - 2026-07-28
+
+### Security
+- **A captured HTTP Archive redacted the `Authorization` header and then wrote the credential in
+  the URL beside it.** `?api_key=…` and `https://svc:pw@host/…` were both recorded in full, in the
+  entry's `url` field *and* again in its parsed `queryString` array — while the header two lines
+  away was carefully replaced with `[redacted]`. An archive is the artifact this product most
+  expects people to hand over: attached to tickets, replayed by a teammate, committed as a
+  regression fixture.
+  Both are now redacted by default, in the request URL, in every redirect hop, and in the final
+  entry, with the query array **derived from the redacted URL** so the two halves of the archive
+  cannot disagree about what the request was. `--har-include-secrets` keeps everything, as before.
+  One trade, recorded because it is real: a replay matches on the recorded URL, so a request
+  distinguished *only* by a secret query value can no longer be told from its sibling. That is what
+  the escape hatch is for; the default stays "safe to hand to someone else".
+
+### Documentation
+- **What archive redaction does not cover, said plainly.** Response bodies are stored verbatim,
+  because they are what a replay serves and a diff compares — so a login endpoint returning a
+  token, or a server that echoes the request back, puts that value in the archive. Redacting bodies
+  would make `mock --har`, `serve --replay` and `run --diff-har` useless, so the honest answer is
+  to name the one place to check before sharing a capture of an authentication flow, which the CLI
+  reference now does.
+
+### Note
+- The first attempt at the fix **did not work**, and the unit tests said it did.
+  `FromExchangeWithRedirects` — the path every `--har` on the command line actually takes — calls
+  the redacting builder and then overwrites the URL it produced, so the redaction was applied and
+  undone a line later. The unit tests covered the other entry point. It was caught by capturing a
+  real archive and reading it, which is now also a test.
+
 ## [1.92.1] - 2026-07-28
 
 ### Security
@@ -2480,7 +2511,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.2...HEAD
+[1.92.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.1...v1.92.2
 [1.92.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.0...v1.92.1
 [1.92.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.2...v1.92.0
 [1.91.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.1...v1.91.2

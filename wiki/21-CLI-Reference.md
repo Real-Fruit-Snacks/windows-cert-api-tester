@@ -292,10 +292,18 @@ size and equality only.
 
 ### Capturing the exchange
 
+> **What an archive redacts, and what it cannot.** Credential *headers*, credential-looking query
+> parameters, and a password in a URL's `user:password@` prefix are all redacted by default, so an
+> archive is safe to attach to a ticket. **Response bodies are stored verbatim**, because they are
+> the thing a replay serves and a diff compares — so a server that echoes your request back, or a
+> login endpoint that returns a token, puts that value in the archive. Redacting bodies would make
+> `mock --har`, `serve --replay` and `run --diff-har` useless, so the honest answer is that this is
+> the one place to look before sharing a capture of an authentication flow.
+
 | Option | Default | What it does |
 |---|---|---|
 | `--har <file>` | none | Write the request and response — and every redirect hop — as an HTTP Archive file when the command finishes |
-| `--har-include-secrets` | off | Keep `Authorization`, `Proxy-Authorization`, `Cookie` and `Set-Cookie` values in that archive, which are redacted by default |
+| `--har-include-secrets` | off | Keep the credentials in that archive, which are redacted by default: `Authorization`, `Proxy-Authorization`, `Cookie` and `Set-Cookie` header values, credential-looking query parameters, and a `user:password@` prefix in any recorded URL. See the note below on what redaction does **not** cover |
 | `--wire` | off | Print the **plaintext bytes** of the exchange: the request exactly as it was framed and the response exactly as it arrived, with hex and ASCII side by side for anything that is not text |
 | `--wire-file <path>` | stdout | Write that transcript to a file instead |
 | `--wire-include-secrets` | off | Keep credential header values in it. The header *name* is kept either way |
