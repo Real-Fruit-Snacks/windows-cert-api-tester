@@ -42,7 +42,7 @@ public sealed class MarkdownExportOptions
 /// what it is handed.</para></summary>
 public static class MarkdownExport
 {
-    private const string Redacted = "*(redacted)*";
+    private const string Redacted = MarkdownSecrets.Redacted;
 
     public static IReadOnlyList<MarkdownFile> Build(AppState state, MarkdownExportOptions options)
     {
@@ -75,7 +75,7 @@ public static class MarkdownExport
                 RenderChain(chain, requests, options)));
 
         if (options.Index)
-            files.Add(new MarkdownFile(Combine(root, "index.md"), RenderIndex(requests, state)));
+            files.Add(new MarkdownFile(Combine(root, "index.md"), RenderIndex(requests, state, options.IncludeSecrets)));
 
         return files;
     }
@@ -138,7 +138,10 @@ public static class MarkdownExport
     {
         var request = exported.Request;
         var node = exported.Node;
-        string url = request.ExportUrl();
+        // A credential in a query string looks like part of the address rather than like a
+        // secret, so it survives the review a header would not — and this note is bound for a
+        // folder that syncs. Same rule as the investigation notes, from the same place.
+        string url = MarkdownSecrets.RedactUrl(request.ExportUrl(), options.IncludeSecrets);
         string host = Uri.TryCreate(url, UriKind.Absolute, out var parsed) ? parsed.Host : "";
 
         var front = new List<(string Key, string Value)>
@@ -288,7 +291,7 @@ public static class MarkdownExport
         return sb.ToString();
     }
 
-    private static string RenderIndex(List<ExportedRequest> requests, AppState state)
+    private static string RenderIndex(List<ExportedRequest> requests, AppState state, bool includeSecrets)
     {
         var sb = new StringBuilder();
         WriteFrontMatter(sb, new[] { "certapi/index" },
@@ -305,7 +308,7 @@ public static class MarkdownExport
         {
             string collection = request.Folders.Count > 0 ? Cell(request.Folders[^1]) : "";
             sb.AppendLine($"| [[{Link(request.Title)}]] | {Cell(request.Request.Method)} "
-                        + $"| {Cell(request.Request.ExportUrl())} | {collection} |");
+                        + $"| {Cell(MarkdownSecrets.RedactUrl(request.Request.ExportUrl(), includeSecrets))} | {collection} |");
         }
         return sb.ToString();
     }
@@ -327,15 +330,8 @@ public static class MarkdownExport
     private static string HeaderValue(string name, string? value, MarkdownExportOptions options)
     {
         if (options.IncludeSecrets) return value ?? "";
-        return IsSecretHeader(name) ? Redacted : value ?? "";
+        return MarkdownSecrets.IsSecretHeader(name) ? Redacted : value ?? "";
     }
-
-    private static bool IsSecretHeader(string name) =>
-        name.Trim() is var trimmed &&
-        (trimmed.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
-      || trimmed.Equals("Proxy-Authorization", StringComparison.OrdinalIgnoreCase)
-      || trimmed.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
-      || trimmed.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase));
 
     internal static string Describe(AssertionRule rule)
     {

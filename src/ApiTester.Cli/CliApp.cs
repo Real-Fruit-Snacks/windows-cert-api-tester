@@ -30,6 +30,14 @@ public sealed class CliServices
     /// <summary>Diagnostic sink for --debug / --log-file; set per invocation by CliApp.</summary>
     public CliLog Log { get; set; } = CliLog.None;
 
+    /// <summary>Open a file with whatever the shell has registered for it. Injected so a test can
+    /// assert the request was made without a viewer opening on the machine running the suite.
+    /// <para><c>UseShellExecute</c> is what makes this the shell's decision rather than an attempt
+    /// to execute the file — which for a .md is exactly what is wanted, and is also why the caller
+    /// treats any failure here as a note rather than an error.</para></summary>
+    public Action<string> OpenFile { get; init; } = path =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+
     /// <summary>The configuration profile in effect, resolved once per invocation by CliApp from
     /// <c>--profile</c>/<c>--config</c> and the discovered file. Null when there is no
     /// configuration, or when <c>--no-config</c> was given — which is exactly the state every

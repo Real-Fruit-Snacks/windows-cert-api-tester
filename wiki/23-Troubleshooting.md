@@ -108,6 +108,33 @@ handshakes. And it is not packet capture — capturing packets needs a kernel dr
 administrator rights, which this tool deliberately never requires. What it gives instead is the
 decrypted, structured account of connections a sniffer could not read anyway.
 
+## Keeping a diagnosis: `doctor --md`
+
+A diagnosis is exactly the thing worth keeping — it is what gets pasted into a ticket, argued about
+with a network team, and looked up again when the same host breaks the same way six months later.
+By default it scrolls off the terminal.
+
+```powershell
+certapi doctor https://api.internal/health --cert "CN=Me" --md investigation.md
+certapi doctor https://api.internal/health --md-vault C:\Users\me\Vault
+```
+
+The note carries what the terminal showed — the stage table with per-stage timings, every detail
+line, and the advice — plus the two findings that are hard to get any other way, verbatim: **the
+certificate authorities the server said it accepts**, and **any TLS-interception finding**. Its
+frontmatter records `host`, `outcome`, `failedStage` and the timestamp, so a vault accumulates a
+searchable history of what was broken when.
+
+`--md-vault` files it as `certapi/investigations/<host>-<timestamp>.md`. **A new note per run —
+nothing ever overwrites a past diagnosis.** That is the opposite of `export markdown`, on purpose:
+a catalogue is current state, an investigation is history, and a vault that quietly replaced last
+week's failure with this week's would destroy the record exactly as a pattern became visible.
+
+`--md-open` opens the note afterwards; if nothing is registered for `.md` it prints the path
+instead of failing. Credential-looking query values (`?api_key=…`, `?token=…`) are redacted, since
+vaults sync — `--include-secrets` keeps them. If the note cannot be written the command says so and
+still reports the diagnosis: the answer you asked for is not worth losing to a read-only folder.
+
 ## Seeing the actual bytes: `--wire`
 
 `--trace` reports what the stack *did*. `--wire` shows what it actually *sent and received* —

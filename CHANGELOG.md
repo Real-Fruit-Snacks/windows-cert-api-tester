@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.89.0] - 2026-07-28
+
+### Added
+- **`certapi doctor --md <file>` keeps the diagnosis instead of letting it scroll away.** A
+  diagnosis is the thing you most want a durable record of — it gets pasted into tickets, argued
+  about with a network team, and looked up again when the same host breaks the same way months
+  later. The note carries the stage table with per-stage timings, every detail line and the advice,
+  plus the two findings a normal request cannot produce, **verbatim**: the certificate authorities
+  the server said it accepts, and any TLS-interception finding. Frontmatter records `host`,
+  `outcome`, `failedStage` and the timestamp, so a vault becomes a searchable history of what was
+  broken when.
+- **`--md-vault <folder>` files it as `certapi/investigations/<host>-<timestamp>.md`, a new note per
+  run.** Nothing ever overwrites a past diagnosis — deliberately the opposite of `export markdown`,
+  which re-exports in place. A catalogue is current state; an investigation is history, and a vault
+  that quietly replaced last week's failure with this week's would destroy the record exactly as a
+  pattern became visible. Both the asymmetry and its reason are documented.
+- `--md-open` opens the written note, and **degrades to printing the path** when nothing is
+  registered for `.md` rather than turning a convenience into a failure. If the note cannot be
+  written at all, the command says so and still reports the diagnosis with its real exit code: the
+  answer the user asked for is not worth losing to a read-only folder.
+- The renderer is pure over `DoctorReport`, so the same diagnosis now renders three ways — text,
+  JSON, markdown — with no third source of truth.
+
+### Fixed
+- **A credential in a URL query string could reach an exported note.** `?api_key=…` reads as part
+  of an address rather than as a secret, so it survives the review a header would not — and these
+  notes are bound for folders that sync. Credential-looking query values are now redacted in both
+  the investigation notes and **the 1.88.0 request catalogue**, from one shared rule rather than
+  two that could drift apart. The parameter name is kept, as header names are, because "this
+  endpoint is called with an api_key" is worth knowing. Matching is on the whole parameter name,
+  never a substring: redacting `keyword` and `tokenCount` would teach people to pass
+  `--include-secrets` reflexively, which is worse than the risk it addresses.
+
 ## [1.88.0] - 2026-07-28
 
 ### Added
@@ -2234,7 +2267,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.88.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.89.0...HEAD
+[1.89.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.86.0...v1.87.0
 [1.86.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.1...v1.86.0
