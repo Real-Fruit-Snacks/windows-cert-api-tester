@@ -93,6 +93,13 @@ public static class CliApp
                             command line becomes a short one (see 'certapi help config')
           --config <path>   Read configuration from this file instead of discovering one
           --no-config       Ignore configuration entirely, whatever is on disk
+          --trace           Report what the network stack itself did: DNS, TCP, TLS handshake,
+                            connection established or reused, and the request lifecycle. In-process
+                            only, so no driver and no admin rights are involved
+          --trace-verbose   Add the runtime's internal diagnostics — far more detail, far less
+                            stable; useful when --trace is not enough, never something to parse
+          --trace-file <p>  Write the trace to a file instead of streaming it to stderr
+          --trace-filter <s>  Keep only lines containing any of these comma-separated substrings
 
         Examples:
           certapi certs
@@ -117,13 +124,17 @@ public static class CliApp
         if (args.Length > 0 && IsStreamingCommand(args[0]))
         {
             string cmd = args[0].ToLowerInvariant();
-            (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig) g;
-            try { g = GlobalOptions.ExtractAll(args.Skip(1).ToArray()); }
+            (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig,
+             bool Trace, string? TraceFile, IReadOnlyList<string> TraceFilters, bool TraceVerbose, bool TraceIncludeSecrets) g;
+            try { g = GlobalOptions.ExtractEverything(args.Skip(1).ToArray()); }
             catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
 
             using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
             services.Log = log;
             var err = log.WrapStderr(stderr);
+            // The streaming commands trace too: a hanging WebSocket handshake is exactly the case
+            // this exists for, and a flag that worked on `send` but not `ws` would be a trap.
+            using var trace = StartTrace(g.Trace, g.TraceVerbose, g.TraceFilters, g.TraceFile, g.TraceIncludeSecrets, err);
             try
             {
                 // The streaming commands take the same profile as everything else: a configuration
@@ -159,13 +170,16 @@ public static class CliApp
         services ??= new CliServices();
         if (args.Length == 0) { stderr.WriteLine(Usage); return ExitCodes.Usage; }
 
-        (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig) g;
-        try { g = GlobalOptions.ExtractAll(args); }
+        (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig,
+         bool Trace, string? TraceFile, IReadOnlyList<string> TraceFilters, bool TraceVerbose, bool TraceIncludeSecrets) g;
+        try { g = GlobalOptions.ExtractEverything(args); }
         catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
 
         using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
         services.Log = log;
         var err = log.WrapStderr(stderr);
+        // Started before anything connects, so the very first DNS lookup and handshake are seen.
+        using var trace = StartTrace(g.Trace, g.TraceVerbose, g.TraceFilters, g.TraceFile, g.TraceIncludeSecrets, err);
         try
         {
             // Resolved once, here, so every command below sees the same profile — and so a broken
@@ -200,6 +214,46 @@ public static class CliApp
         catch (CliUsageException ex) { err.WriteLine(ex.Message); return ExitCodes.Usage; }
         catch (CliDataException ex) { err.WriteLine(ex.Message); return ExitCodes.Data; }
         catch (Exception ex) { err.WriteLine("error: " + log.Describe(ex)); return ExitCodes.Failure; }
+    }
+
+    /// <summary>The network trace for this invocation, or null when it was not asked for. Writing
+    /// to a file is deferred to disposal so a relay never pays a write per event; streaming to
+    /// stderr happens live, because a trace of a hanging request is only useful as it happens.</summary>
+    private static TraceSession? StartTrace(
+        bool enabled, bool verbose, IReadOnlyList<string> filters, string? file, bool includeSecrets, TextWriter stderr) =>
+        enabled ? new TraceSession(verbose, filters, file, includeSecrets, stderr) : null;
+
+    /// <summary>Owns a <see cref="NetworkTrace"/> and, when asked, writes it out at the end.</summary>
+    private sealed class TraceSession : IDisposable
+    {
+        private readonly NetworkTrace _trace;
+        private readonly string? _file;
+        private readonly TextWriter _stderr;
+
+        public TraceSession(bool verbose, IReadOnlyList<string> filters, string? file, bool includeSecrets, TextWriter stderr)
+        {
+            _file = file;
+            _stderr = stderr;
+            _trace = new NetworkTrace(
+                verbose ? TraceLevel.Verbose : TraceLevel.Normal,
+                filters,
+                // With no file, the trace is the output: stream it, so a request that never
+                // finishes still shows how far it got.
+                onLine: file is null ? line => stderr.WriteLine("trace " + line) : null,
+                includeSecrets: includeSecrets);
+        }
+
+        public void Dispose()
+        {
+            _trace.Dispose();
+            if (_file is null) return;
+            try
+            {
+                File.WriteAllLines(_file, _trace.Lines.Select(l => l.ToString()));
+                _stderr.WriteLine($"wrote {_trace.Lines.Count} trace line(s) to {_file}");
+            }
+            catch (Exception ex) { _stderr.WriteLine("warning: could not write the trace: " + ex.Message); }
+        }
     }
 
     /// <summary>The profile in effect for this invocation, or null when there is no configuration

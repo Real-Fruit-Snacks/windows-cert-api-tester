@@ -6,7 +6,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.83.0] - 2026-07-28
+## [1.84.0] - 2026-07-28
+
+### Added
+- **`--trace` reports what the network stack itself did**, on any command: DNS resolution, the TCP
+  connect, the TLS handshake, whether a connection was established or reused, and the request
+  lifecycle — each line timestamped from the start of the command, so the sequence reads as a
+  timeline. `--trace-filter` narrows it (it is genuinely a firehose), `--trace-file` writes it out
+  instead of streaming, and `--trace-verbose` adds the runtime's internal diagnostic sources —
+  much more detail, much less stable, never something to parse.
+  Credentials in event payloads are **redacted by default**, including a credential embedded in a
+  larger payload such as a header block; `--trace-include-secrets` keeps them. A feature for
+  diagnosing problems must not itself be how a token escapes into a ticket.
+  **The quickest use is answering "is pooling working".** A request that reuses a pooled
+  connection emits no `ConnectStart` and no `HandshakeStart` at all — that absence is the signal,
+  and it is now observable from a terminal.
+  Two limits are documented rather than implied: this is **in-process**, so under `mock` or
+  `serve` the trace also shows that server's own accepts and handshakes; and it is **not packet
+  capture** — capturing packets needs a kernel driver and administrator rights, which this tool
+  deliberately never requires. What it offers instead is the decrypted, structured account of
+  connections that a sniffer could not read anyway.
+  The event and source names were **observed from a running process** rather than taken from
+  documentation, and two findings from that probe shaped the result: the TLS source appears only
+  on an HTTPS request (a plain-HTTP probe sees no TLS events at all, which means "this request did
+  not use it", not "the runtime lacks it"), and the runtime's internal sources are unstable enough
+  by name to be opt-in only.
 
 ### Added
 - **A mock scenario can require credentials**, so an agent, an app, or a teammate pointed at the
@@ -2006,7 +2030,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.83.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.84.0...HEAD
+[1.84.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.83.0...v1.84.0
 [1.83.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.82.0...v1.83.0
 [1.82.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.81.0...v1.82.0
 [1.81.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.80.0...v1.81.0

@@ -119,11 +119,22 @@ public static class GlobalOptions
     /// same reason diagnostics are — a profile carries the identity and transport half of any
     /// command, so it must not have to be re-declared per command.</summary>
     public static (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig)
-        ExtractAll(string[] args)
+        ExtractAll(string[] args) => ExtractEverything(args) is var e
+            ? (e.Remaining, e.Debug, e.LogFile, e.Config, e.Profile, e.NoConfig)
+            : default;
+
+    /// <summary>Every global option, including the network trace. Trace is global for the same
+    /// reason the diagnostics pair is: the question "what did the network stack actually do" is
+    /// asked of whichever command happens to be failing.</summary>
+    public static (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile,
+                   bool NoConfig, bool Trace, string? TraceFile, IReadOnlyList<string> TraceFilters,
+                   bool TraceVerbose, bool TraceIncludeSecrets)
+        ExtractEverything(string[] args)
     {
         var rest = new List<string>(args.Length);
-        bool debug = false, noConfig = false;
-        string? logFile = null, config = null, profile = null;
+        var traceFilters = new List<string>();
+        bool debug = false, noConfig = false, trace = false, traceVerbose = false, traceIncludeSecrets = false;
+        string? logFile = null, config = null, profile = null, traceFile = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i].Equals("--debug", StringComparison.OrdinalIgnoreCase)) { debug = true; continue; }
@@ -146,12 +157,34 @@ public static class GlobalOptions
                 profile = args[++i];
                 continue;
             }
+            if (args[i].Equals("--trace", StringComparison.OrdinalIgnoreCase)) { trace = true; continue; }
+            if (args[i].Equals("--trace-verbose", StringComparison.OrdinalIgnoreCase))
+            { trace = true; traceVerbose = true; continue; }
+            if (args[i].Equals("--trace-include-secrets", StringComparison.OrdinalIgnoreCase))
+            { traceIncludeSecrets = true; continue; }
+            if (args[i].Equals("--trace-file", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 >= args.Length) throw new CliUsageException("Option --trace-file needs a value.");
+                traceFile = args[++i];
+                trace = true;
+                continue;
+            }
+            if (args[i].Equals("--trace-filter", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 >= args.Length) throw new CliUsageException("Option --trace-filter needs a value.");
+                traceFilters.AddRange(args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                trace = true;
+                continue;
+            }
             rest.Add(args[i]);
         }
 
         if (noConfig && (config is not null || profile is not null))
             throw new CliUsageException("--no-config cannot be combined with --config or --profile.");
+        if (traceIncludeSecrets && !trace)
+            throw new CliUsageException("--trace-include-secrets only applies together with --trace.");
 
-        return (rest.ToArray(), debug, logFile, config, profile, noConfig);
+        return (rest.ToArray(), debug, logFile, config, profile, noConfig,
+                trace, traceFile, traceFilters, traceVerbose, traceIncludeSecrets);
     }
 }

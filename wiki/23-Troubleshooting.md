@@ -71,6 +71,43 @@ pooled, so a second request to the same host has no DNS lookup, no TCP connect, 
 to measure. Printing zeros for those would suggest they were instant rather than absent. Use
 `doctor` when you want the breakdown.
 
+## Watching what the network stack actually did: `--trace`
+
+`doctor` diagnoses one connection it makes itself. `--trace` is different: it reports what .NET's
+own networking stack did during **any** command, as it happens.
+
+```powershell
+certapi send https://api.internal/orders --trace
+```
+
+```
+trace [   109.4 ms] System.Net.NameResolution    ResolutionStart    hostNameOrAddress=api.internal
+trace [   155.4 ms] System.Net.NameResolution    ResolutionStop
+trace [   156.4 ms] System.Net.Sockets           ConnectStart       address=…
+trace [   181.8 ms] System.Net.Sockets           ConnectStop
+trace [   182.7 ms] System.Net.Security          HandshakeStart     isServer=False targetHost=api.internal
+trace [   221.5 ms] System.Net.Security          HandshakeStop      protocol=12288
+trace [   222.7 ms] System.Net.Http              ConnectionEstablished  versionMajor=1 versionMinor=1 …
+```
+
+- `--trace-filter <substrings>` narrows it (comma-separated) — it is genuinely a firehose.
+- `--trace-file <path>` writes it out instead of streaming to stderr.
+- `--trace-verbose` adds the runtime's *internal* diagnostics: far more detail, far less stable
+  (free-text handler messages, security-context buffers). Useful when the normal level is not
+  enough; never something to parse.
+- Credentials in event payloads are **redacted** — a trace is a file people paste into tickets.
+  `--trace-include-secrets` keeps them, for when you are the only reader.
+
+**Reading a reused connection.** A request that reuses a pooled connection emits *no*
+`ConnectStart` and *no* `HandshakeStart` at all — that absence is the signal. It is the quickest
+way to answer "is connection pooling actually working here".
+
+**Two honest limits.** This is in-process: it observes the connections **this process** makes, so
+under `certapi mock` or `certapi serve` you will also see that server's own accepts and
+handshakes. And it is not packet capture — capturing packets needs a kernel driver and
+administrator rights, which this tool deliberately never requires. What it gives instead is the
+decrypted, structured account of connections a sniffer could not read anyway.
+
 ## Self-test
 
 Before blaming an endpoint, prove your machine can do mTLS at all:
