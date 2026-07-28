@@ -4,12 +4,32 @@ using System.Text.RegularExpressions;
 
 namespace ApiTester.Core;
 
-/// <summary>What a route answers with.</summary>
+/// <summary>How a response misbehaves after its headers are decided — the reason a test server
+/// earns its keep. <see cref="Abort"/> closes the connection once what it had is sent;
+/// <see cref="Reset"/> tears it down without a close, which is what a client sees when a middlebox
+/// or a crash takes the connection away mid-response.</summary>
+public enum MockFault { None, Abort, Reset }
+
+/// <summary>What a route answers with, including how slowly and how badly.</summary>
 public sealed record MockResponse(
     int Status,
     IReadOnlyList<KeyValuePair<string, string>> Headers,
     byte[] Body,
-    string? ContentType);
+    string? ContentType)
+{
+    /// <summary>A fixed pause before the first byte — the timeout exerciser.</summary>
+    public int DelayMs { get; init; }
+
+    /// <summary>Uniform random spread added to <see cref="DelayMs"/>, so repeated calls do not all
+    /// take exactly the same time; a retry test wants variation, not a metronome.</summary>
+    public int JitterMs { get; init; }
+
+    /// <summary>Send the body this slowly rather than all at once, to exercise a read timeout on a
+    /// response whose headers arrived promptly. Zero means "as fast as possible".</summary>
+    public int DripBytesPerSecond { get; init; }
+
+    public MockFault Fault { get; init; }
+}
 
 /// <summary>One declared route: what it matches, and what it answers. Matching is top-to-bottom,
 /// first match winning, so an earlier narrow route can shadow a later broad one deliberately.</summary>
@@ -19,7 +39,30 @@ public sealed record MockRoute(
     Regex? PathRegex,
     IReadOnlyList<KeyValuePair<string, string>> Query,
     IReadOnlyList<KeyValuePair<string, string>> Headers,
-    MockResponse Response);
+    MockResponse Response)
+{
+    /// <summary>Answers for successive calls to this route, when it declares a sequence: the first
+    /// call gets the first entry, and once the list is exhausted the last entry repeats. That is
+    /// what lets a scenario say "fail twice with 503, then succeed" — the shape a retry policy has
+    /// to be tested against, and one nothing in this product could express before.
+    /// Empty when the route answers the same way every time.</summary>
+    public IReadOnlyList<MockResponse> Sequence { get; init; } = Array.Empty<MockResponse>();
+
+    private int _calls;
+
+    /// <summary>The answer for the next call. Thread-safe: the mock serves connections
+    /// concurrently, and a sequence that lost count under load would make a retry test lie.</summary>
+    public MockResponse Next()
+    {
+        if (Sequence.Count == 0) return Response;
+        int index = Interlocked.Increment(ref _calls) - 1;
+        return Sequence[Math.Min(index, Sequence.Count - 1)];
+    }
+
+    /// <summary>How many times this route has answered — what a test asserts on to prove a client
+    /// really did retry rather than merely reporting that it would.</summary>
+    public int Calls => Volatile.Read(ref _calls);
+}
 
 /// <summary>A parsed scenario file: the routes in file order, the answer for a request that matches
 /// none, and warnings for anything that could not be carried across — a route with an
@@ -145,17 +188,47 @@ public sealed record MockScenario(
                     }
                 }
 
-                if (!element.TryGetProperty("respond", out var respond) || respond.ValueKind != JsonValueKind.Object)
+                // A route answers either one way every time, or a different way per call. Declaring
+                // both is a contradiction rather than a merge, so it is refused by name.
+                bool hasSequence = element.TryGetProperty("respondSequence", out var sequenceElement) &&
+                                   sequenceElement.ValueKind == JsonValueKind.Array;
+                bool hasRespond = element.TryGetProperty("respond", out var respond) &&
+                                  respond.ValueKind == JsonValueKind.Object;
+
+                if (hasSequence && hasRespond)
+                {
+                    warnings.Add($"route {index} declares both 'respond' and 'respondSequence' and was dropped — use one.");
+                    continue;
+                }
+                if (!hasSequence && !hasRespond)
                 {
                     warnings.Add($"route {index} has no 'respond' object and was dropped.");
                     continue;
                 }
 
-                var response = ReadResponse(respond, index, baseDirectory, read, warnings);
+                var sequence = new List<MockResponse>();
+                if (hasSequence)
+                {
+                    foreach (var entry in sequenceElement.EnumerateArray())
+                    {
+                        if (entry.ValueKind != JsonValueKind.Object) continue;
+                        if (ReadResponse(entry, index, baseDirectory, read, warnings) is { } step) sequence.Add(step);
+                    }
+                    if (sequence.Count == 0)
+                    {
+                        warnings.Add($"route {index} has an empty or unusable 'respondSequence' and was dropped.");
+                        continue;
+                    }
+                }
+
+                var response = hasSequence
+                    ? sequence[0]
+                    : ReadResponse(respond, index, baseDirectory, read, warnings);
                 if (response is null) continue;
 
                 routes.Add(new MockRoute(method, pathGlob, pathRegex,
-                    Pairs(match, "query"), Pairs(match, "headers"), response));
+                    Pairs(match, "query"), Pairs(match, "headers"), response)
+                { Sequence = sequence });
             }
 
             MockResponse? fallback = null;
@@ -203,8 +276,35 @@ public sealed record MockScenario(
         string? contentType = headers
             .FirstOrDefault(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)).Value;
 
-        return new MockResponse(status, headers, body, contentType);
+        var fault = Str(element, "then")?.ToLowerInvariant() switch
+        {
+            "abort" => MockFault.Abort,
+            "reset" => MockFault.Reset,
+            null => MockFault.None,
+            var other => Warn(warnings, $"{where} has an unknown 'then' value '{other}'; it is ignored.")
+        };
+
+        return new MockResponse(status, headers, body, contentType)
+        {
+            DelayMs = Math.Max(0, Int(element, "delayMs") ?? 0),
+            JitterMs = Math.Max(0, Int(element, "jitterMs") ?? 0),
+            DripBytesPerSecond = Math.Max(0, Int(element, "dripBytesPerSec") ?? 0),
+            Fault = fault
+        };
     }
+
+    /// <summary>Record a warning and answer <see cref="MockFault.None"/>, so an unrecognised
+    /// setting degrades to "behave normally" while still being named.</summary>
+    private static MockFault Warn(List<string> warnings, string message)
+    {
+        warnings.Add(message);
+        return MockFault.None;
+    }
+
+    private static int? Int(JsonElement parent, string name) =>
+        parent.ValueKind == JsonValueKind.Object &&
+        parent.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)
+            ? n : null;
 
     private static IReadOnlyList<KeyValuePair<string, string>> Pairs(JsonElement parent, string name)
     {

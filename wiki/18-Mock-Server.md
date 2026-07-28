@@ -83,6 +83,49 @@ Rules worth knowing:
 Combine it with `--har` when you want both: the declared routes cover what you care about, and a
 request they miss falls through to the recorded session.
 
+## Making it misbehave
+
+A test server earns its keep by behaving *badly* on demand. Any `respond` block can carry:
+
+```jsonc
+"respond": {
+  "status": 200,
+  "delayMs": 500,           // pause before the first byte — trips a client timeout
+  "jitterMs": 200,          // random spread on top, so calls aren't a metronome
+  "dripBytesPerSec": 256,   // send the body slowly — trips a read timeout
+  "then": "abort"           // "abort" closes after the headers; "reset" sends a TCP reset
+}
+```
+
+And a route can answer **differently on each call**:
+
+```jsonc
+{
+  "match": { "path": "/flaky" },
+  "respondSequence": [
+    { "status": 503, "headers": { "Retry-After": "1" } },
+    { "status": 503 },
+    { "status": 200, "body": "recovered" }
+  ]
+}
+```
+
+The first call gets the first entry; once the list runs out the last entry repeats. That is the
+shape a **retry policy** has to be tested against:
+
+```powershell
+certapi mock --routes .\flaky.json --port 8770
+certapi send http://127.0.0.1:8770/flaky --retry 3 --retry-on 503
+```
+
+The send succeeds after two failures — and the mock's log shows three real requests arriving, which
+is the difference between a retry that happened and one you assumed happened.
+
+With `then: "abort"` the headers promise a body that never comes, so a client must report a failure
+rather than hand back a short body as if it were whole; `then: "reset"` tears the connection down
+the way a middlebox or a crash does. Declaring both `respond` and `respondSequence` on one route is
+refused by name — it is a contradiction, not a merge.
+
 ## Modes and certificates
 
 - **`--http`** (default) — plain HTTP; hit it with anything (curl, a browser, the app), no

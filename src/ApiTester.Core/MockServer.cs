@@ -194,10 +194,13 @@ public sealed class MockServer : IAsyncDisposable
                 var route = _scenario.Match(method, target, headers);
                 if (route is not null)
                 {
-                    await WriteMockResponseAsync(stream, route.Response, ct);
-                    _onRequest?.Invoke(new MockRequestLog(method, path, route.Response.Status, clientCertSubject)
+                    // Next() advances the route's own call counter, so a declared sequence answers
+                    // differently each time — which is the whole point of testing a retry policy.
+                    var answer = route.Next();
+                    await WriteMockResponseAsync(stream, answer, client, ct);
+                    _onRequest?.Invoke(new MockRequestLog(method, path, answer.Status, clientCertSubject)
                     {
-                        Replay = "route"
+                        Replay = route.Sequence.Count > 0 ? $"route #{route.Calls}" : "route"
                     });
                     return;
                 }
@@ -207,7 +210,7 @@ public sealed class MockServer : IAsyncDisposable
                         ?? new MockResponse(404, Array.Empty<KeyValuePair<string, string>>(),
                             Encoding.UTF8.GetBytes("{\"server\":\"certapi mock\",\"scenario\":\"no route\"}"),
                             "application/json");
-                    await WriteMockResponseAsync(stream, fallback, ct);
+                    await WriteMockResponseAsync(stream, fallback, client, ct);
                     _onRequest?.Invoke(new MockRequestLog(method, path, fallback.Status, clientCertSubject)
                     {
                         Replay = "no route"
@@ -354,8 +357,24 @@ public sealed class MockServer : IAsyncDisposable
 
     /// <summary>Write a declared scenario response. Mirrors <see cref="WriteRecordedAsync"/>,
     /// including its defence against a header value that would inject a second response.</summary>
-    private static async Task WriteMockResponseAsync(Stream stream, MockResponse response, CancellationToken ct)
+    private static async Task WriteMockResponseAsync(
+        Stream stream, MockResponse response, TcpClient client, CancellationToken ct)
     {
+        // Before the first byte: the pause a timeout test needs. Jitter keeps repeated calls from
+        // being a metronome, which is what a retry-with-backoff test wants to see.
+        int delay = response.DelayMs;
+        if (response.JitterMs > 0) delay += Random.Shared.Next(0, response.JitterMs + 1);
+        if (delay > 0) await Task.Delay(delay, ct);
+
+        // A reset must not be preceded by a graceful close, so it is decided before anything is
+        // written: LingerState with a zero timeout makes Dispose send RST rather than FIN.
+        if (response.Fault == MockFault.Reset)
+        {
+            client.LingerState = new LingerOption(true, 0);
+            client.Close();
+            return;
+        }
+
         var sb = new StringBuilder();
         sb.Append("HTTP/1.1 ").Append(response.Status).Append(' ')
           .Append(ReasonPhrase(response.Status)).Append("\r\n");
@@ -364,12 +383,45 @@ public sealed class MockServer : IAsyncDisposable
             if (ContainsCrLf(h.Key) || ContainsCrLf(h.Value)) continue;
             sb.Append(h.Key).Append(": ").Append(h.Value).Append("\r\n");
         }
+        // The declared length is always the whole body, even when the body is dripped or the
+        // connection is about to be abandoned: that mismatch is exactly what a client under test
+        // has to cope with, and correcting it here would hide the fault being injected.
         sb.Append("Content-Length: ").Append(response.Body.Length).Append("\r\n");
         sb.Append("Connection: close\r\n\r\n");
 
         await stream.WriteAsync(Encoding.ASCII.GetBytes(sb.ToString()), ct);
+        await stream.FlushAsync(ct);
+
+        if (response.Fault == MockFault.Abort)
+        {
+            // Headers promised a body; the connection goes away instead.
+            client.Close();
+            return;
+        }
+
+        if (response.DripBytesPerSecond > 0 && response.Body.Length > 0)
+        {
+            await DripAsync(stream, response.Body, response.DripBytesPerSecond, ct);
+            return;
+        }
+
         await stream.WriteAsync(response.Body, ct);
         await stream.FlushAsync(ct);
+    }
+
+    /// <summary>Write a body at a stated rate, so a client's read timeout has something to time
+    /// out against. Chunked into tenths of a second rather than byte-by-byte: the same average
+    /// rate, without a syscall per byte.</summary>
+    private static async Task DripAsync(Stream stream, byte[] body, int bytesPerSecond, CancellationToken ct)
+    {
+        int chunk = Math.Max(1, bytesPerSecond / 10);
+        for (int offset = 0; offset < body.Length; offset += chunk)
+        {
+            int count = Math.Min(chunk, body.Length - offset);
+            await stream.WriteAsync(body.AsMemory(offset, count), ct);
+            await stream.FlushAsync(ct);
+            if (offset + count < body.Length) await Task.Delay(100, ct);
+        }
     }
 
     private static bool ContainsCrLf(string s) => s.Contains('\r') || s.Contains('\n');

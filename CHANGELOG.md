@@ -6,7 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.80.0] - 2026-07-28
+## [1.81.0] - 2026-07-28
+
+### Added
+- **The mock can now misbehave on demand, which is the point of a test server.** A scenario's
+  `respond` block accepts `delayMs` (a pause before the first byte — the timeout exerciser),
+  `jitterMs` (random spread on top, so repeated calls are not a metronome),
+  `dripBytesPerSec` (send the body slowly, to trip a *read* timeout on a response whose headers
+  arrived promptly), and `then: "abort" | "reset"` — the first closes the connection after
+  promising a body in the headers, the second sends a TCP reset, which is what a client sees when
+  a middlebox or a crash takes the connection away.
+- **`respondSequence` lets a route answer differently on each call** — "fail twice with 503, then
+  succeed" — with the last entry repeating once the list is exhausted. This is the shape a **retry
+  policy** has to be tested against, and it was not expressible anywhere in this product before:
+  retry logic could only be exercised against fixtures inside the test suite, never from a
+  terminal against a real socket. Now `certapi send --retry 3 --retry-on 503` against such a route
+  succeeds on the third attempt, and the route's own call counter proves three requests genuinely
+  arrived rather than a retry merely being intended. The counter is thread-safe, because the mock
+  serves connections concurrently and a sequence that lost count under load would make a retry
+  test quietly lie.
+  Declaring both `respond` and `respondSequence` on one route is refused by name — a contradiction
+  rather than a merge — and an unrecognised `then` value degrades to behaving normally while
+  saying so. The declared `Content-Length` deliberately stays the whole body's length even when
+  the body is dripped or abandoned: that mismatch is the fault being injected, and correcting it
+  would hide it.
 
 ### Added
 - **`certapi mock --routes <file>` makes the mock answer like *your* API.** Until now the mock
@@ -1943,7 +1966,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.80.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.81.0...HEAD
+[1.81.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.80.0...v1.81.0
 [1.80.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.79.0...v1.80.0
 [1.79.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.78.0...v1.79.0
 [1.78.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.77.0...v1.78.0
