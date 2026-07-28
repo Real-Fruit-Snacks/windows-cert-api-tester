@@ -140,6 +140,115 @@ public class DocsTests
         Assert.Empty(missing);
     }
 
+    /// <summary>Which command each command file belongs to. Kept beside the test rather than
+    /// derived, because the mapping is the one thing here a reader should be able to check by
+    /// eye — and a file that is added without an entry fails the test below rather than being
+    /// silently skipped.</summary>
+    private static readonly Dictionary<string, string> CommandFiles = new(StringComparer.Ordinal)
+    {
+        ["SendCommand.cs"] = "send", ["RunCommand.cs"] = "run", ["FuzzCommand.cs"] = "fuzz",
+        ["BenchCommand.cs"] = "bench", ["SseCommand.cs"] = "sse", ["WsCommand.cs"] = "ws",
+        ["CertsCommand.cs"] = "certs", ["SelfTestCommand.cs"] = "selftest", ["MockCommand.cs"] = "mock",
+        ["ImportCommand.cs"] = "import", ["ExportCommand.cs"] = "export", ["TrustCommand.cs"] = "trust",
+        ["ServeCommand.cs"] = "serve", ["GrpcCommand.cs"] = "grpc", ["McpCommand.cs"] = "mcp",
+        ["DoctorCommand.cs"] = "doctor", ["ProxyCommand.cs"] = "proxy",
+        ["ConnectionsCommand.cs"] = "connections", ["TokenCommand.cs"] = "token",
+        ["ConfigCommand.cs"] = "config",
+    };
+
+    /// <summary>Every option literal the argument parser is asked for, per file.</summary>
+    private static Dictionary<string, HashSet<string>> ParsedOptions(string root)
+    {
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        string cli = Path.Combine(root, "src", "ApiTester.Cli");
+        foreach (var file in Directory.GetFiles(cli, "*.cs", SearchOption.AllDirectories))
+        {
+            string text = File.ReadAllText(file);
+            var found = new HashSet<string>(StringComparer.Ordinal);
+            // Only the calls that actually consume an option; a literal elsewhere in the file is
+            // not a flag, and treating it as one would make this test cry wolf.
+            foreach (Match call in Regex.Matches(text, @"args\.(?:Flag|FlagOrNull|Value|Values)\(([^)]*)\)"))
+                foreach (Match literal in Regex.Matches(call.Groups[1].Value, @"""(-{1,2}[A-Za-z][A-Za-z0-9.\-]*)"""))
+                    found.Add(literal.Groups[1].Value);
+            if (found.Count > 0) result[Path.GetFileName(file)] = found;
+        }
+        return result;
+    }
+
+    private static bool Mentions(string text, string option) =>
+        Regex.IsMatch(text, @"(?<![A-Za-z0-9.\-])" + Regex.Escape(option) + @"(?![A-Za-z0-9.\-])");
+
+    [Fact]
+    public void Every_option_the_parser_accepts_is_documented_in_the_reference()
+    {
+        // The promise this page makes is "every command, every option, every default". A flag that
+        // the parser accepts but the page never mentions is the exact way that promise rots, and it
+        // is invisible without reading 149 options against 20 sections by hand.
+        //
+        // Ground truth is the PARSER, not the help text: help can lag behind what is accepted, and
+        // an option the tool takes but nobody documented is precisely what this should catch.
+        if (Root() is not { } root) return;
+        string reference = Path.Combine(root, "wiki", "21-CLI-Reference.md");
+        if (!Directory.Exists(Path.Combine(root, "src", "ApiTester.Cli")) || !File.Exists(reference)) return;
+
+        var parsed = ParsedOptions(root);
+        Assert.NotEmpty(parsed);   // the pattern still finds the parser calls at all
+
+        string doc = File.ReadAllText(reference);
+
+        // Options a command owns must appear in that command's own section, or in the shared
+        // blocks every section refers to (certificate, transport, variables, global).
+        var sections = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match m in Regex.Matches(doc, @"^## (\S+)\s*$", RegexOptions.Multiline))
+        {
+            int start = m.Index + m.Length;
+            int next = doc.IndexOf("\n## ", start, StringComparison.Ordinal);
+            sections[m.Groups[1].Value] = doc[start..(next > 0 ? next : doc.Length)];
+        }
+        int firstCommand = doc.IndexOf("\n## send", StringComparison.Ordinal);
+        string shared = firstCommand > 0 ? doc[..firstCommand] : doc;
+
+        var undocumented = new List<string>();
+        foreach (var (file, options) in parsed)
+        {
+            if (!CommandFiles.TryGetValue(file, out var command))
+            {
+                // A shared block (transport, certificate flags). Anywhere on the page will do.
+                foreach (var option in options)
+                    if (!Mentions(doc, option)) undocumented.Add($"{file}: {option}");
+                continue;
+            }
+            if (!sections.TryGetValue(command, out var body))
+            {
+                undocumented.Add($"{command}: has no section");
+                continue;
+            }
+            foreach (var option in options)
+                if (!Mentions(body, option) && !Mentions(shared, option))
+                    undocumented.Add($"{command}: {option}");
+        }
+
+        Assert.Empty(undocumented);
+    }
+
+    [Fact]
+    public void Every_command_file_is_accounted_for_by_the_option_check()
+    {
+        // Guards the guard: a new command file with no entry in CommandFiles would have its options
+        // checked against the whole page rather than its own section, which is a weaker check that
+        // would pass while the section was missing entirely.
+        if (Root() is not { } root) return;
+        string cli = Path.Combine(root, "src", "ApiTester.Cli", "Commands");
+        if (!Directory.Exists(cli)) return;
+
+        var unmapped = Directory.GetFiles(cli, "*Command.cs")
+            .Select(Path.GetFileName)
+            .Where(name => name is not null && !CommandFiles.ContainsKey(name))
+            .ToList();
+
+        Assert.Empty(unmapped);
+    }
+
     [Fact]
     public void Every_command_the_cli_dispatches_has_a_section_in_the_reference()
     {

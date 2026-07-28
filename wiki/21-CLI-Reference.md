@@ -1,11 +1,26 @@
 # 21. CLI Reference (`certapi`)
 
-Complete reference for the CLI (command-line interface) client. The built-in help is authoritative — run
-`certapi help` for the overview or `certapi help <command>` for a command's full options.
+Every command, every option, every default.
 
-```
-Usage: certapi <command> [options]
-```
+`certapi.exe` is a separate download from the releases page. It shares its engine, its workspace,
+and its saved requests with the desktop application, so anything you do in one is visible in the
+other.
+
+> **The tool's own help is authoritative.** `certapi help <command>` prints the same options
+> straight from the binary you are running. This page explains what they are *for*, what they
+> default to, and how they interact — the parts a terse help screen cannot carry.
+
+## How to read this page
+
+- **`<angle brackets>`** are values you supply; **`[square brackets]`** are optional.
+- **Repeatable** options may be given more than once and accumulate.
+- Every option lists its **default** when it has one. "Off" means the behaviour is absent unless
+  you ask for it.
+- Options in [Shared option blocks](#shared-option-blocks) are documented once. Each command's
+  section names which blocks it accepts, rather than repeating sixty lines twenty times.
+- A **configuration profile** can supply a default for most options, so they need not be typed at
+  all — see [Configuration](27-Configuration.md). The rule everywhere is the same: **an explicitly
+  typed flag beats the profile, and the profile beats the built-in default.**
 
 ## Commands
 
@@ -13,535 +28,849 @@ Usage: certapi <command> [options]
 |---|---|
 | [`send <url>`](#send) | Send a one-off request |
 | [`token`](#token) | Fetch an OAuth 2.0 access token (and optionally save it) |
-| [`run <path>`](#run) | Run saved requests from your collections (or `--all`) |
+| [`run <path>`](#run) | Run saved requests as a pass/fail suite, or a chain |
 | [`fuzz <base-url>`](#fuzz) | Discover endpoints from a wordlist |
 | [`bench <url>`](#bench) | Measure an endpoint's latency under load |
-| [`sse <url>`](#sse) | Stream Server-Sent Events (SSE) |
+| [`sse <url>`](#sse) | Stream Server-Sent Events |
 | [`ws <url>`](#ws) | Open a WebSocket, send messages, print what arrives |
 | [`certs`](#certs) | List client certificates |
-| [`selftest`](#selftest) | Prove the mTLS (mutual Transport Layer Security) path end-to-end against a loopback server |
+| [`selftest`](#selftest) | Prove the mutual-TLS path end-to-end against a loopback server |
 | [`mock`](#mock) | Run a local test server to fire requests at |
-| [`import`](#import) | Import a cURL command or an OpenAPI file |
-| [`export`](#export) | Export collections as OpenAPI, or the whole workspace |
-| [`serve <upstream>`](#serve) | Run a local mTLS gateway that forwards to an upstream |
-| [`grpc`](#grpc) | Discover and call a gRPC service (unary, server-, client-, or bidirectional-streaming) |
-| [`doctor <url>`](#doctor) | Diagnose a connection stage by stage — why can't I reach this? |
-| [`proxy [<url>]`](#proxy) | Show the machine's proxy settings, and which proxy a URL gets |
-| [`connections <url>`](#connections) | Are connections actually being reused? (pool inspector) |
+| [`import`](#import) | Import cURL, OpenAPI, HAR, Postman, Insomnia, or WSDL |
+| [`export`](#export) | Export as OpenAPI, a workspace, or markdown notes |
+| [`trust`](#trust) | Pin server-certificate thumbprints per host |
+| [`serve <upstream>`](#serve) | Run a local mutual-TLS gateway that forwards to an upstream |
+| [`grpc`](#grpc) | Discover and call a gRPC service |
+| [`mcp`](#mcp) | Run a Model Context Protocol server for AI agents |
+| [`doctor <url>`](#doctor) | Diagnose a connection stage by stage |
+| [`proxy [<url>]`](#proxy) | Show proxy settings, and which proxy a URL gets |
+| [`connections <url>`](#connections) | Are connections actually being reused? |
 | [`config`](#config) | Show the configuration file and profile in effect |
-| [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
-| `help [command]` | Show help |
+| `help [command]` | Show help for a command |
 
 ## Global options
 
-Work on every command, anywhere on the line:
+These work on **every** command, before or after its own options.
 
-- **`--debug`** — rich diagnostics on stderr: resolved URLs (Uniform Resource Locators), headers
-  (Authorization masked),
-  certificate lookup, TLS details, timings, full stack traces.
-- **`--log-file <path>`** — append everything (diagnostics + all stderr) to a log file.
+| Option | Default | What it does |
+|---|---|---|
+| `--debug` | off | Verbose diagnostics on stderr: what was resolved, which certificate was chosen, which proxy, what was negotiated. The first thing to reach for when a command does something you did not expect |
+| `--log-file <path>` | none | Write those diagnostics to a file instead of the screen |
+| `--config <file>` | discovered | Use this configuration file instead of the discovered one — see [Configuration](27-Configuration.md) |
+| `--profile <name>` | file's default | Use this named profile from the configuration file |
+| `--no-config` | off | Ignore configuration files entirely. Every command then behaves exactly as it did before profiles existed, which is what makes it the right first step when a command behaves oddly |
+| `--version` | — | Print the version and exit |
 
 ## Exit codes
+
+Script against these; they are stable.
 
 | Code | Meaning |
 |---|---|
 | `0` | Success |
-| `1` | Transport/request failure (or a failed `run`, or `send --fail` on 4xx/5xx) |
-| `2` | Usage error (bad options) |
-| `3` | Data error (missing file, bad workspace, unresolvable input) |
+| `1` | The thing you asked about failed — a request failed, an assertion failed, a suite had a failing request, a diff differed under `--diff-fail`, a doctor stage broke |
+| `2` | Usage error — an unknown option, a missing value, a combination that cannot work. Nothing was sent |
+| `3` | Data error — a file that does not exist, a workspace that will not parse, a named request or chain that is not there. Nothing was sent |
 
-Response bodies go to **stdout**; metadata, notes, and errors go to **stderr** — so you can pipe the
-body cleanly.
+The distinction is deliberate: **1 means the command worked and the answer was no**; 2 and 3 mean
+the command never ran. A build script usually wants to treat those differently.
+
+---
+
+## Shared option blocks
+
+### Certificate options
+
+Accepted by [`send`](#send), [`run`](#run), [`fuzz`](#fuzz), [`bench`](#bench), [`sse`](#sse),
+[`ws`](#ws), [`grpc`](#grpc), [`mcp`](#mcp), [`serve`](#serve), [`token`](#token),
+[`doctor`](#doctor), [`connections`](#connections) and [`trust`](#trust).
+
+| Option | Default | What it does |
+|---|---|---|
+| `--cert <thumbprint or subject>` | none | Client certificate from the Windows certificate store. Matches a full thumbprint, or part of the subject (`"CN=My Client"`, or just `my client`) |
+| `--store <location>` | `CurrentUser` | Which store to search. `LocalMachine` searches **both** the machine store and your own, because a machine certificate is normally used alongside personal ones |
+| `--cert-file <path>` | none | Load the certificate from a file instead of the store: `.pfx`/`.p12`, or `.pem`/`.crt`. Mutually exclusive with `--cert` |
+| `--cert-password <password>` | none | Password for a `.pfx`/`.p12`. Not used for PEM |
+| `--key-file <path>` | none | The private key for a PEM certificate whose key is in a separate file |
+| `--insecure` | off | Accept any server certificate: expired, self-signed, wrong hostname. **This turns off the check that makes TLS meaningful** — prefer [`trust add`](#trust), which pins one host and leaves every other host verified |
+
+**No certificate is a valid choice.** Every command here works without one; `certapi` is a general
+API client that happens to be very good at mutual TLS. See
+[Certificates & mTLS](06-Certificates-and-mTLS.md).
+
+**Where the private key stays.** With `--cert` the key never leaves the Windows store — Windows
+performs the handshake signature itself. That is why smart cards, hardware tokens and
+non-exportable keys work.
+
+A certificate that expires within fourteen days produces a warning naming the date, on every
+command that resolves one. Fourteen days is enough notice to get a corporate renewal through a
+ticket queue, which is the process the notice exists to start.
+
+### Transport options
+
+How a request reaches the server. Accepted by [`send`](#send), [`run`](#run), [`fuzz`](#fuzz),
+[`bench`](#bench), [`grpc`](#grpc), [`mcp`](#mcp), [`serve`](#serve) and
+[`connections`](#connections). [`sse`](#sse), [`ws`](#ws), [`token`](#token) and [`doctor`](#doctor)
+take the [streaming subset](#transport-options-streaming-subset) instead.
+
+#### Proxy
+
+| Option | Default | What it does |
+|---|---|---|
+| `--proxy <url>` | system/PAC | Route through this proxy: `http://`, `https://`, `socks4://`, `socks4a://` or `socks5://`. **An SSH jump host works here** — `ssh -D 1080 user@jump`, then `--proxy socks5://127.0.0.1:1080` reaches whatever the jump host can reach with mutual TLS intact, because SOCKS relays bytes and never terminates TLS |
+| `--no-proxy` | off | Ignore the system and PAC proxy and connect directly. **Also restores the full TLS diagnostics** — see the note below |
+| `--proxy-user <user:password>` | none | Credentials for a proxy that authenticates |
+| `--noproxy <list>` | `NO_PROXY` | Hosts that bypass the proxy, comma-separated, `NO_PROXY`-style: `internal.corp`, `.corp`, `*.corp`, `10.0.0.0/8`, or `*` for everything; append `:port` to pin one port. This **narrows** `--proxy` or the system proxy, so it is not valid with `--no-proxy`, which already bypasses everything. Defaults to the `NO_PROXY` environment variable, which an explicit list overrides |
+
+**Why a proxy changes what you can see.** Through a proxy the HTTP handler owns the tunnel's TLS, so
+the negotiated protocol, the cipher, and whether your client certificate was actually presented are
+not observable — the report says so rather than guessing. `--no-proxy` brings them back, and the
+same applies to [`--wire`](#send), which needs the direct path.
+
+#### Redirects
+
+| Option | Default | What it does |
+|---|---|---|
+| `--no-redirect` | off | Do not follow 3xx responses; report the redirect itself |
+| `--max-redirs <n>` | `20` | How many hops to follow before giving up |
+| `--show-redirects` | off | Print the hop chain to stderr, each hop with its own status and timing. A request that "takes two seconds" is often four hops of five hundred milliseconds, and the destination is innocent |
+
+#### Protocol
+
+| Option | Default | What it does |
+|---|---|---|
+| `--http1.1` | negotiated | Pin the request to HTTP/1.1 |
+| `--http2` | negotiated | Pin the request to HTTP/2. Required by [`--frames`](#send) |
+| `--http3` | negotiated | Pin the request to HTTP/3 (QUIC, over UDP). Needs Windows 11 or Server 2022 or later. **Cannot** be combined with a proxy or `--resolve`, and the command refuses the combination rather than silently ignoring one of them |
+| `--no-decompress` | off | Relay compressed bytes exactly as received instead of decoding `gzip`/`deflate`/`br`. What you want when the *encoding* is the thing under test |
+| `--resolve <host:port:ip>` | none | Pin a hostname to an address — test one node behind a load balancer, or an endpoint whose DNS is not updated yet. Repeatable. Not valid with a proxy, which does its own resolving |
+
+Each version pin is **exact**: a server that cannot speak it fails loudly rather than quietly
+downgrading, because a silent downgrade would make the flag useless for testing the thing it names.
+
+#### Revocation
+
+| Option | Default | What it does |
+|---|---|---|
+| `--revocation <mode>` | `none` | Whether to check that the server's certificate has not been revoked by its issuer. `none` — no checking. `offline` — cached certificate revocation lists only. `online` — may fetch a fresh list or query an OCSP (Online Certificate Status Protocol) responder |
+| `--revocation-strict` | off | Make an *undeterminable* status fatal. Needs `--revocation offline` or `online` |
+
+**Why undeterminable is not fatal by default.** On a corporate network the revocation endpoint is
+very often blocked, so "status unknown" is the ordinary case rather than a signal. It is reported
+either way. `--insecure` overrides both, and says so when it does.
+
+#### Retries
+
+| Option | Default | What it does |
+|---|---|---|
+| `--retry <n>` | `0` | Retry a failed request up to *n* times |
+| `--retry-on <codes>` | `429,502,503,504` | Comma-separated statuses that earn a retry |
+| `--retry-delay <ms>` | `500` | The first backoff delay. It doubles each attempt with ±10% jitter, capped at 30 seconds. A `Retry-After` header from the server overrides the calculation entirely |
+| `--retry-unsafe` | off | Also retry `POST` and `PATCH`. By default only `GET`/`HEAD`/`OPTIONS`/`PUT`/`DELETE` are retried, **because re-sending a POST nobody confirmed can charge a card twice** |
+| `--no-retry-transport` | off | Do not retry connection failures and timeouts, which are otherwise retried whenever `--retry` is on |
+
+### Transport options (streaming subset)
+
+[`sse`](#sse), [`ws`](#ws), [`token`](#token) and [`doctor`](#doctor) accept **only** the proxy and
+revocation options: `--proxy`, `--no-proxy`, `--proxy-user`, `--noproxy`, `--revocation`,
+`--revocation-strict`.
+
+Redirects, version pins and retries are deliberately **not** accepted there, and passing one is a
+usage error rather than a silent no-op: a stream re-subscribe has side effects a retry must not
+hide, and quietly accepting a flag a command ignores is a worse failure than refusing it.
+
+### Variable options
+
+Accepted by [`send`](#send), [`run`](#run), [`fuzz`](#fuzz) and [`bench`](#bench). See
+[Environments & Variables](09-Environments-and-Variables.md).
+
+| Option | Default | What it does |
+|---|---|---|
+| `--env <name>` | active | The environment whose `{{variable}}` values apply |
+| `--var k=v` | none | Override or add one variable. Repeatable, and beats the environment |
+| `--workspace <file>` | live state | Read environments and saved requests from a workspace file instead of the app's live state. Lets a machine that has never opened the app run someone else's suite |
+| `--strict-vars` | off | An unresolved `{{token}}` becomes an error instead of a warning. What CI wants: a typo should fail the build, not silently send the literal text `{{token}}` |
+
+`{{env:NAME}}` reads from the **process environment** rather than the workspace, so a credential in
+a CI job is never written to disk, an export, or source control.
 
 ---
 
 ## send
 
-`certapi send <url> [options]` — send a single request.
+```
+certapi send <url> [options]
+```
 
-**Request**
+One request. The body goes to stdout, everything else to stderr, so `certapi send … | jq` works.
 
-- `-X, --method <m>` — HTTP (Hypertext Transfer Protocol) method (default GET)
-- `-H, --header "k: v"` — add a header (repeatable)
-- `-d, --data <body>` — request body (`--data-file <file>` reads it from disk)
-- `-F, --form name=value` — `multipart/form-data` field; `name=@path` uploads a file
-  (`;type=<ct>` sets its type). Repeatable; implies POST. Excludes `-d`.
-- `--graphql <query>` / `--gql-variables <json>` — a GraphQL `{query, variables}` POST
-- `--content-type <ct>` — body content type (default `application/json`)
-- `--timeout <seconds>` — default 100
+Accepts the [certificate](#certificate-options), [transport](#transport-options) and
+[variable](#variable-options) blocks.
 
-**Auth**
+### Request
 
-- `--bearer <token>` — `Authorization: Bearer …`
-- `--basic <user:pass>` — `Authorization: Basic …`
-- `--windows-auth` — Windows Integrated Auth with your signed-in account (aliases `--ntlm`,
-  `--negotiate`)
-- `--windows-user <DOMAIN\user>` / `--windows-password <p>` — explicit Windows credentials
-- `--no-auto-token` — disable automatic attach/reuse of the captured bearer token **and** the
-  captured session cookies (see [Session Capture](26-Session-Capture.md)) for this request
+| Option | Default | What it does |
+|---|---|---|
+| `-X, --method <m>` | `GET` | HTTP method. Any method the server accepts, not a fixed list |
+| `-H, --header "k: v"` | none | Add a header. Repeatable |
+| `-d, --data <body>` | none | Request body. Implies POST unless `-X` says otherwise |
+| `--data-file <path>` | none | Read the body from a file instead — for a body too large or too awkward to quote on a command line |
+| `-F, --form name=value` | none | A `multipart/form-data` field. `name=@path` uploads a file; `name=@path;type=<ct>` sets that part's content type. Repeatable, implies POST, and mutually exclusive with `-d` |
+| `--graphql <query>` | none | Send a GraphQL query as a correctly formed `{query, variables}` POST |
+| `--gql-variables <json>` | none | A JSON object of GraphQL variables to go with it |
+| `--content-type <ct>` | `application/json` | The body's content type. Ignored for `-F`, which sets its own |
+| `--timeout <seconds>` | `100` | How long to wait for the whole exchange |
 
-**TLS / certificates**
+### Authentication
 
-- `--cert <thumb|subject>` — client certificate from the Windows store
-- `--store <location>` — `CurrentUser` (default); `LocalMachine` searches both
-- `--cert-file <path>` / `--cert-password <pw>` / `--key-file <path>` — certificate from a file
-- `--insecure` — ignore server-certificate errors
+| Option | Default | What it does |
+|---|---|---|
+| `--bearer <token>` | none | Send `Authorization: Bearer <token>` |
+| `--basic <user:password>` | none | Send `Authorization: Basic …`, encoded for you |
+| `--windows-auth` | off | Windows Integrated Authentication (Negotiate/NTLM) as your signed-in account. Aliases: `--ntlm`, `--negotiate` |
+| `--windows-user <DOMAIN\user>` | signed-in | Use explicit Windows credentials instead of single sign-on |
+| `--windows-password <password>` | none | The password to go with `--windows-user` |
+| `--no-auto-token` | off | Turn off automatic bearer-token capture and reuse, and captured-cookie attachment, for this send |
 
-**Variables & capture**
+**Automatic tokens.** A bearer token found in a response — `access_token`, `id_token`, `token`,
+`accessToken`, `jwt`, or an `X-Auth-Token`/`X-Access-Token` header — is captured and scoped to that
+host. Later sends to the same host attach it automatically, **unless** you pass explicit auth, which
+always wins. Captured tokens are encrypted at rest for your Windows user.
 
-- `--env <name>` — environment for `{{variables}}`; `--var k=v` overrides (repeatable)
-- `--workspace <file>` — load environments from a workspace file
-- `--strict-vars` — unresolved `{{tokens}}` become an error
-- `--capture var=path` — save a response value into a variable (`header:Name` for a header)
+### Addresses
 
-**Testing**
+| Option | Default | What it does |
+|---|---|---|
+| `--all-ips` | off | Send once per address the host resolves to and compare the results, one row each. The answer to "one of the load balancer's nodes is broken and I don't know which". Not combinable with `--json`, `-o`, `--capture`, `--assert` or `--diff`, each of which describes a single response |
 
-- `--assert "<expr>"` — check the response and exit 1 if it fails (repeatable). Expression syntax:
-  `status == 200`, `status < 300`, `time < 500`, `header <name> contains <v>`,
-  `body <jsonpath> exists`, `body-text matches <regex>`. Operators: `==` `!=` `contains` `matches`
-  `exists` `!exists` `<` `>`. Lets a single `certapi send` be a CI (continuous integration) smoke
-  test without a saved workspace — the same checks the GUI's Tests tab and `certapi run` apply to
-  saved requests.
+### Capturing
 
-**Diff**
+| Option | Default | What it does |
+|---|---|---|
+| `--capture var=path` | none | Save a value out of the response into an environment variable. `path` is a JSON body path (`access_token`, `data.token`) or `header:Name` for a response header. Repeatable. See [Capturing Values](12-Capturing-Values.md) |
 
-- `--diff <baseline>` — compare the response against a baseline and print what changed. The baseline
-  is an HTTP Archive (HAR) `.har` file, a `.json` response file (either the envelope `--json` writes
-  or a saved response snapshot), or the literal `known-good` — the stored response of the saved
-  request matching this method and URL.
-- `--diff-fail` — exit 1 when anything differs (the CI form). Without it the diff is printed and the
-  exit code is unchanged.
-- `--diff-ignore <path>` — a JSON path to overlook, e.g. `data.timestamp` (repeatable; a trailing `*`
-  on a segment matches by prefix, and naming a container suppresses everything beneath it)
-- `--diff-ignore-header <name>` — a header to overlook **on top of** the volatile defaults (`Date`,
-  `Set-Cookie`, `ETag`, `Age`, `X-Request-Id`, `X-Correlation-Id`, `Server-Timing`), not instead of
-  them (repeatable)
+### Testing
 
-Both bodies JSON gives a structural comparison that names each changed path (`data.items[0].id`) as
-added, removed, changed, or type-changed, arrays compared by index; a non-JSON body falls back to a
-one-line summary of lines and bytes; a binary body reports size and equality only. The diff goes to
-stderr even under `-q`, and `--json` gains a `diff` object. A missing or unreadable baseline is exit
-3, as is `known-good` with no recorded snapshot (it names the request to send once). The diff
-modifiers need `--diff`, and `--diff` can't be combined with `--all-ips` (exit 2 for either).
+| Option | Default | What it does |
+|---|---|---|
+| `--assert "<expr>"` | none | Check the response and exit 1 if it fails. Repeatable |
 
-**Proxy** (shared with [`run`](#run) and [`fuzz`](#fuzz))
+Assertion syntax:
 
-- `--proxy <url>` — send through a specific proxy instead of the machine's configured one.
-- `--no-proxy` — skip the proxy entirely for this request. Restores the TLS version, cipher, and
-  client-certificate-presented diagnostics a proxy hides, since none of them are visible through
-  one.
-- `--proxy-user <user:pass>` — credentials for the proxy named by `--proxy`, or the machine's, when
-  it requires authentication.
-- `--noproxy <list>` — a comma-separated bypass list that narrows whichever proxy is in play (the
-  machine's, or the one named by `--proxy`) rather than replacing it: a bare hostname
-  (`internal.corp`) matches that host and its subdomains but not a look-alike (`notinternal.corp`);
-  a leading-dot or wildcard suffix (`.corp`, `*.corp`) matches the domain and its subdomains and not
-  a domain that merely contains it (`internal.corp.evil.com`); an IP address literal (`10.1.2.3`,
-  `::1`) matches as an address, never as a suffix; a Classless Inter-Domain Routing (CIDR) range
-  (`10.0.0.0/8`, `fd00::/8`) is accepted, but one written with host bits set (`10.0.0.5/8`) is
-  refused rather than quietly masked; and `*` alone bypasses everything. Matching is
-  case-insensitive, and an optional `:port` (`internal.corp:8443`, `[::1]:8443`, `*:8080`) must also
-  match when present. An entry that can't be parsed is refused with a message naming it (exit 2),
-  and combining `--noproxy` with `--no-proxy` is exit 2 too — there is no proxy left to narrow. When
-  `--noproxy` isn't given, the `NO_PROXY` environment variable (falling back to `no_proxy`) is
-  honored instead; precedence is an explicit `--noproxy`, then a saved request's own bypass list,
-  then `NO_PROXY`.
+```
+status == 200          status < 300           time < 500
+header <name> contains <value>                body <jsonpath> exists
+body-text matches <regex>
+```
 
-**Revocation** (shared with [`run`](#run), [`fuzz`](#fuzz), [`bench`](#bench), and [`serve`](#serve);
-also accepted by [`grpc`](#grpc))
+Operators: `==` `!=` `contains` `matches` `exists` `!exists` `<` `>`.
 
-- `--revocation none|offline|online` — check whether the server's certificate has been revoked by its
-  issuer (default `none`, matching every release before this one, so nothing changes unless you opt
-  in). `offline` consults cached certificate revocation lists (CRLs) only and never reaches the
-  network; `online` may fetch a fresh CRL or query an Online Certificate Status Protocol (OCSP)
-  responder.
-- `--revocation-strict` — treat an undeterminable revocation status as fatal instead of merely
-  reported. Requires `--revocation offline` or `--revocation online`; passing it with checking off
-  (the default) is a usage error (exit 2), since there is no unknown status for it to make fatal.
+### Diff
 
-A certificate the issuer has revoked is refused even past a pin from `certapi trust add` — revocation
-is the issuer's later word against the pin's earlier one, and it wins; under the default `none` this
-never triggers, and `--revocation-strict` is likewise not rescued by a pin. The outcome
-(checked-and-good, revoked, unknown, or not checked) is always reported: `--debug` prints a
-`revocation …` term on both the transport line and the connection line, and `--json` carries
-`revocationMode` and `revocationStatus`. `--insecure` still overrides a revoked or unknown result, the
-same as it always overrode "not trusted" — but now the diagnostics say so rather than implying a clean
-check happened.
+| Option | Default | What it does |
+|---|---|---|
+| `--diff <baseline>` | none | Compare the response against a baseline and print what changed. The baseline is a `.har` file, a `.json` response file (the envelope `--json` writes), or the literal `known-good` — the stored response of the matching saved request |
+| `--diff-fail` | off | Exit 1 when anything differs. The CI form |
+| `--diff-ignore <path>` | none | A JSON path to ignore, e.g. `data.timestamp`. Repeatable; a trailing `*` on a segment matches by prefix |
+| `--diff-ignore-header <name>` | none | One more header to ignore, on top of the volatile defaults. Repeatable |
 
-**Retries** (shared with [`run`](#run) and [`fuzz`](#fuzz))
+Volatile headers are ignored by default: `Date`, `Set-Cookie`, `ETag`, `Age`, `X-Request-Id`,
+`X-Correlation-Id`, `Server-Timing`. When both sides are JSON the diff is **structural** and names
+each changed path; otherwise it falls back to a one-line text summary, and for binary it reports
+size and equality only.
 
-- `--retry <n>` — retry a failed request up to n times (default `0`, off). A negative count is exit 2.
-- `--retry-on <codes>` — comma-separated statuses that earn a retry (default `429,502,503,504`). A
-  token that isn't a status code between 100 and 599 is exit 2 rather than a silently dropped typo.
-- `--retry-delay <ms>` — the first backoff delay (default `500`). It doubles on each further attempt
-  with ±10% jitter, capped at 30 seconds; a `Retry-After` header (delta seconds or an HTTP-date)
-  overrides the computed wait.
-- `--retry-unsafe` — also retry POST and PATCH. Only GET, HEAD, OPTIONS, PUT, and DELETE are retried
-  by default, because re-sending a POST nobody confirmed can charge a card twice.
-- `--no-retry-transport` — don't retry a request that never reached the server. By default a refused
-  or reset connection, a name-resolution failure, a proxy failure, and a timeout each earn a retry; a
-  refused or untrusted certificate never does (it would only fail slower), and neither does a
-  redirect loop.
+### Output
 
-Cancellation is honored during the backoff wait. The stderr metadata line reports `N attempts` when
-more than one was needed, and `--json` carries `attempts` when it is above 1.
+| Option | Default | What it does |
+|---|---|---|
+| `-o, --output <file>` | stdout | Write the body to a file |
+| `--include` | off | Print the status line and headers before the body |
+| `--pretty` | off | Pretty-print the body: JSON and XML reformatted, binary as hex |
+| `--json` | off | Print a JSON result envelope — status, headers, timing, body — instead of the raw body |
+| `--fail` | off | Exit 1 when the HTTP status is 400 or higher |
+| `-q, --quiet` | off | No metadata line on stderr |
 
-**Output**
+### Capturing the exchange
 
-- `-o, --output <file>` — write the body to a file
-- `--include` — print status line + headers before the body
-- `--pretty` — pretty-print the body
-- `--json` — a JSON (JavaScript Object Notation) result envelope instead of the raw body
-- `--fail` — exit 1 on HTTP status ≥ 400
-- `-q, --quiet` — no metadata line on stderr
+| Option | Default | What it does |
+|---|---|---|
+| `--har <file>` | none | Write the request and response — and every redirect hop — as an HTTP Archive file when the command finishes |
+| `--har-include-secrets` | off | Keep `Authorization`, `Proxy-Authorization`, `Cookie` and `Set-Cookie` values in that archive, which are redacted by default |
+| `--wire` | off | Print the **plaintext bytes** of the exchange: the request exactly as it was framed and the response exactly as it arrived, with hex and ASCII side by side for anything that is not text |
+| `--wire-file <path>` | stdout | Write that transcript to a file instead |
+| `--wire-include-secrets` | off | Keep credential header values in it. The header *name* is kept either way |
+| `--frames` | off | Read the same capture as HTTP/2 frames instead of bytes — type, stream, flags, SETTINGS values, window updates, and `GOAWAY`'s error code and debug data. Implies `--wire`, and needs `--http2` |
 
-**Watching the connection** (see [Troubleshooting](23-Troubleshooting.md))
+**`--wire` and `--frames` are direct-connection only.** Through a proxy, or on HTTP/3, the TLS
+belongs to the HTTP handler and there is no plaintext stream to read — the command says so in one
+line and sends the request normally rather than printing nothing. This is also the one thing a
+packet capture cannot give you on an encrypted connection without its keys, and it needs no driver
+and no administrator rights, because the tool is one end of the connection. See
+[Troubleshooting](23-Troubleshooting.md#seeing-the-actual-bytes---wire).
 
-- `--trace` — report .NET's own networking events as they happen: DNS, TCP connect, TLS handshake,
-  connection established, request lifecycle. `--trace-filter <substrings>` narrows it (it is a
-  firehose), `--trace-file <path>` writes it out, `--trace-verbose` adds the runtime's internal
-  diagnostics, and `--trace-include-secrets` keeps credential values that are redacted by default
-- `--wire` — print the **plaintext bytes** of the exchange, after TLS and before any parsing, hex
-  and ASCII for anything that is not text. `--wire-file <path>` writes it out;
-  `--wire-include-secrets` keeps credential header values. **Direct connections only** — through a
-  proxy or on HTTP/3 the TLS belongs to the handler, and it says so rather than printing nothing
-- `--frames` — read the same capture as HTTP/2 frames: type, stream, flags, SETTINGS values, window
-  updates, `RST_STREAM`, and `GOAWAY`'s error code and debug data. Implies `--wire`; needs
-  `--http2`, and says so if the connection is not HTTP/2
+### Watching the network stack
+
+`--trace` and its options work on **every** command, not only `send`:
+
+| Option | Default | What it does |
+|---|---|---|
+| `--trace` | off | Report .NET's own networking events as they happen: DNS resolution, TCP connect, TLS handshake, connection established, request lifecycle |
+| `--trace-filter <substrings>` | none | Keep only lines containing any of these, comma-separated. It is genuinely a firehose |
+| `--trace-file <path>` | stderr | Write the trace to a file instead |
+| `--trace-verbose` | off | Add the runtime's *internal* diagnostics: far more detail, far less stable. Useful, never something to parse |
+| `--trace-include-secrets` | off | Keep credential values in event payloads, redacted by default |
+
+**A reused connection emits no `ConnectStart` and no `HandshakeStart` at all** — that absence is the
+signal, and the quickest way to see whether pooling is working. Two honest limits: the trace is
+**process-wide**, so under `mock` or `serve` you will also see that server's own accepts; and it is
+not packet capture, which needs a driver and administrator rights this tool deliberately never
+requires.
 
 ---
 
 ## token
 
-`certapi token [options]` — fetch an OAuth 2.0 token.
+```
+certapi token [options]
+```
 
-- `--grant client_credentials|password|refresh|device` (default client_credentials)
-- `--token-url <url>` **(required)**, `--client-id`, `--client-secret`
-- `--grant device` + `--device-url <url>` — the RFC 8628 device-code flow: prints a verification
-  URL and code, then polls the token endpoint until you approve in a browser anywhere (another
-  machine included); Ctrl+C abandons it. Made for headless boxes and SSH sessions.
-- `--client-auth body|basic` — send client creds in the body (default) or a Basic header
-- `--scope "<a b c>"`, `--username`/`--password` (password grant), `--refresh-token` (refresh grant)
-- `--param k=v` — extra form parameter (repeatable)
-- `--save` + `--for <api-url>` (repeatable) — store the token for that API (application programming
-  interface) origin so later `send`
-  attaches it; `--workspace <file>` to save into a workspace file
-- `--json` — full result; `-q` quiet
-- TLS/cert flags apply (the token endpoint itself may be mTLS); a pinned endpoint needs no
-  `--insecure`, and the same `--proxy`/`--noproxy` and `--revocation` flags as [`send`](#send)
-  apply to the fetch
+Fetch an OAuth 2.0 access token. By default it prints the token to stdout; `--save` stores it so
+later [`send`](#send) calls attach it automatically.
 
-The interactive **authorization-code** grant is app-only (see [Authentication](08-Authentication.md)).
+Accepts the [certificate](#certificate-options) and
+[streaming transport](#transport-options-streaming-subset) blocks — the token endpoint itself often
+requires mutual TLS, and one pinned with [`trust add`](#trust) needs no `--insecure`.
+
+### Grant type
+
+| Option | Default | What it does |
+|---|---|---|
+| `--grant client_credentials` | **default** | Machine-to-machine: a client id and secret |
+| `--grant password` | | Resource-owner password, with `--username` and `--password` |
+| `--grant refresh` | | Exchange a `--refresh-token` for a fresh access token |
+| `--grant device` | | Device-code flow (RFC 8628): prints a verification URL and code, then polls until you approve it in a browser **anywhere** — the answer when the machine running this has no browser, or when sign-in needs a phone. Needs `--device-url` and `--client-id`; Ctrl+C abandons the wait |
+
+### Endpoint and client
+
+| Option | Default | What it does |
+|---|---|---|
+| `--token-url <url>` | **required** | The token endpoint |
+| `--device-url <url>` | none | The device-authorization endpoint. Device grant only |
+| `--client-id <id>` | none | The client identifier |
+| `--client-secret <secret>` | none | The client secret |
+| `--client-auth <body\|basic>` | `body` | Where the client credentials go: form-encoded in the body, or an HTTP Basic header. Servers differ, and some accept only one |
+| `--scope "<a b c>"` | none | Space-separated scopes |
+| `--username <u>` | none | For the password grant |
+| `--password <p>` | none | For the password grant |
+| `--refresh-token <t>` | none | For the refresh grant |
+| `--param k=v` | none | An extra form parameter — `audience`, `resource`, anything the server wants. Repeatable |
+
+### Reuse
+
+| Option | Default | What it does |
+|---|---|---|
+| `--save` | off | Store the access token for reuse by later sends |
+| `--for <api-url>` | none | The API origin the saved token applies to. **Required with `--save`**, and repeatable, because a token is scoped to what it is for — storing one without saying where it belongs would attach it to hosts it was never meant for |
+| `--workspace <file>` | live state | Save into a workspace file instead of the app's live state |
+
+### Output
+
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | Print the full result: access token, refresh token, expiry, granted scope |
+| `-q, --quiet` | off | No notes on stderr |
+
+Saved tokens are encrypted at rest for your Windows user — see
+[Authentication](08-Authentication.md).
 
 ---
 
 ## run
 
-`certapi run <Collection[/Folder][/Request]> [options]`, `certapi run --all [options]`, or
-`certapi run --chain <name> [options]`.
+```
+certapi run <Collection[/Folder][/Request]> [options]
+certapi run --all [options]
+certapi run --chain <name> [options]
+```
 
-- `--all` — run every saved request in the workspace
-- `--chain <name>` — run a saved chain: its requests, in the order the chain names them, as one unit,
-  so a token captured by one step is usable by the next through its `{{variable}}` (see
-  [Capturing Values](12-Capturing-Values.md)). Steps report PASS / FAIL; a failing step stops the
-  chain unless it is marked to carry on, and the steps that never ran are listed as SKIP. Any failed
-  step exits 1. Captures write into the environment the chain names (created on first use); an
-  explicit `--env` wins over it. The same chain can also be run from the desktop app's CHAINS sidebar
-  (see [Capturing Values](12-Capturing-Values.md)).
-- `--diff-har <file.har>` — replay a HAR archive and compare each response against the one it
-  recorded, which turns a captured session into a regression test. An entry passes only when its
-  diff is identical (the status is part of the diff), and any difference exits 1 — there is no
-  `--diff-fail` here, because diffing the capture is the whole point of the flag.
-  `--diff-ignore <path>` and `--diff-ignore-header <name>` work as they do on [`send`](#send).
-- `--workspace <file>` — collections from a workspace file (default: live GUI (graphical user
-  interface) state)
-- `--env <name>` / `--var k=v` — variables
-- `--data <file>` — data-driven: repeat once per CSV (comma-separated values)/JSON row (see
-  [Data-Driven Runs](13-Data-Driven-Runs.md))
-- `--record` / `--no-record` — write known-good results back (default: on for live state, off for
-  workspace files; skipped while the GUI is running)
-- `--strict-vars` — unresolved `{{tokens}}` fail the request
-- `--no-auto-token` — don't attach captured session tokens **or** captured session cookies
-- `--cookies` — keep a per-run cookie jar so a login's `Set-Cookie` carries across the run (this is
-  separate from captured cookies from [Session Capture](26-Session-Capture.md), which attach
-  automatically)
-- `--json` — JSON results instead of the table
-- `--md <file>` — also write the run as a markdown note: a pass/fail table with per-request timings,
-  each failed assertion **and what arrived instead**, and `total`/`passed`/`failed` in frontmatter so
-  a vault can chart a suite's health over time. A chain's report is numbered in step order, shows
-  skipped steps, and links each step back to its request note from `export markdown`. Captured
-  variables are listed by name only, never by value
-- `--md-vault <folder>` — file that report as `certapi/runs/<name>-<timestamp>.md` instead: a new
-  note per run, so the history a trend needs is never overwritten
-- `--md-include-secrets` — keep credential-looking query values in the report (redacted by default)
+Runs saved requests as a **pass/fail suite**. A request passes when its assertions all pass, or —
+if it has none — on any 2xx. **Exit 1 if any request fails**, which is what makes this usable in a
+build.
 
-A request passes when its assertions pass, or on any 2xx if it has none. Exit 1 if any request fails.
-A report that cannot be written warns without changing that verdict.
+Accepts the [certificate](#certificate-options), [transport](#transport-options) and
+[variable](#variable-options) blocks.
 
-The [retry flags](#send) apply here too; a saved request keeps its own retry settings unless a flag
-overrides them, and a flag overrides only what it names. `--chain` names its own requests, so it can't
-be combined with `--all`, a positional, `--diff-har`, or `--data` (exit 2). An unknown chain is exit 3
-and lists the chains that do exist; a step whose saved request has been deleted is exit 3 naming the
-step, before anything is sent.
+### What to run
+
+| Option | Default | What it does |
+|---|---|---|
+| *(positional)* | — | A collection, folder, or single request by path: `"Orders"`, `"Orders/Get orders"` |
+| `--all` | off | Run every saved request in the workspace |
+| `--chain <name>` | none | Run a saved chain: its requests, in the order the chain names them, as one unit — so a token captured by one step is available to the next through its `{{variable}}`. Steps report PASS/FAIL; a failing step stops the chain unless it is marked to carry on, and the steps that never ran are reported as **SKIP** rather than dropped. Captures write into the environment the chain names, created on first use; an explicit `--env` beats it |
+| `--data <file>` | none | A CSV or JSON dataset: run the request once per row, with each row's columns available as `{{variables}}`. See [Data-Driven Runs](13-Data-Driven-Runs.md) |
+| `--diff-har <file.har>` | none | Replay a captured session and compare each response against the one it recorded, which turns a capture into a regression test. An entry passes only when its diff is identical — the status is part of the diff — and any difference exits 1. There is deliberately no `--diff-fail` here, because diffing the capture *is* the flag |
+
+### Behaviour
+
+| Option | Default | What it does |
+|---|---|---|
+| `--record` / `--no-record` | on for live state | Write each request's result back as its known-good state. On by default against the live workspace, off against a `--workspace` file — a file someone handed you is not yours to modify. Also forced off while the desktop app is running, which would overwrite the file when it closes |
+| `--cookies` | off | Keep one cookie jar for the whole run, so a login's `Set-Cookie` carries to later requests |
+| `--no-auto-token` | off | Do not attach captured session tokens **or** captured session cookies |
+| `--diff-ignore <path>` | none | A JSON path to ignore when diffing. Repeatable |
+| `--diff-ignore-header <name>` | none | One more header to ignore when diffing. Repeatable |
+
+### Output
+
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | A JSON envelope of results instead of the table |
+| `--har <file>` | none | Capture the whole suite — every request and every redirect hop — as one HTTP Archive |
+| `--har-include-secrets` | off | Keep credential header values in that archive |
+| `--md <file>` | none | Write the run as a markdown note: a pass/fail table with per-request timings, each failed assertion **and what arrived instead**, and `total`/`passed`/`failed` in frontmatter so a vault can chart a suite's health over time. A chain's report is numbered in step order, shows skipped steps, and links each step back to its request note from [`export markdown`](#export). Captured variables are listed **by name only** — a captured value is usually the credential the next step authenticates with |
+| `--md-vault <folder>` | none | File that report as `certapi/runs/<name>-<timestamp>.md` instead: a new note per run, so the history a trend needs is never overwritten |
+| `--md-include-secrets` | off | Keep credential-looking query values in the report |
+
+A report that cannot be written warns without changing the exit code: a build must not turn green
+or red because of a folder permission.
+
+The [retry options](#retries) apply here too. A saved request keeps its own retry settings unless a
+flag overrides them.
 
 ---
 
 ## fuzz
 
-`certapi fuzz <base-url> [-w <wordlist>] [options]` — see [Endpoint Discovery](14-Endpoint-Discovery.md).
+```
+certapi fuzz <base-url> [-w <wordlist>] [options]
+```
 
-- `-w, --wordlist <file|->` — paths to probe (omit for the built-in list; `-` reads stdin)
-- `-X, --methods <list>` — comma-separated methods (default GET)
-- `--concurrency <n>` (1–50, default 8), `--delay <ms>`, `--timeout <seconds>`
-- `--match <codes>` / `--hide <codes>` / `--all` — control the view
-- `-H`, `--bearer`, `--env`/`--var`, `--no-auto-token`, cert flags, `--insecure`
-- `--save-collection <name>`, `-o <file>`, `--json`, `-q`
+Probe a wordlist against a base URL to map an undocumented API. See
+[Endpoint Discovery](14-Endpoint-Discovery.md).
+
+Accepts the [certificate](#certificate-options), [transport](#transport-options) and
+[variable](#variable-options) blocks.
+
+### Wordlist
+
+| Option | Default | What it does |
+|---|---|---|
+| `-w, --wordlist <file>` | built-in | Paths to probe, one per line. `-` reads from stdin, so it composes with any tool that produces a list. Omit it entirely for the built-in starter list |
+| `-X, --methods <list>` | `GET` | Comma-separated methods to try against each path. `GET,POST,OPTIONS` finds endpoints that exist but reject a GET |
+
+### Request
+
+| Option | Default | What it does |
+|---|---|---|
+| `-H, --header "k: v"` | none | A header added to every probe. Repeatable |
+| `--bearer <token>` | none | `Authorization: Bearer …` on every probe |
+| `--timeout <seconds>` | `100` | Per-probe timeout |
+| `--no-auto-token` | off | Do not attach or capture session tokens |
+
+### Discovery
+
+| Option | Default | What it does |
+|---|---|---|
+| `--concurrency <n>` | `8` | Parallel probes, 1–50 |
+| `--delay <ms>` | `0` | Pause between probes. Be polite to somebody else's server — and to any rate limiter between you and it |
+| `--match <codes>` | none | Show **only** these status codes |
+| `--hide <codes>` | none | Hide these status codes, overriding the default view |
+| `--all` | off | Show every probe, including 404s and connection errors |
+
+With none of `--all`, `--match` or `--hide`, the table hides 404s and connection errors — the same
+noise the desktop app hides, because a wordlist run is mostly misses by design.
+
+### Output
+
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | A JSON `{ results, summary }` document instead of the table |
+| `-o, --output <file>` | none | Write the discovered paths out as a wordlist — or the JSON report, with `--json`. Feeds the next run |
+| `--save-collection <name>` | none | Save what was found as saved requests in a collection, ready to send |
+| `--workspace <file>` | live state | Use a workspace file instead of the live state |
+| `-q, --quiet` | off | No progress counter on stderr |
+| `--har <file>` | none | Capture every probe as one HTTP Archive |
+| `--har-include-secrets` | off | Keep credential header values in it |
 
 ---
 
 ## bench
 
-`certapi bench <url> [options]` or `certapi bench <Collection[/Folder]/Request> [options]` — send one
-request over and over and report how long it took. It uses the same client-certificate send path as
-`send`, so what it measures is what the rest of the tool does. A saved-request positional must name
-exactly one request.
+```
+certapi bench <url> [options]
+certapi bench "<Collection/Saved request>" [options]
+```
 
-**Load**
+Measure an endpoint's latency under load. A bench **reports numbers rather than passing judgement**:
+an endpoint that answers 503 every time has still been measured, so a high failure rate exits 0.
+Exit 1 only when nothing answered at all.
 
-- `-n, --count <n>` — total requests to send (default 100)
-- `-c, --concurrency <n>` — parallel workers (default 10; never more than `--count`)
-- `--duration <seconds>` — run for a wall-clock period instead of a fixed count; `-n` is then unused,
-  and the two can't be combined
-- `--warmup <seconds>` — send for this long first and discard every result. Warm-up requests are
-  **extra** — they don't come out of `--count`.
-- `--bench-retries` — let the [retry flags](#send) apply during the bench (off by default)
+Accepts the [certificate](#certificate-options), [transport](#transport-options) and
+[variable](#variable-options) blocks.
 
-**Request, TLS, and variables**
+### Load
 
-- `-X, --method <m>`, `-H, --header "k: v"`, `-d, --data <body>`, `--content-type <ct>`,
-  `--bearer <token>`, `--timeout <seconds>`
-- cert flags + `--insecure`; the [revocation flags](#send) (`--revocation`, `--revocation-strict`)
-  apply too; `--env <name>` / `--var k=v` / `--workspace <file>`
+| Option | Default | What it does |
+|---|---|---|
+| `-n, --count <n>` | `100` | Total requests to send |
+| `-c, --concurrency <n>` | `10` | Parallel workers, never more than `--count` |
+| `--duration <seconds>` | none | Run for a wall-clock period instead of a fixed count. `-n` is then unused, and the two cannot be combined |
+| `--warmup <seconds>` | none | Send for this long first and **discard every result**, so the figures describe a warmed-up endpoint. Warm-up requests are extra — they do not come out of `--count` |
+| `--bench-retries` | off | Let the [retry options](#retries) apply during the bench. They are forced off by default, because a retry hides the very failure rate a bench exists to measure |
+| `--pool` | off | Also report the connections the run actually used: how many were opened and how many requests each served. Turns the pooling note below into a measurement — a server answering `Connection: close` makes every request pay a fresh handshake, and that dominates the latency being reported |
 
-On a saved request these override or add to what it already carries; everything else about it (its own
-auth, headers, body, and transport settings) is used as saved. A multipart request can't be benched.
+### Request
 
-**Output**
+| Option | Default | What it does |
+|---|---|---|
+| `-X, --method <m>` | `GET` | HTTP method |
+| `-H, --header "k: v"` | none | Add a header. Repeatable |
+| `-d, --data <body>` | none | Request body |
+| `--content-type <ct>` | `application/json` | Body content type |
+| `--bearer <token>` | none | `Authorization: Bearer …` |
+| `--timeout <seconds>` | `100` | Per-request timeout |
 
-- `--json` — a JSON envelope instead of the summary table
-- `--pool` — also report the connections the run actually used: how many were opened and how many
-  requests each served. Turns this command's "connections are pooled and reused" note into a
-  measurement, which matters for reading the latencies — a server answering `Connection: close`
-  makes every request pay a fresh handshake
+On a saved request these **override or add to** what it already carries; everything else about it —
+its own auth, headers, body and transport settings — is used as saved. A multipart saved request
+cannot be benched.
 
-The report gives requests sent / succeeded / failed, elapsed, requests per second, the min / p50 / p90
-/ p99 / max latencies, and the status and error counts. Percentiles come from the full retained
-latency array, not an approximation.
+### Output
 
-| Behaviour | Why |
-|---|---|
-| Retries are forced off, even when the request or `--retry` asks for them | A retry turns a failure into a slow success and hides the failure rate a bench exists to measure. `--bench-retries` measures it anyway. |
-| Nothing is written — no known-good markers, no captured tokens, no state file | A measurement isn't an observation worth keeping. The workspace is read for `{{variables}}`, saved requests, and pinned certificates only, and captured session tokens are not attached. |
-| **Connections are pooled and reused**, so only the first request to an origin pays the TCP connect and the TLS handshake | Later requests that share the same client certificate and trust policy reuse that connection and measure only the request and response. `--warmup` discards the first-connection cost so the figures describe a warmed-up endpoint. A request routed through a proxy still opens its own connection every time — the proxied path can't be pooled. The command prints this as a note under every summary and carries it in the `--json` envelope. |
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | A JSON envelope instead of the summary table |
 
-Exit codes: `0` whenever the bench measured anything — it reports numbers rather than passing
-judgement, so an endpoint that answers 503 or 404 every time has still been measured and exits 0 ·
-`1` only when no request got a response at all (every attempt failed at the transport level, so
-there is nothing to report but that the endpoint could not be reached) · `2` usage (`-n` with
-`--duration`, a concurrency of zero or less, or a concurrency greater than the count) · `3` data
-error.
+The report gives requests sent / succeeded / failed, elapsed, requests per second, the min / p50 /
+p90 / p99 / max latencies, and status and error counts. **Percentiles come from the full retained
+latency array, not an approximation**, so p99 means p99.
 
-There is no window for the bench: it is a command-line concern.
+**Connections are pooled and reused**, so only the first request to an origin pays the TCP connect
+and the TLS handshake; `--warmup` removes that cost from the figures, and `--pool` shows whether it
+happened. A request routed through a proxy opens its own connection every time — the proxied path
+cannot be pooled. The command prints this caveat under every summary and carries it in the `--json`
+envelope, because a latency figure without it is misleading.
 
 ---
 
 ## sse
 
-`certapi sse <url> [options]` — stream Server-Sent Events.
+```
+certapi sse <url> [options]
+```
 
-- `-H "k: v"`, `--max-events <n>`, `--json` (ndjson — newline-delimited JSON), `-q`
-- cert flags + `--insecure`; a pinned host needs no `--insecure`, a captured token attaches
-  automatically (`--no-auto-token` turns that off, `--workspace <file>` names where pins and
-  tokens come from), and the same `--proxy`/`--noproxy`/`--revocation` flags as [`send`](#send)
-  apply
+Stream Server-Sent Events, printing each as it arrives. See
+[Live Streaming](15-Live-Streaming.md).
+
+Accepts the [certificate](#certificate-options) and
+[streaming transport](#transport-options-streaming-subset) blocks.
+
+| Option | Default | What it does |
+|---|---|---|
+| `-H, --header "k: v"` | none | Add a header to the subscription. Repeatable |
+| `--max-events <n>` | unlimited | Stop after *n* events. What makes this usable in a script instead of a terminal you have to interrupt |
+| `--json` | off | One JSON object per event as newline-delimited JSON: `{event, data, id, retry}` — pipes straight into `jq` |
+| `-q, --quiet` | off | No connecting/ended notices on stderr |
+| `--workspace <file>` | live state | Read trust pins and captured tokens from a workspace file |
+| `--no-auto-token` | off | Do not attach a captured bearer token to the request |
+
+Runs until the stream ends, `--max-events` is reached, or Ctrl+C.
+
+---
 
 ## ws
 
-`certapi ws <url> [options]` — WebSocket console.
+```
+certapi ws <url> [options]
+```
 
-- `-m, --message <text>` (repeatable; stdin lines also sent), `--expect <n>`, `-H`, `-q`
-- cert flags + `--insecure`; the same pin/token/proxy/revocation story as [`sse`](#sse) above
+Open a WebSocket, optionally send messages, and print what arrives. `ws://` or `wss://`.
+
+Accepts the [certificate](#certificate-options) and
+[streaming transport](#transport-options-streaming-subset) blocks — a `wss://` handshake can
+present a client certificate like any other TLS connection.
+
+| Option | Default | What it does |
+|---|---|---|
+| `-H, --header "k: v"` | none | Add a header to the handshake. Repeatable — this is where a subprotocol or an auth header goes |
+| `-m, --message <text>` | none | Send this text after connecting. Repeatable, in order |
+| `--expect <n>` | unlimited | Stop after receiving *n* messages. Makes a request/response exchange scriptable |
+| `-q, --quiet` | off | No connect/send/close notices on stderr |
+| `--workspace <file>` | live state | Read trust pins and captured tokens from a workspace file |
+| `--no-auto-token` | off | Do not attach a captured bearer token to the handshake |
 
 ---
 
 ## certs
 
-`certapi certs [--filter <text>] [--store CurrentUser|LocalMachine] [--json]` — list client
-certificates. `--store LocalMachine` also searches the machine store.
+```
+certapi certs [options]
+```
+
+List the client certificates available to you — the same list the app's picker shows.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--filter <text>` | none | Show only certificates whose subject, issuer or thumbprint contains this text |
+| `--store <location>` | `CurrentUser` | `LocalMachine` searches both the machine store and your own |
+| `--json` | off | Machine-readable output instead of the table |
+
+Each row gives the subject, issuer, thumbprint and expiry, and flags whether the certificate is
+marked for client authentication. Start here when `--cert` cannot find what you meant.
+
+---
 
 ## selftest
 
-`certapi selftest [--json]` — stand up a loopback mTLS server with generated certificates and prove
-the client-certificate path end to end.
+```
+certapi selftest [--json]
+```
+
+Prove the whole mutual-TLS path works on this machine, without needing a server. It generates a
+certificate authority, a server certificate and a client certificate in memory, stands up a
+loopback mutual-TLS server, and makes one authenticated round trip.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | Machine-readable result instead of the summary |
+
+**If this fails, the problem is local** — certificate loading, or the TLS stack — and not the API
+you were trying to reach. That is the entire point: it separates "my machine cannot do mutual TLS"
+from "that server will not accept me".
+
+---
 
 ## mock
 
-`certapi mock [options]` — a standing local test server (see [Mock Server](18-Mock-Server.md)).
+```
+certapi mock [options]
+```
 
-- `--port <n>` (default 8770; 0 picks free), `--http` (default) / `--tls` / `--mtls`,
-  `--cert-dir <dir>`, `-q`
+A local test server to fire requests at. Runs until Ctrl+C. See [Mock Server](18-Mock-Server.md).
+
+### Listening
+
+| Option | Default | What it does |
+|---|---|---|
+| `--port <n>` | `8770` | Port to listen on. `0` picks a free one |
+| `--http` | **default** | Plain HTTP — hit it with anything, no certificates involved |
+| `--tls` | off | HTTPS with a generated self-signed server certificate |
+| `--mtls` | off | HTTPS that **also requires** a client certificate. Any certificate is accepted; the point is to exercise the presenting side |
+| `--cert-dir <dir>` | `./certapi-mock-certs` | Where generated certificates are written |
+| `-q, --quiet` | off | Do not log each request |
+
+With `--tls` or `--mtls`, the server certificate — and for `--mtls` a ready-to-use client `.pfx` —
+are written to the certificate directory, so you can trust one and present the other.
+
+### Misbehaving on purpose
+
+| Option | Default | What it does |
+|---|---|---|
+| `--tls-mode <mode>` | `valid` | Serve a deliberately **broken** server certificate so a client's own error paths can be exercised from a terminal: `valid`, `expired`, `wrong-host`, or `self-signed`. Needs `--tls` or `--mtls` |
+
+This is how you test what your client does when a certificate goes bad — without waiting for one to
+expire, or talking a colleague into breaking a staging server.
+
+### Serving your own shapes
+
+| Option | Default | What it does |
+|---|---|---|
+| `--routes <file>` | built-in | Serve the routes declared in a JSON scenario file instead of the built-in echo routes. Each route says what it **matches** (method, path glob or regular expression, required query and headers) and what it **answers** (status, headers, an inline body or a `bodyFile`). Matched top to bottom, first match winning |
+| `--har <file>` | none | Replay a captured HTTP Archive instead: each request is answered with the recorded response for that method and path — query included when it disambiguates — in recorded order |
+| `--no-match-status <code>` | `404` | The status for a request that matches nothing in the archive |
+
+With both `--routes` and `--har`, a request the routes miss **falls through to the recording**, so a
+scenario can override a few endpoints of a captured session and leave the rest as recorded.
+
+A scenario file can also inject faults (delays, dropped connections, sequences of differing
+responses) and require credentials, so an endpoint can be made to fail exactly the way the real one
+does. The built-in echo routes are not served while replaying a HAR.
+
+---
 
 ## import
 
-- `certapi import curl "<curl command>" [--into <folder>] [--workspace <file>]`
-- `certapi import openapi <file> [--into <folder>] [--workspace <file>]`
-- `certapi import har <file> [--into <folder>] [--workspace <file>]`
-- `certapi import postman <file> [--into <folder>] [--workspace <file>]` — a Postman Collection
-  (v2.0/v2.1 export): folders, both URL forms, query rows, headers (disabled stays disabled),
-  raw/urlencoded/formdata bodies, bearer/basic/apikey auth with request-level beating folder- and
-  collection-level, and collection variables as an environment (Postman's "secret" type stays
-  secret here). `{{variables}}` share syntax and import unchanged; anything unsupported is a named
-  warning, never a silent drop (see [Import and Export](17-Import-and-Export.md))
-- `certapi import insomnia <file> [--into <folder>] [--workspace <file>]` — an Insomnia v4 export:
-  folders rebuilt from the flat resource list, disabled rows preserved, text/form bodies, bearer
-  and basic auth, and environments. `{{ _.name }}` is translated to `{{name}}`; a `{% tag %}`
-  template has no equivalent and is left in place with a warning (see
-  [Import and Export](17-Import-and-Export.md))
-- `certapi import wsdl <file> [--into <folder>] [--workspace <file>]` — a WSDL 1.1 document (or
-  the SOAP 1.2 binding variant): one POST per operation at the port's address, the right content
-  type and `SOAPAction`, and an envelope skeleton. Types are not expanded — each part is a
-  commented placeholder — and imported schemas are named in a warning rather than fetched (see
-  [Import and Export](17-Import-and-Export.md))
+```
+certapi import <kind> <source> [--into <folder>] [--workspace <file>]
+```
+
+Bring requests in from somewhere else. See [Import & Export](17-Import-and-Export.md).
+
+| Kind | Source | Notes |
+|---|---|---|
+| `curl` | a quoted cURL command | Understands `-X`, `-H`, `-d`, `-u`, `-k`, bearer headers, quoting and line continuations |
+| `openapi` | a `.json`/`.yaml` document | One saved request per operation, organised by tag |
+| `har` | a `.har` archive | A captured session becomes saved requests |
+| `postman` | a Collection v2.0/v2.1 export | Folders, both URL forms, query rows, headers (disabled stays disabled), raw/urlencoded/formdata bodies, bearer/basic/apikey auth with request-level beating folder and collection level, and collection variables as an environment (Postman's "secret" type stays secret here) |
+| `insomnia` | a v4 export | Folders rebuilt from the flat resource list, disabled rows preserved, text and form bodies, bearer and basic auth, environments. `{{ _.name }}` is translated to `{{name}}` |
+| `wsdl` | a WSDL 1.1 document (or the SOAP 1.2 binding variant) | One POST per operation at the port's address, with the right content type, `SOAPAction`, and an envelope skeleton |
+
+| Option | Default | What it does |
+|---|---|---|
+| `--into <folder>` | root | Put the imported requests in this collection folder |
+| `--workspace <file>` | live state | Import into a workspace file instead of the app's live state |
+
+**Anything unsupported is a named warning, never a silent drop.** A `{% tag %}` template in an
+Insomnia export has no equivalent here and is left in place with a warning; WSDL types are not
+expanded, so each part is a commented placeholder and imported schemas are named rather than
+fetched. You are told what did not come across.
+
+---
 
 ## export
 
-- `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
-- `certapi export markdown -o <folder> [--workspace <file>] [--into <name>] [--index]
-  [--include-secrets]` — the workspace as a folder of linked markdown notes, one per saved
-  request plus environments and chains. Points straight at an Obsidian vault (a vault is just a
-  folder of markdown), and works the same for Logseq, Foam or a docs repository. Credential
-  values are redacted by default — vaults sync, so a note is likely to leave the machine.
-- `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
-  tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`
-  keeps them, written encrypted for the current Windows user.
+```
+certapi export openapi [<folder>] -o <file> [--workspace <file>]
+certapi export openapi --from-har <file.har> -o <file> [--host <h>] [--no-template-ids]
+certapi export workspace -o <file> [--workspace <file>] [--include-secrets]
+certapi export markdown -o <folder> [--workspace <file>] [--into <name>] [--index] [--include-secrets]
+```
+
+| Option | Applies to | Default | What it does |
+|---|---|---|---|
+| `-o, --output <path>` | all | **required** | The file to write — or, for `markdown`, the folder |
+| `--workspace <file>` | all | live state | Read from a workspace file instead of the live state |
+| `--from-har <file>` | `openapi` | none | Build the document from a captured archive instead of saved collections: repeated calls to one endpoint collapse into a single operation, identifier-looking path segments become `{id}`, responses of 400 and above are skipped, and redacted header values are never written |
+| `--host <h>` | `openapi --from-har` | all hosts | Keep only entries for this host, case-insensitive |
+| `--no-template-ids` | `openapi --from-har` | off | Keep identifier-looking path segments literal instead of turning them into `{id}` |
+| `--include-secrets` | `workspace`, `markdown` | off | Keep secrets instead of stripping them |
+| `--into <name>` | `markdown` | `certapi` | The subfolder inside the output folder to write into |
+| `--index` | `markdown` | off | Also write `index.md`, a table of every request |
+
+### openapi
+
+Writes collections — optionally one root folder — as an OpenAPI 3.0 document. **Auth is exported as
+a security scheme description only, never the secrets.**
+
+### workspace
+
+Writes the whole workspace as a portable JSON file, with window geometry stripped. Secrets —
+captured tokens and cookies, saved auth values, secret environment variables, and stored response
+bodies — are **stripped by default**, since an exported workspace is a file people email to each
+other. `--include-secrets` keeps them, written **encrypted for the current Windows user**, so even
+then a recipient on another machine cannot read them. The command reports on stderr what was
+stripped or kept.
+
+### markdown
+
+Writes the workspace as a folder of linked markdown notes: one per saved request, plus environments
+and chains, with YAML frontmatter and `[[wikilinks]]`. **An Obsidian vault is just a folder of
+markdown files**, so `-o` can point straight at one — and the same output works in Logseq, Foam, a
+documentation repository or a plain wiki.
+
+Re-exporting **overwrites the same notes in place**, so a generated note you edited by hand is
+overwritten too; that is why the tree lives in its own subfolder, and why `--into` exists if
+`certapi` clashes with something in your vault.
+
+Credential values — including ones hiding in a URL query string — are redacted by default, because
+**vaults sync**. The header *name* is kept, since "this request sends a bearer token" is what a
+catalogue should record.
+
+---
 
 ## trust
 
-`certapi trust list | add | remove` — pinned server-certificate thumbprints. A pinned host is
-reachable without `--insecure`, which is the point: pinning one endpoint is a much smaller hole
-than turning verification off everywhere.
+```
+certapi trust list   [--workspace <file>] [--json]
+certapi trust add    <host> (--thumbprint <t> | --from-url <https-url>) [--workspace <file>]
+certapi trust remove <host> [--thumbprint <t>] [--workspace <file>]
+```
 
-- `certapi trust list [--workspace <file>] [--json]`
-- `certapi trust add <host> (--thumbprint <t> | --from-url <https-url>) [--workspace <file>]` —
-  `--from-url` connects once and pins what the server actually presented, so you do not have to
-  transcribe a thumbprint by hand. Exactly one of the two is required
-- `certapi trust remove <host> [--thumbprint <t>] [--workspace <file>]` — without a thumbprint,
-  every pin for that host goes
-- Reads and writes the live workspace by default, or a `--workspace` file
-- A pin never overrides revocation: a certificate the issuer has revoked is still refused
+Pinned server-certificate thumbprints, per host. **A pinned host is reachable without
+`--insecure`** — which is the point: pinning one endpoint is a far smaller hole than turning
+verification off everywhere.
 
-## doctor
+| Option | Applies to | Default | What it does |
+|---|---|---|---|
+| `--thumbprint <t>` | `add` | — | Pin this exact thumbprint for the host |
+| `--from-url <https-url>` | `add` | — | Connect once, capture what the server actually presented, and pin its thumbprint — so you do not transcribe forty hex characters by hand. Exactly one of these two is required |
+| `--thumbprint <t>` | `remove` | all | Remove only this pin; omit it to remove every pin for the host |
+| `--workspace <file>` | all | live state | Read and write a workspace file instead of the live state |
+| `--json` | `list` | off | Machine-readable output |
 
-`certapi doctor <url> [options]` — diagnose a connection stage by stage (see
-[Troubleshooting](23-Troubleshooting.md)).
+Also accepts the [certificate options](#certificate-options), because `--from-url` may need a client
+certificate to complete the handshake it is inspecting.
 
-- Stages, in order and each timed: URL → proxy decision → DNS → TCP → proxy tunnel (`CONNECT`)
-  → TLS handshake → HTTP GET. Reports the stage that broke rather than one error line
-- Reports what an ordinary request cannot: the certificate authorities the server accepts client
-  certificates from (matched against the ones you have), TLS-interception evidence, the proxy
-  actually chosen for this URL including a PAC result, and a 407's offered auth schemes
-- On a DNS or TCP failure, checks whether the internet is reachable at all and distinguishes a
-  captive portal from a host that needs the VPN
-- cert flags, `--json`, `-q`, and the same `--proxy`/`--noproxy`/`--revocation` flags as
-  [`send`](#send)
-- `--md <file>` also writes the diagnosis as a markdown note — the stage table with timings, every
-  detail line, the advice, and the acceptable client-certificate authorities and any
-  TLS-interception finding **verbatim**. `--md-vault <folder>` files it as
-  `certapi/investigations/<host>-<timestamp>.md` instead: a new note per run, so a past diagnosis
-  is never overwritten. `--md-open` opens it (and prints the path if nothing is registered for
-  `.md`); `--include-secrets` keeps credential-looking query values, redacted by default
-- A note that cannot be written warns without changing the exit code
-- Exit 0 when every stage passed, 1 when one failed
+**A pin never overrides revocation.** A certificate the issuer has revoked is refused even past a
+pin — pinning says "I know this certificate", not "ignore its issuer".
 
-## connections
-
-`certapi connections <url> [-n <count>] [--parallel <count>] [--json]` — am I actually reusing
-connections? (see [Troubleshooting](23-Troubleshooting.md))
-
-- Makes the requests and reports which connection each went out on: connections opened to that
-  URL's origin, protocol version, peer address, when each opened, and how many requests it served
-- More requests than connections means reuse is working. One connection per request means it is
-  not — a server answering `Connection: close`, a proxy in the way, or a fresh client per request
-- `-n` how many requests (default 4); `--parallel` how many at a time (default 1). Parallel
-  requests need a connection each, so read requests against connections, not connections alone
-- Certificate and transport flags work as for [`send`](#send)
-- Reads the runtime's own HTTP events, so no driver and no administrator rights. Two limits it
-  states rather than hides: no connection-closed event is observable, so this is every connection
-  seen since the command started rather than a live socket count; and the listener is process-wide,
-  which is why the report is narrowed to the origin asked about
-- Exit 0 when the requests were made, 3 when none could be sent
-
-## proxy
-
-`certapi proxy [<url>] [--json]` — the machine's proxy configuration, and which proxy a given URL
-actually gets (see [Troubleshooting](23-Troubleshooting.md)).
-
-- With no URL: automatic detection (WPAD — Web Proxy Auto-Discovery), the configuration-script
-  (PAC — proxy auto-config) address, the static proxy, and its bypass list, as Internet Options
-  records them
-- With a URL: the answer from **Windows' own engine** (`WinHttpGetProxyForUrl`, which runs your
-  PAC script the way the operating system does — not a re-implementation) alongside the answer
-  .NET gives, which is what certapi will follow
-- When the two disagree, that is called out: it explains a request that works in a browser but
-  not here, or the reverse
-- Exit 0 whether or not a proxy is configured; 2 on usage
-
-## config
-
-`certapi config path | show [--profile <name>] | profiles` — what configuration is in effect (see
-[Configuration](27-Configuration.md)).
-
-These three options are **global** — they work on every command, not just this one:
-
-- `--profile <name>` — use that profile's defaults
-- `--config <path>` — read this file instead of discovering one
-- `--no-config` — ignore configuration entirely
-
-A profile supplies defaults for the certificate group, the proxy group, revocation, retries,
-timeout, workspace, and standing headers. **A typed flag always wins over the profile**, and the
-profile wins over the built-in default. Values may contain `${env:NAME}`, so secrets live in the
-environment rather than the file.
+---
 
 ## serve
 
-`certapi serve <upstream> --port <n> [options]` — local mTLS gateway (see
-[Local Gateway](19-Local-Gateway.md)).
+```
+certapi serve <upstream> --port <n> [options]
+```
 
-- An upstream pinned with [`trust add`](#trust) is reachable without `--insecure` — the gateway
-  consults the same pins every other connection does
-- `--upstream <prefix>=<url>` — mount another upstream at a path prefix behind the same port
-  (repeatable; longest prefix wins; the positional `<upstream>` is the `/` fallback)
-- `--token <value>` — require callers to send this bearer token before anything is forwarded
-- `--tls` — serve the gateway itself over HTTPS with a generated certificate;
-  `--tls-trust` also installs that certificate so a browser accepts it, and `--tls-untrust`
-  removes a previously installed one and exits
-- `--browser` — the bundle: all four browser accommodations at once (`--cors`,
-  `--rewrite-cookies`, `--rewrite-location`, `--allow-upgrade`), each also available alone
-- `--cors [<origins>]` — answer CORS preflights at the gateway, restricted to a comma-separated
-  origin list if given
-- `--cors-max-age <seconds>` — how long a browser may cache a preflight answer (default 600); only
-  with `--cors`
-- `--request-header "Name: value"` / `--remove-request-header <name>` — set or strip a header on
-  the request before it reaches the upstream (repeatable)
-- `--response-header "Name: value"` / `--remove-response-header <name>` — set or strip a header on
-  the response before it reaches the caller (repeatable; applied after `--browser`'s own rewrites)
-- `--revocation none|offline|online` / `--revocation-strict` — the [same revocation
-  checking](#send) as `send`, enforced on the gateway's connection to the upstream (default `none`;
-  see [Local Gateway](19-Local-Gateway.md))
-- `--record <file.har>` — append every forwarded exchange to a HAR, written on Ctrl+C
-  (`Authorization`/`Cookie` redacted unless `--record-include-secrets`)
-- `--replay <file.har>` — answer from a recorded HAR without contacting the upstream; mutually
-  exclusive with `--record`. The same format `mock --har` replays
+A local gateway that forwards to an upstream **and presents your client certificate on the way**.
+The answer for a browser, a tool, or a library that cannot do mutual TLS itself: point it at
+`http://127.0.0.1:<port>` and the gateway handles the certificate. See
+[Local Gateway](19-Local-Gateway.md).
+
+Listens on **127.0.0.1 only** — never a network interface, because a gateway that presents your
+certificate must not be reachable by anything but you.
+
+Accepts the [certificate](#certificate-options) and [transport](#transport-options) blocks.
+
+### Listening and routing
+
+| Option | Default | What it does |
+|---|---|---|
+| *(positional)* | — | The upstream URL, or a saved website name from the workspace |
+| `--upstream <prefix>=<url>` | none | Mount an upstream at a path prefix. Repeatable, so one gateway can front several backends |
+| `--port <n>` | **required** | Local port to listen on |
+| `--timeout <seconds>` | `100` | Per-request upstream timeout |
+| `--workspace <file>` | live state | Resolve a saved-website upstream from a workspace file |
+| `-q, --quiet` | off | No startup banner and no per-request log |
+
+### Access control
+
+| Option | Default | What it does |
+|---|---|---|
+| `--token <value>` | none | Require callers to send this token as `Authorization: Bearer <value>`. Anything on the machine can reach a loopback port, so this is how you stop *other* local processes using your certificate |
+
+### Serving over HTTPS
+
+| Option | Default | What it does |
+|---|---|---|
+| `--tls` | off | Serve HTTPS on 127.0.0.1 with a generated gateway certificate. Needed when the page calling it is itself HTTPS, since a secure page cannot call a plain-HTTP origin |
+| `--tls-trust` | off | Also install that certificate into `CurrentUser\Root`, so the browser accepts it without a warning |
+| `--tls-untrust` | — | Remove a previously trusted gateway certificate and exit |
+
+### Record and replay
+
+Two ends of one HAR format: capture a session live, replay it offline.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--record <file.har>` | none | Append every forwarded exchange to an archive, written on Ctrl+C |
+| `--record-include-secrets` | off | Keep credential values in that recording. Only valid with `--record` |
+| `--replay <file.har>` | none | Answer from a recorded archive **without ever contacting the upstream** — a whole backend, offline, for a demo, a flight, or a test suite that must not touch production |
+
+### Browser accommodations
+
+So a page on another origin can call the upstream through the gateway.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--browser` | off | The bundle: turns on all four accommodations below at once |
+| `--cors [<origins>]` | off | Answer CORS preflights at the gateway and add the response headers a browser needs. With no value, any origin |
+| `--cors-max-age <n>` | none | How long a browser may cache a preflight answer, in seconds |
+| `--rewrite-cookies` | off | `Set-Cookie` loses `Domain=` and `Secure`, and `SameSite=None` becomes `Lax` — so a cookie issued for the real origin is actually kept by a browser talking to loopback |
+| `--rewrite-location` | off | A 3xx `Location` pointing at the upstream comes back pointing at the gateway, so a redirect does not walk the browser out of the tunnel |
+| `--allow-upgrade` | off | Relay WebSocket connections to the upstream as well |
+
+### Header rewriting
+
+| Option | Default | What it does |
+|---|---|---|
+| `--request-header "Name: value"` | none | Set a header on the request before it reaches the upstream. Repeatable |
+| `--remove-request-header <name>` | none | Strip a header from the request. Repeatable, and not combinable with a `--request-header` naming the same header |
+| `--response-header "Name: value"` | none | Set a header on the response before it reaches the caller. Repeatable |
+| `--remove-response-header <name>` | none | Strip a header from the response. Repeatable, with the same exclusion |
+
+An upstream pinned with [`trust add`](#trust) is reachable without `--insecure`.
+
+---
 
 ## grpc
 
@@ -551,83 +880,174 @@ certapi grpc list --protoset <file> [options]
 certapi grpc call <address> <Service/Method> [options]
 ```
 
-Calls a gRPC service (HTTP/2) that requires a client certificate, using the same Windows-store
-certificate handling as the rest of certapi. `list` shows the services and methods a server
-advertises via server reflection (`grpc.reflection.v1alpha.ServerReflection`) — or, for a server that
-doesn't implement reflection, the services and methods declared by a compiled descriptor set supplied
-with `--protoset` (below); `call` invokes one — unary, server-streaming, client-streaming, or
-bidirectional — with the kind discovered from the method's own definition, never chosen with a flag.
-A short service name resolves when it's unambiguous (`Echo/Unary` finds `certapi.test.Echo`).
+Discover and call a gRPC service — unary, server-streaming, client-streaming, or bidirectional —
+with the same client-certificate handling as everything else here.
 
-- `-d, --data <json>` — the request message as JSON (default `{}`); repeatable — for a
-  client-streaming or bidirectional method, each `-d` value and each line read from standard input
-  (one JSON object per line) is sent as one message, in order; standard input is read only for those
-  two kinds. `--data-file <path>` reads one message from a file instead, the same as a single `-d`.
-  No messages at all (no `-d`, no `--data-file`, empty or absent standard input) is legal for a
-  client-streaming or bidirectional method — it sends an empty stream, not an error
-- `--protoset <file>` — read services and methods from a compiled `FileDescriptorSet` instead of
-  server reflection. Produce one with `protoc --descriptor_set_out=<file> --include_imports <proto>`
-  — `--include_imports` isn't optional, or the set is missing the types it imports. Wins over server
-  reflection when both are available (the two are never merged); `grpc list --protoset` needs no
-  address and opens no connection at all
-- `-H, --header "k: v"` — request metadata (repeatable)
-- `--max-messages <n>` — stop a server-streaming or bidirectional call after n messages (exit 0, not
-  a failure)
-- `--timeout <seconds>` — default 100
-- cert flags (see [`send`](#send)) + `--insecure` — a host pinned with `certapi trust add` needs
-  no `--insecure`, exactly as `send`
-- `--proxy <url>` / `--no-proxy` / `--proxy-user <u:pass>` / `--noproxy <list>` — apply to the
-  channel; HTTP-version pinning, redirects, decompression, and retries do not apply to a gRPC
-  channel and have no flags here
-- `--revocation none|offline|online` / `--revocation-strict` — the [same revocation
-  checking](#send) as `send`, enforced on the gRPC channel's TLS connection (default `none`)
-- `--no-auto-token` — don't attach a captured bearer token as metadata for this call (one is
-  attached automatically otherwise; `certapi grpc` never captures a *new* token)
-- `--workspace <file>` — load pins and tokens from a workspace file instead of the live state
-- `--json` — a JSON envelope instead of the plain rendering; `-q, --quiet` — no metadata line on
-  stderr
+Accepts the [certificate](#certificate-options) and [transport](#transport-options) blocks.
 
-`list` prints services to stdout, one per line, indented with their methods (`stream` marks a
-streaming request or response); `call` prints the response — or, for a server-streaming or
-bidirectional method, one compact JSON object per line as each message arrives — to stdout.
+| Option | Default | What it does |
+|---|---|---|
+| `-d, --data <json>` | `{}` | The request message as JSON. Each `-d` is **one message**, in order, so several of them make a client-streaming call. Repeatable |
+| `--data-file <path>` | none | Read the request JSON from a file instead, supplying one message |
+| `-H, --header "k: v"` | none | Add gRPC metadata. Repeatable |
+| `--max-messages <n>` | unlimited | Stop a server-streaming or bidirectional call after *n* messages |
+| `--timeout <seconds>` | `100` | Call timeout |
+| `--protoset <file>` | reflection | Read service definitions from a **compiled descriptor set** instead of asking the server. This is how you call a service with reflection disabled — which is most production services. Build one with `protoc --descriptor_set_out` |
+| `--workspace <file>` | live state | Load pins and tokens from a workspace file |
+| `--no-auto-token` | off | Do not attach a captured bearer token for this call |
+| `--json` | off | A JSON envelope instead of the plain rendering |
+| `-q, --quiet` | off | No metadata line on stderr |
 
-Exit codes: `0` on success (including a stream stopped early by `--max-messages`) · `1` when the
-gRPC status returned is not OK (`--json` carries `{status, statusName, detail}`) · `2` on a bad
-command line — an address whose scheme isn't `http`/`https`, a malformed `Service/Method`, or several
-`-d`/`--data` values against a method that takes a single request message · `3` on a data problem —
-server reflection unavailable, an unknown service/method/field naming the offending one, or a
-`--protoset` file that's missing, unreadable, not a compiled `FileDescriptorSet`, or missing part of
-its dependency closure (e.g. `protoc` was run without `--include_imports`).
-
-Server reflection is the default source of descriptors; `--protoset` is the alternative for a server
-that doesn't offer it, and wins over reflection when both are available. The well-known Protocol
-Buffers (Protobuf) types render — and are accepted on the way in — in their canonical JSON forms
-rather than as ordinary messages: `Timestamp` is an RFC 3339 string (`"2023-11-14T22:13:20Z"`),
-`Duration` is seconds with an `s` suffix (`"1.500s"`), the wrapper types (`Int32Value`,
-`StringValue`, and the rest) are the bare underlying value, `Struct`/`Value`/`ListValue` are a plain
-JSON object/value/array, `FieldMask` is comma-joined lowerCamelCase paths, and `Empty` is `{}`. `Any`
-expands to `{"@type":…, …fields}` when its type resolves against whichever descriptors are in play —
-reflection-fetched or supplied with `--protoset` — and degrades to `{"@type":…,"value":"<base64>"}`
-rather than failing the call when it doesn't. `certapi serve` does not proxy gRPC — `HttpListener` is
-HTTP/1.1-only — so `certapi grpc` reaches the service directly with your certificate rather than
-going through the gateway.
-
-## mcp
-
-`certapi mcp [options]` — MCP server for AI agents (see [MCP Server](20-MCP-Server.md)).
-
-- Tools: `send_request`, `run_saved`, `run_chain`, `list_saved`, `list_environments`,
-  `list_certificates`, `grpc_list`, `grpc_call`, `self_test`; saved requests, environments, and
-  chains are also published as read-only resources with secrets redacted
-- `--allow <host>` — allowed upstream host (repeatable), enforced on every call including each
-  chain step; omit to allow any host (prints a warning)
-- `--protoset <file>` — descriptor set for the gRPC tools, pinned at launch
-- The same `--proxy`/`--noproxy`, `--revocation`/`--revocation-strict`, and `--retry` flags as
-  [`send`](#send) apply to every call the tools make; redirects are never followed, a host pinned
-  with `trust add` needs no `--insecure`, and the workspace is read once and never written back
+`list` with no service name lists the services; with one, it lists that service's methods and their
+message shapes. Well-known Protobuf types are rendered and accepted in their canonical JSON forms,
+so a `Timestamp` reads as an ISO date rather than as seconds and nanos.
 
 ---
 
-`certapi --version` prints the version.
+## mcp
 
-Next: [Keyboard Shortcuts](22-Keyboard-Shortcuts.md).
+```
+certapi mcp [options]
+```
+
+Run a Model Context Protocol server on stdio, so an AI agent can make mutual-TLS calls **through**
+this tool without ever holding the certificate. See [MCP Server](20-MCP-Server.md).
+
+Accepts the [certificate](#certificate-options) and [transport](#transport-options) blocks.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--cert <thumbprint or subject>` | none | The certificate every tool uses. **Pinned at startup — the agent cannot change it**, which is the security model: the agent chooses requests, you choose the identity |
+| `--allow <host>` | none | An allowed upstream host. **Repeatable, and the allowlist is the boundary**: a URL must match one of these or be a subdomain of it, so an agent cannot be talked into calling somewhere else |
+| `--timeout <seconds>` | `100` | Upstream timeout for `send_request`; a saved request may carry its own |
+| `--workspace <file>` | live state | Load saved requests, environments and chains from a workspace file, so the agent can run things you prepared |
+| `--no-auto-token` | off | Do not capture or reuse bearer tokens across the session's calls |
+| `--protoset <file>` | reflection | Compiled descriptor set for `grpc_list`/`grpc_call` against a service without reflection |
+| `--insecure` | off | Ignore upstream certificate errors (internal certificate authorities) |
+
+The retry options `--retry`, `--retry-on` and `--retry-delay` work here with the same rules as
+[`send`](#send).
+
+Secrets are never handed to the agent: a captured token's *value* is withheld and only its
+existence reported — the same stance [`export workspace`](#export) takes.
+
+---
+
+## doctor
+
+```
+certapi doctor <url> [options]
+```
+
+Diagnose a connection **one stage at a time** — URL, proxy decision, DNS, TCP, the proxy tunnel,
+the TLS handshake, then an HTTP GET — and report the stage that broke rather than one error line.
+Every stage is timed. See [Troubleshooting](23-Troubleshooting.md#start-here-certapi-doctor).
+
+Accepts the [certificate](#certificate-options) and
+[streaming transport](#transport-options-streaming-subset) blocks.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | The whole report as JSON, for scripts |
+| `-q, --quiet` | off | Only print stages that failed or carry advice |
+| `--md <file>` | none | Also write the diagnosis as a markdown note: the stage table with timings, every detail line, the advice, and — the part worth keeping — the acceptable client-certificate authorities and any TLS-interception finding, **verbatim** |
+| `--md-vault <folder>` | none | File it as `certapi/investigations/<host>-<timestamp>.md` instead. **A new note per run**: a diagnosis is history, so nothing overwrites a past one |
+| `--md-open` | off | Open the written note afterwards. If nothing is registered for `.md` it prints the path rather than failing |
+| `--include-secrets` | off | Keep credential-looking query values in the note, redacted by default because vaults sync |
+
+**What it reports that an ordinary request cannot:**
+
+- **The certificate authorities the server accepts client certificates from**, matched against the
+  certificates you actually have — "none of your 3 are issued by any of those" is usually the whole
+  answer, and it is only visible during a handshake.
+- **Whether this network is decrypting TLS in the middle**, and why that matters: a client
+  certificate cannot survive an intercepting proxy.
+- **Which proxy the machine picks for this URL**, including one a PAC script chose, and what the
+  proxy said if it refused — including the authentication schemes offered on a 407.
+- On a DNS or TCP failure, **whether the internet is reachable at all**, distinguishing a captive
+  portal from a host that needs the VPN.
+
+A note that cannot be written warns without changing the exit code. Exit 0 when every stage passed,
+1 when one failed.
+
+---
+
+## proxy
+
+```
+certapi proxy [<url>] [--json]
+```
+
+What this machine is configured to do about proxies, and — with a URL — which proxy it would
+actually use for that address.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--json` | off | The report as JSON instead of text |
+
+With no URL it prints the configuration: automatic detection (WPAD), the configuration-script
+address, the static proxy and its bypass list.
+
+With a URL it prints **two answers**: the one Windows' own engine computes by running your PAC
+script, and the one .NET computes — which is the one `certapi` follows. **When those disagree, the
+disagreement is the finding**, and it explains a request that works in a browser but not here, or
+the other way round. A PAC script is JavaScript, so nothing can predict its answer by reading
+configuration alone; this runs the real engine rather than guessing.
+
+Exit 0 when the settings could be read, with or without a proxy configured.
+
+---
+
+## connections
+
+```
+certapi connections <url> [options]
+```
+
+Am I actually reusing connections? Makes the requests and reports which connection each one went
+out on. See
+[Troubleshooting](23-Troubleshooting.md#am-i-actually-reusing-connections--certapi-connections).
+
+Accepts the [certificate](#certificate-options) and [transport](#transport-options) blocks.
+
+| Option | Default | What it does |
+|---|---|---|
+| `-n, --count <n>` | `4` | How many requests to send |
+| `--parallel <n>` | `1` | How many at a time. Parallel requests need a connection each, so read **requests against connections**, not connections alone |
+| `--json` | off | The report as JSON |
+
+Reusing a pooled connection skips a TCP handshake *and* a TLS handshake, which against a remote
+endpoint is most of the time a small request takes — and it is otherwise invisible, because the
+responses look identical either way. More requests than connections means reuse is working; one
+connection per request means it is not, and the usual causes are a server answering
+`Connection: close`, a proxy in the way, or a fresh client per request.
+
+**How it knows, and its two limits.** It reads the runtime's own HTTP events — no driver, no
+administrator rights, no private API. The runtime emits no connection-closed event this can see, so
+the report covers every connection **observed since the command started** rather than a live count
+of open sockets; and the listener is process-wide, which is why the report is narrowed to the origin
+you asked about, with connections to other origins counted in a closing line rather than hidden.
+
+Exit 0 when the requests were made, 3 when none could be sent.
+
+---
+
+## config
+
+```
+certapi config path
+certapi config profiles
+```
+
+What configuration is actually in effect. See [Configuration](27-Configuration.md).
+
+| Subcommand | What it does |
+|---|---|
+| `path` | The configuration file this invocation resolved, **and by which discovery rule** — so you can see whether it came from `--config`, the working directory, a parent directory, or your per-user path |
+| `profiles` | The profiles the file defines, and which one is the default |
+
+Both honour the [global options](#global-options) `--config`, `--profile` and `--no-config`. When a
+command behaves in a way you did not expect, `certapi config path` and then `--no-config` are the
+two steps that separate "my configuration did this" from "the tool did this".
+
+Exit 0 when the configuration could be read, 3 when a named file does not exist, 2 for usage.

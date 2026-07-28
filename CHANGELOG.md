@@ -6,6 +6,42 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.91.0] - 2026-07-28
+
+### Changed
+- **The CLI reference is now exhaustive: every command, every option, every default.** It was a
+  summary; it is now a reference. All **149 option tokens the parser accepts** are documented in
+  their command's section, each with what it does, what it defaults to, and how it interacts with
+  the others — including the fourteen that appeared nowhere on the page at all, among them the
+  whole HTTP-version group (`--http1.1`, `--http2`, `--http3`), `--resolve`, `--show-redirects`,
+  `--max-redirs`, `--no-decompress`, and the mock's `--routes`, `--tls-mode` and
+  `--no-match-status`.
+  The three **shared option blocks** — certificate, transport, and the streaming subset — are now
+  documented once and referenced by the twelve or thirteen commands that inherit each, instead of
+  being repeated or, as had happened, omitted. The page also states the things a terse help screen
+  cannot: why a proxy costs you the TLS diagnostics, why an undeterminable revocation status is not
+  fatal by default, why `POST` is not retried unless you ask, and why the exit codes distinguish
+  "the command worked and the answer was no" from "the command never ran".
+
+### Added
+- **A settings and toggles reference for the desktop application** (wiki page 28) — the app's
+  counterpart to the CLI reference. Every control, its default, and whether it is remembered
+  between sessions: the request line, all seven request tabs, the whole transport panel, the
+  response panel and its network filters, the sidebar, the status bar, and every secondary window.
+  It ends with a table mapping each control to the command-line flag that does the same thing.
+- **A test that makes "every option is documented" a checked property rather than a claim.** It
+  reads every `--flag` literal the argument parser is actually asked for — the parser, not the help
+  text, because help can lag behind what a command accepts — and asserts each appears in that
+  command's section or in an inherited shared block. A second test guards the first: a new command
+  file with no entry in the mapping fails rather than being silently checked against the whole page.
+  Verified by removing one documented option and watching the test name it.
+
+### Fixed
+- Three claims in the new settings page were **wrong and were corrected against the XAML before
+  shipping**: the method and content-type pickers are not editable, and the auth-type list has a
+  `None (never send auth)` entry distinct from `Auto`. Every labelled checkbox in the application
+  was then checked mechanically against the page.
+
 ## [1.90.2] - 2026-07-28
 
 ### Added
@@ -2349,7 +2385,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.2...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.0...HEAD
+[1.91.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.2...v1.91.0
 [1.90.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.1...v1.90.2
 [1.90.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.0...v1.90.1
 [1.90.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.89.0...v1.90.0

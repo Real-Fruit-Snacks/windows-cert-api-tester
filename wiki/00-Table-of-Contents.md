@@ -55,6 +55,7 @@ know what you want to do but not what it is called.
 
 | # | Page | What's on it |
 |---|---|---|
+| 28 | [Settings & Toggles](28-Settings-and-Toggles.md) | Every control in the app: what it does, its default, whether it is remembered |
 | 22 | [Keyboard Shortcuts](22-Keyboard-Shortcuts.md) | Every shortcut in the app |
 | 23 | [Troubleshooting](23-Troubleshooting.md) | Why can't I reach this? — and the tools that answer it |
 | 24 | [FAQ](24-FAQ.md) | Short answers to the questions that come up most |
@@ -83,6 +84,10 @@ rights.
 three measurements answers which question — and
 [`certapi connections`](23-Troubleshooting.md#am-i-actually-reusing-connections--certapi-connections)
 answers whether connection reuse is working at all.
+
+**"What does this checkbox actually do?"**
+[Settings & Toggles](28-Settings-and-Toggles.md) lists every control in the app with its default,
+and [CLI Reference](21-CLI-Reference.md) does the same for every command-line option.
 
 **"I have a `.pfx` / smart card / no certificate at all."**
 [Certificates & mTLS](06-Certificates-and-mTLS.md) covers the store, files, and going without.

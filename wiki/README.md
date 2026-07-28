@@ -21,7 +21,7 @@ The short version:
 | **Sending requests** | [Certificates & mTLS](06-Certificates-and-mTLS.md) · [Building Requests](07-Building-Requests.md) · [Authentication](08-Authentication.md) · [Environments & Variables](09-Environments-and-Variables.md) · [Collections & History](10-Collections-and-History.md) |
 | **Beyond a single call** | [Testing & Assertions](11-Testing-and-Assertions.md) · [Capturing Values](12-Capturing-Values.md) · [Data-Driven Runs](13-Data-Driven-Runs.md) · [Endpoint Discovery](14-Endpoint-Discovery.md) · [Live Streaming](15-Live-Streaming.md) · [Response Views](16-Response-Views.md) · [Session Capture](26-Session-Capture.md) · [Configuration](27-Configuration.md) |
 | **Tooling** | [Import & Export](17-Import-and-Export.md) · [Mock Server](18-Mock-Server.md) · [Local Gateway](19-Local-Gateway.md) · [MCP Server](20-MCP-Server.md) · [CLI Reference](21-CLI-Reference.md) |
-| **Reference** | [Keyboard Shortcuts](22-Keyboard-Shortcuts.md) · [Troubleshooting](23-Troubleshooting.md) · [FAQ](24-FAQ.md) · [Building from Source](25-Building-from-Source.md) |
+| **Reference** | [Settings & Toggles](28-Settings-and-Toggles.md) · [Keyboard Shortcuts](22-Keyboard-Shortcuts.md) · [Troubleshooting](23-Troubleshooting.md) · [FAQ](24-FAQ.md) · [Building from Source](25-Building-from-Source.md) |
 
 ## At a glance
 
