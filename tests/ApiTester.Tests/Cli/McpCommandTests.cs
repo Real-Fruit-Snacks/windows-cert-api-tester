@@ -422,7 +422,7 @@ public class McpCommandTests
 
                 // And the workspace file on disk is byte-for-byte what the session started from.
                 var reloaded = AppState.LoadFrom(ws);
-                Assert.Empty(reloaded.Environments.Where(e => e.Name == "Sess"));
+                Assert.DoesNotContain(reloaded.Environments, e => e.Name == "Sess");
             }
             finally { File.Delete(ws); }
         }
