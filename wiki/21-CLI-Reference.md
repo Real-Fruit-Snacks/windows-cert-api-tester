@@ -27,6 +27,7 @@ Usage: certapi <command> [options]
 | [`grpc`](#grpc) | Discover and call a gRPC service (unary, server-, client-, or bidirectional-streaming) |
 | [`doctor <url>`](#doctor) | Diagnose a connection stage by stage — why can't I reach this? |
 | [`proxy [<url>]`](#proxy) | Show the machine's proxy settings, and which proxy a URL gets |
+| [`connections <url>`](#connections) | Are connections actually being reused? (pool inspector) |
 | [`config`](#config) | Show the configuration file and profile in effect |
 | [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
@@ -194,6 +195,20 @@ more than one was needed, and `--json` carries `attempts` when it is above 1.
 - `--fail` — exit 1 on HTTP status ≥ 400
 - `-q, --quiet` — no metadata line on stderr
 
+**Watching the connection** (see [Troubleshooting](23-Troubleshooting.md))
+
+- `--trace` — report .NET's own networking events as they happen: DNS, TCP connect, TLS handshake,
+  connection established, request lifecycle. `--trace-filter <substrings>` narrows it (it is a
+  firehose), `--trace-file <path>` writes it out, `--trace-verbose` adds the runtime's internal
+  diagnostics, and `--trace-include-secrets` keeps credential values that are redacted by default
+- `--wire` — print the **plaintext bytes** of the exchange, after TLS and before any parsing, hex
+  and ASCII for anything that is not text. `--wire-file <path>` writes it out;
+  `--wire-include-secrets` keeps credential header values. **Direct connections only** — through a
+  proxy or on HTTP/3 the TLS belongs to the handler, and it says so rather than printing nothing
+- `--frames` — read the same capture as HTTP/2 frames: type, stream, flags, SETTINGS values, window
+  updates, `RST_STREAM`, and `GOAWAY`'s error code and debug data. Implies `--wire`; needs
+  `--http2`, and says so if the connection is not HTTP/2
+
 ---
 
 ## token
@@ -251,8 +266,17 @@ The interactive **authorization-code** grant is app-only (see [Authentication](0
   separate from captured cookies from [Session Capture](26-Session-Capture.md), which attach
   automatically)
 - `--json` — JSON results instead of the table
+- `--md <file>` — also write the run as a markdown note: a pass/fail table with per-request timings,
+  each failed assertion **and what arrived instead**, and `total`/`passed`/`failed` in frontmatter so
+  a vault can chart a suite's health over time. A chain's report is numbered in step order, shows
+  skipped steps, and links each step back to its request note from `export markdown`. Captured
+  variables are listed by name only, never by value
+- `--md-vault <folder>` — file that report as `certapi/runs/<name>-<timestamp>.md` instead: a new
+  note per run, so the history a trend needs is never overwritten
+- `--md-include-secrets` — keep credential-looking query values in the report (redacted by default)
 
 A request passes when its assertions pass, or on any 2xx if it has none. Exit 1 if any request fails.
+A report that cannot be written warns without changing that verdict.
 
 The [retry flags](#send) apply here too; a saved request keeps its own retry settings unless a flag
 overrides them, and a flag overrides only what it names. `--chain` names its own requests, so it can't
@@ -305,6 +329,10 @@ auth, headers, body, and transport settings) is used as saved. A multipart reque
 **Output**
 
 - `--json` — a JSON envelope instead of the summary table
+- `--pool` — also report the connections the run actually used: how many were opened and how many
+  requests each served. Turns this command's "connections are pooled and reused" note into a
+  measurement, which matters for reading the latencies — a server answering `Connection: close`
+  makes every request pay a fresh handshake
 
 The report gives requests sent / succeeded / failed, elapsed, requests per second, the min / p50 / p90
 / p99 / max latencies, and the status and error counts. Percentiles come from the full retained
@@ -363,7 +391,7 @@ the client-certificate path end to end.
 - `--port <n>` (default 8770; 0 picks free), `--http` (default) / `--tls` / `--mtls`,
   `--cert-dir <dir>`, `-q`
 
-## import / export
+## import
 
 - `certapi import curl "<curl command>" [--into <folder>] [--workspace <file>]`
 - `certapi import openapi <file> [--into <folder>] [--workspace <file>]`
@@ -384,6 +412,9 @@ the client-certificate path end to end.
   type and `SOAPAction`, and an envelope skeleton. Types are not expanded — each part is a
   commented placeholder — and imported schemas are named in a warning rather than fetched (see
   [Import and Export](17-Import-and-Export.md))
+
+## export
+
 - `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
 - `certapi export markdown -o <folder> [--workspace <file>] [--into <name>] [--index]
   [--include-secrets]` — the workspace as a folder of linked markdown notes, one per saved
@@ -393,6 +424,21 @@ the client-certificate path end to end.
 - `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
   tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`
   keeps them, written encrypted for the current Windows user.
+
+## trust
+
+`certapi trust list | add | remove` — pinned server-certificate thumbprints. A pinned host is
+reachable without `--insecure`, which is the point: pinning one endpoint is a much smaller hole
+than turning verification off everywhere.
+
+- `certapi trust list [--workspace <file>] [--json]`
+- `certapi trust add <host> (--thumbprint <t> | --from-url <https-url>) [--workspace <file>]` —
+  `--from-url` connects once and pins what the server actually presented, so you do not have to
+  transcribe a thumbprint by hand. Exactly one of the two is required
+- `certapi trust remove <host> [--thumbprint <t>] [--workspace <file>]` — without a thumbprint,
+  every pin for that host goes
+- Reads and writes the live workspace by default, or a `--workspace` file
+- A pin never overrides revocation: a certificate the issuer has revoked is still refused
 
 ## doctor
 
@@ -408,7 +454,32 @@ the client-certificate path end to end.
   captive portal from a host that needs the VPN
 - cert flags, `--json`, `-q`, and the same `--proxy`/`--noproxy`/`--revocation` flags as
   [`send`](#send)
+- `--md <file>` also writes the diagnosis as a markdown note — the stage table with timings, every
+  detail line, the advice, and the acceptable client-certificate authorities and any
+  TLS-interception finding **verbatim**. `--md-vault <folder>` files it as
+  `certapi/investigations/<host>-<timestamp>.md` instead: a new note per run, so a past diagnosis
+  is never overwritten. `--md-open` opens it (and prints the path if nothing is registered for
+  `.md`); `--include-secrets` keeps credential-looking query values, redacted by default
+- A note that cannot be written warns without changing the exit code
 - Exit 0 when every stage passed, 1 when one failed
+
+## connections
+
+`certapi connections <url> [-n <count>] [--parallel <count>] [--json]` — am I actually reusing
+connections? (see [Troubleshooting](23-Troubleshooting.md))
+
+- Makes the requests and reports which connection each went out on: connections opened to that
+  URL's origin, protocol version, peer address, when each opened, and how many requests it served
+- More requests than connections means reuse is working. One connection per request means it is
+  not — a server answering `Connection: close`, a proxy in the way, or a fresh client per request
+- `-n` how many requests (default 4); `--parallel` how many at a time (default 1). Parallel
+  requests need a connection each, so read requests against connections, not connections alone
+- Certificate and transport flags work as for [`send`](#send)
+- Reads the runtime's own HTTP events, so no driver and no administrator rights. Two limits it
+  states rather than hides: no connection-closed event is observable, so this is every connection
+  seen since the command started rather than a live socket count; and the listener is process-wide,
+  which is why the report is narrowed to the origin asked about
+- Exit 0 when the requests were made, 3 when none could be sent
 
 ## proxy
 

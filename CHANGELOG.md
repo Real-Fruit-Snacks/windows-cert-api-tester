@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.90.1] - 2026-07-28
+
+### Fixed
+- **The README, the Pages site and the CLI reference had fallen two whole programs behind.**
+  Everything from `--trace`, `--wire` and `--frames` through `certapi connections`, `bench --pool`
+  and the whole markdown export family had reached the wiki's topic pages but never the three
+  places people actually look first. All three now cover them.
+- **Three links in the CLI reference pointed at anchors that do not exist.** `#import` and
+  `#export` were broken because both commands shared one heading called "import / export", so
+  neither name resolved; `#trust` was broken because `certapi trust` — a real command, linked to
+  from two other sections — had no section at all. `import` and `export` are now separate sections
+  and `trust` has one.
+
+### Added
+- **Three tests that hold the documentation to it**, because both kinds of rot are invisible in
+  review and obvious to a reader: every link to a wiki page resolves to a page that exists, every
+  `#anchor` resolves to a heading that exists, and **every command the CLI dispatch table contains
+  has a section in the reference**. That last one reads the dispatch table rather than a hand-kept
+  list, so a new command cannot ship undocumented. All three were confirmed to fail on the broken
+  files and pass on the repaired ones.
+
 ## [1.90.0] - 2026-07-28
 
 ### Added
@@ -2297,7 +2318,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.1...HEAD
+[1.90.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.0...v1.90.1
 [1.90.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.87.0...v1.88.0
