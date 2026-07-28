@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **The command-line reference's `serve` section listed some flags but not others, with nothing
+  to say the list was partial** — `--upstream`, `--token`, the `--tls` group, and the `--browser`
+  bundle were absent while the CORS, header-rule, and revocation rows were present, which read as
+  "this is everything". The distinctive flags are all rows now; the full detail stays in the
+  Local Gateway handbook, which the section already points to.
+
 ## [1.66.1] - 2026-07-27
 
 ### Fixed

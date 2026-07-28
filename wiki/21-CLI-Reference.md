@@ -366,6 +366,14 @@ the client-certificate path end to end.
 `certapi serve <upstream> --port <n> [options]` — local mTLS gateway (see
 [Local Gateway](19-Local-Gateway.md)).
 
+- `--upstream <prefix>=<url>` — mount another upstream at a path prefix behind the same port
+  (repeatable; longest prefix wins; the positional `<upstream>` is the `/` fallback)
+- `--token <value>` — require callers to send this bearer token before anything is forwarded
+- `--tls` — serve the gateway itself over HTTPS with a generated certificate;
+  `--tls-trust` also installs that certificate so a browser accepts it, and `--tls-untrust`
+  removes a previously installed one and exits
+- `--browser` — the bundle: all four browser accommodations at once (`--cors`,
+  `--rewrite-cookies`, `--rewrite-location`, `--allow-upgrade`), each also available alone
 - `--cors [<origins>]` — answer CORS preflights at the gateway, restricted to a comma-separated
   origin list if given
 - `--cors-max-age <seconds>` — how long a browser may cache a preflight answer (default 600); only
