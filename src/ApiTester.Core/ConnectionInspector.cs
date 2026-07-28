@@ -41,7 +41,6 @@ public sealed class ConnectionInspector : EventListener
 
     private readonly object _gate = new();
     private readonly Dictionary<long, ConnectionRecord> _connections = new();
-    private readonly List<long> _requestOrder = new();
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
     private bool _ready;
 
@@ -57,21 +56,6 @@ public sealed class ConnectionInspector : EventListener
     public IReadOnlyList<ConnectionRecord> Connections
     {
         get { lock (_gate) return _connections.Values.OrderBy(c => c.EstablishedAt).ToArray(); }
-    }
-
-    /// <summary>The connection that served the most recent request, or null if none has gone out.
-    /// For a single command this is simply "the connection this request used".</summary>
-    public ConnectionRecord? MostRecent
-    {
-        get
-        {
-            lock (_gate)
-            {
-                for (int i = _requestOrder.Count - 1; i >= 0; i--)
-                    if (_connections.TryGetValue(_requestOrder[i], out var record)) return record;
-                return null;
-            }
-        }
     }
 
     /// <summary>Whether the given connection was opened while this inspector was running. False
@@ -121,7 +105,6 @@ public sealed class ConnectionInspector : EventListener
                 if (id < 0) return;
                 lock (_gate)
                 {
-                    _requestOrder.Add(id);
                     if (_connections.TryGetValue(id, out var record))
                     {
                         record.Requests++;
@@ -181,7 +164,9 @@ public sealed class ConnectionInspector : EventListener
     /// reports the real port.</summary>
     public static string OriginOf(Uri url) => $"{url.Scheme}://{url.Host}:{url.Port}";
 
-    internal static string Render(IReadOnlyList<ConnectionRecord> connections)
+    /// <summary>The same report over a caller-chosen set of records — for a command that has
+    /// already narrowed them, so the narrowing happens once rather than twice.</summary>
+    public static string Render(IReadOnlyList<ConnectionRecord> connections)
     {
         if (connections.Count == 0)
             return "No connections were opened during this run — every request reused one that "

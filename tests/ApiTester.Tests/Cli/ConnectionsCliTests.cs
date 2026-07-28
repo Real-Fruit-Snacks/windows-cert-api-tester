@@ -143,6 +143,41 @@ public class ConnectionsCliTests : IDisposable
     }
 
     [Fact]
+    public async Task Bench_pool_with_json_still_emits_one_parseable_document()
+    {
+        // --json promises ONE machine-readable document on stdout. Appending the human-readable
+        // pool report after it made the whole thing unparseable, so a script piping into jq got a
+        // syntax error rather than a result. The facts now go inside the envelope.
+        await using var app = await StartKeepAliveAsync();
+
+        var (code, output, _) = Run("bench", app.Urls.First() + "/k", "-n", "4", "-c", "1",
+                                    "--pool", "--json");
+
+        Assert.Equal(0, code);
+        using var document = JsonDocument.Parse(output);      // the assertion that matters
+        var root = document.RootElement;
+        Assert.Equal(4, root.GetProperty("sent").GetInt32());
+
+        var connections = root.GetProperty("connections").EnumerateArray().ToList();
+        Assert.NotEmpty(connections);
+        Assert.Equal(4, connections.Sum(c => c.GetProperty("requests").GetInt32()));
+        Assert.True(root.GetProperty("reusing").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Bench_json_without_the_pool_flag_omits_the_connection_keys()
+    {
+        // Absent is meaningfully different from empty: empty would say "we looked and found none".
+        await using var app = await StartKeepAliveAsync();
+
+        var (_, output, _) = Run("bench", app.Urls.First() + "/k", "-n", "2", "-c", "1", "--json");
+
+        using var document = JsonDocument.Parse(output);
+        Assert.False(document.RootElement.TryGetProperty("connections", out _));
+        Assert.False(document.RootElement.TryGetProperty("reusing", out _));
+    }
+
+    [Fact]
     public async Task Bench_without_the_flag_reports_no_connections()
     {
         await using var app = await StartKeepAliveAsync();

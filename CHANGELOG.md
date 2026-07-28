@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.91.1] - 2026-07-28
+
+### Fixed
+- **`bench --pool --json` produced output that was not valid JSON.** `--json` promises one
+  machine-readable document on stdout, but `--pool` appended the human-readable connection report
+  after the envelope, so a script piping into `jq` got a syntax error instead of a result — the
+  exact combination a dashboard would use. The connection facts now go **inside** the envelope, as
+  a `connections` array and a `reusing` boolean, and the text report is printed only when `--json`
+  is absent. Found by running the two flags together and parsing the output rather than by reading
+  the code; the regression test parses it too, so a future change that breaks the document fails
+  rather than looks fine.
+  The keys are **absent** rather than empty when `--pool` was not asked for: empty would claim
+  "we looked and found none", which is a different statement.
+
+### Removed
+- **A dead public property on `ConnectionInspector`.** `MostRecent` was written for the
+  `send --diagnostics` integration that v1.87.0 correctly dropped — a single send runs in a fresh
+  process and has nothing to reuse — but the property itself was never removed. It was referenced
+  nowhere, not even by a test, and the list backing it grew one entry per request purely to feed
+  it. Public API that does nothing is worse than no API: it invites use and then has to be kept.
+
 ## [1.91.0] - 2026-07-28
 
 ### Changed
@@ -2385,7 +2406,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.1...HEAD
+[1.91.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.0...v1.91.1
 [1.91.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.2...v1.91.0
 [1.90.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.1...v1.90.2
 [1.90.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.0...v1.90.1

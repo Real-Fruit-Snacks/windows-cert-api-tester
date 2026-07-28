@@ -303,16 +303,23 @@ public static class BenchCommand
             .GetAwaiter().GetResult();
         if (!json) stderr.WriteLine();
 
-        if (json) stdout.WriteLine(BuildEnvelope(result));
+        // Narrowed to the origin benched: the listener is process-wide, and this run had one target.
+        var pooled = inspector is null
+            ? Array.Empty<ConnectionRecord>()
+            : Uri.TryCreate(request.Url, UriKind.Absolute, out var benched)
+                ? inspector.Connections.Where(c => c.Origin == ConnectionInspector.OriginOf(benched)).ToArray()
+                : inspector.Connections.ToArray();
+
+        // --json promises ONE machine-readable document on stdout. Appending the human-readable
+        // pool report after it — which is what this did when --pool and --json were combined —
+        // makes the whole thing unparseable, so the same facts go INSIDE the envelope instead.
+        if (json) stdout.WriteLine(BuildEnvelope(result, inspector is null ? null : pooled));
         else WriteReport(result, request, savedPath, options, stdout);
 
-        if (inspector is not null)
+        if (inspector is not null && !json)
         {
-            if (!json) stdout.WriteLine();
-            // Narrowed to the origin benched: the listener is process-wide, and this run had one target.
-            stdout.Write(Uri.TryCreate(request.Url, UriKind.Absolute, out var benched)
-                ? inspector.Render(ConnectionInspector.OriginOf(benched))
-                : inspector.Render());
+            stdout.WriteLine();
+            stdout.Write(ConnectionInspector.Render(pooled));
         }
 
         // A bench reports numbers rather than passing judgement: an endpoint that answers 503 every time
@@ -374,7 +381,10 @@ public static class BenchCommand
         stdout.WriteLine("  note: " + ConnectionCaveat);
     }
 
-    private static string BuildEnvelope(BenchResult result)
+    /// <param name="connections">The connections this run used, or null when --pool was not asked
+    /// for. An empty array is meaningfully different from null: it means the flag was given and
+    /// nothing new was opened, which is itself the answer.</param>
+    private static string BuildEnvelope(BenchResult result, IReadOnlyList<ConnectionRecord>? connections)
     {
         var obj = new Dictionary<string, object?>
         {
@@ -401,6 +411,21 @@ public static class BenchCommand
             // able to label what they include.
             ["notes"] = new[] { ConnectionCaveat }
         };
+
+        if (connections is not null)
+        {
+            obj["connections"] = connections.Select(c => new Dictionary<string, object?>
+            {
+                ["id"] = c.Id,
+                ["origin"] = c.Origin,
+                ["version"] = c.Version,
+                ["peer"] = c.RemoteAddress,
+                ["openedAtMs"] = Math.Round(c.EstablishedAt.TotalMilliseconds, 1),
+                ["requests"] = c.Requests,
+            }).ToList();
+            obj["reusing"] = connections.Count > 0 && connections.Sum(c => c.Requests) > connections.Count;
+        }
+
         return JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = true });
     }
 
