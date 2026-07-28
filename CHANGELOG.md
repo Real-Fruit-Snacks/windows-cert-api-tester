@@ -6,7 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.74.0] - 2026-07-28
+## [1.75.0] - 2026-07-28
+
+### Added
+- **A client certificate that is about to stop working now says so while there is still time to
+  renew it.** Every command that resolves a certificate warns when the chosen one expires within
+  fourteen days — "certificate 'CN=My Client' expires in 7 days (not after 2026-08-04)" — and the
+  desktop application's certificate list badges the same rows with `[EXPIRES IN 7d]` beside the
+  existing `[EXPIRED]`. Fourteen days is the window because it is enough notice to get a corporate
+  renewal through a ticket queue, which is the process this notice exists to start; it lives in a
+  single named constant so retuning it is a one-line change.
+  Until now the product only spoke up once the certificate had **already** expired — which is to
+  say, once the outage had already happened. The warning goes to stderr, never blocks the command,
+  and an already-expired certificate keeps its own louder message rather than being softened into
+  "expiring soon". A certificate that is not valid *yet* now says that too, instead of being
+  reported as expired.
+  The day count floors rather than rounds, deliberately: with 23 hours left, "expires in 1 day"
+  would overstate the time remaining on the one day it matters most, so it reports "today".
 
 ### Added
 - **`certapi serve --record <file.har>` captures every exchange the gateway forwards, and
@@ -1814,7 +1830,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.74.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.75.0...HEAD
+[1.75.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.74.0...v1.75.0
 [1.74.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.73.0...v1.74.0
 [1.73.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.72.0...v1.73.0
 [1.72.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.71.0...v1.72.0

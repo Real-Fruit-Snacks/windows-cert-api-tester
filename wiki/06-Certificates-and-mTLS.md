@@ -27,6 +27,23 @@ certapi certs --store LocalMachine  # include the machine store
 certapi send https://internal.corp/api --cert "CN=Svc" --store LocalMachine
 ```
 
+### Expiry warnings
+
+A client certificate that is within **14 days** of expiring warns every time it is used, on
+stderr, without blocking the command:
+
+```
+warning: certificate 'CN=My Client' expires in 7 days (not after 2026-08-04).
+```
+
+The desktop application badges the same rows in the certificate list — `[EXPIRES IN 7d]` beside
+the existing `[EXPIRED]`. The point is lead time: fourteen days is usually enough to get a
+renewal through a ticket queue, so the notice arrives while it is still an errand rather than an
+outage. An already-expired certificate keeps its own, louder warning, and one that is not valid
+*yet* says that instead.
+
+The day count rounds **down**: with 23 hours left it says "today", never "in 1 day".
+
 ## Loading a certificate from a file
 
 No store entry? Point at a file instead.

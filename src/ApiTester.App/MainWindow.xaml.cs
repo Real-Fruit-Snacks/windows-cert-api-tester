@@ -1806,7 +1806,11 @@ public partial class MainWindow : Window
         _allOptions = new List<CertOption> { new("— no certificate —", null, null) };
         foreach (var c in _certs)
         {
-            var expiry = c.IsExpired() ? " [EXPIRED]" : "";
+            // Expired is the loud badge it always was; expiring soon gets its own, so the row that
+            // stops working in a fortnight says so while there is still time to renew it.
+            var expiry = c.IsExpired() ? " [EXPIRED]"
+                : c.IsExpiringSoon() ? $" [EXPIRES IN {c.DaysUntilExpiry()}d]"
+                : "";
             var eku = c.HasClientAuthEku ? "" : " (no client-auth EKU)";
             _allOptions.Add(new CertOption($"{c.Subject}  —  {c.Thumbprint}{eku}{expiry}", c.Certificate, c.Thumbprint));
         }

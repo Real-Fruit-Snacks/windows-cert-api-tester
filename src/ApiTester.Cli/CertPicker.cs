@@ -21,8 +21,10 @@ public static class CertPicker
                 string.Join("\n", hits.Select(h => $"  {h.Subject}  {h.Thumbprint}")));
 
         var hit = hits[0];
-        if (hit.IsExpired())
-            stderr.WriteLine($"warning: certificate '{hit.Subject}' is expired (not after {hit.NotAfter:yyyy-MM-dd}).");
+        // One wording, shared with the desktop application's certificate row: already expired (the
+        // loud case, unchanged) or expiring inside the warning window — the notice that exists so a
+        // renewal ticket is raised before an outage, not after one.
+        if (hit.ExpiryWarning() is { } warning) stderr.WriteLine("warning: " + warning);
         return hit;
     }
 

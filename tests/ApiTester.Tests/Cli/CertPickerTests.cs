@@ -70,4 +70,37 @@ public class CertPickerTests
         Assert.Equal("CN=Old", hit.Subject);
         Assert.Contains("expired", err.ToString(), StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void A_certificate_expiring_soon_warns_in_advance_and_still_resolves()
+    {
+        // The outage this exists to prevent: the certificate still works today, so the command
+        // must run — and must also say that it stops working in a week.
+        //
+        // The extra hour is load-bearing: days-until-expiry floors rather than rounds (by design —
+        // "expires in 1 day" must not overstate 23 hours), so a NotAfter of exactly AddDays(7),
+        // read a few milliseconds later, is 6.9999 days and reports 6. Sitting a whole hour past
+        // the boundary keeps this assertion about the message, not about the clock.
+        var cert = MakeCert("Soon");
+        var list = new[] { Info("CN=Soon", cert, DateTime.Now.AddDays(7).AddHours(1)) };
+        var err = new StringWriter();
+
+        var hit = CertPicker.Resolve(list, "soon", err);
+
+        Assert.Equal("CN=Soon", hit.Subject);
+        Assert.Contains("expires in 7 days", err.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("is expired", err.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_healthy_certificate_resolves_silently()
+    {
+        var cert = MakeCert("Fine");
+        var list = new[] { Info("CN=Fine", cert, DateTime.Now.AddDays(90)) };
+        var err = new StringWriter();
+
+        CertPicker.Resolve(list, "fine", err);
+
+        Assert.Equal("", err.ToString());
+    }
 }
