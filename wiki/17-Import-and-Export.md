@@ -68,6 +68,33 @@ Two things about templates are worth knowing, because the two products spell var
   has no equivalent here. It is left in the text exactly as written and named in a warning at
   import time, which is more useful than dropping it silently and discovering the gap at send time.
 
+## Import a WSDL (SOAP)
+
+```powershell
+certapi import wsdl .\OrdersService.wsdl
+certapi import wsdl .\OrdersService.wsdl --into "soap" --workspace .\suite.json
+```
+
+Reads a WSDL 1.1 document (and the SOAP 1.2 binding variant) and turns each operation into a saved
+**POST** at the port's address, with:
+
+- the right content type — `text/xml` plus a `SOAPAction` header for SOAP 1.1, or
+  `application/soap+xml;…;action="…"` for SOAP 1.2, where the action travels in the content type
+  instead;
+- an **envelope skeleton** in the correct envelope namespace, with the operation element in the
+  service's target namespace and one placeholder per message part.
+
+**Deliberately minimal, and worth understanding before you use it.** Types are *not* expanded from
+the schema: each part becomes a commented placeholder naming its element or type
+(`<!-- body: element GetOrder — fill in from the schema -->`). Generating a full instance document
+from XML Schema — with imports, restrictions, choices, and substitution groups — is a different
+product, and a fabricated body would look authoritative while being wrong. This gets a working SOAP
+request about ninety percent written; you fill in the payload.
+
+An imported document or schema (`wsdl:import`, `xsd:import`, `xsd:include`) is **named in a
+warning, never fetched** — this reads only the file you name and touches no network. If operations
+seem missing, import the file the warning names as well.
+
 ## Export as OpenAPI
 
 Export your collections (or a folder) as an OpenAPI document — useful for sharing the shape of an

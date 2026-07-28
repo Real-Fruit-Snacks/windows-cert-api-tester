@@ -378,6 +378,11 @@ the client-certificate path end to end.
   and basic auth, and environments. `{{ _.name }}` is translated to `{{name}}`; a `{% tag %}`
   template has no equivalent and is left in place with a warning (see
   [Import and Export](17-Import-and-Export.md))
+- `certapi import wsdl <file> [--into <folder>] [--workspace <file>]` — a WSDL 1.1 document (or
+  the SOAP 1.2 binding variant): one POST per operation at the port's address, the right content
+  type and `SOAPAction`, and an envelope skeleton. Types are not expanded — each part is a
+  commented placeholder — and imported schemas are named in a warning rather than fetched (see
+  [Import and Export](17-Import-and-Export.md))
 - `certapi export openapi [<folder>] -o <file> [--workspace <file>]`
 - `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
   tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`

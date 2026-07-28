@@ -6,7 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.77.0] - 2026-07-28
+## [1.78.0] - 2026-07-28
+
+### Added
+- **`certapi import wsdl <file>` turns a SOAP contract into saved requests** — one POST per
+  operation at the port's address, with the content type and action each SOAP version actually
+  wants (`text/xml` plus a `SOAPAction` header for 1.1; `application/soap+xml` with the action as
+  a content-type parameter for 1.2), and an envelope skeleton in the right envelope namespace with
+  the operation element in the service's target namespace.
+  **It is deliberately minimal, and the docs say so plainly:** types are *not* expanded from the
+  schema. Each message part becomes a commented placeholder naming its element or type — "fill in
+  from the schema" — because generating a full instance document from XML Schema, with its
+  imports, restrictions, choices and substitution groups, is a different product, and a fabricated
+  body would look authoritative while being wrong. This gets a SOAP request about ninety percent
+  written and is honest about the last ten.
+  An imported document or schema is **named in a warning, never fetched**: the parser reads the
+  one file you name and touches no network, so a contract split across files tells you which other
+  files to import rather than silently importing half of it. A port with no SOAP address, or a
+  document with no SOAP service at all, is reported the same way instead of importing nothing in
+  silence.
+
+### Note
+- This completes the ten-release reachability program that began with `certapi doctor` in v1.69.0.
 
 ### Added
 - **`certapi import insomnia <file>` reads an Insomnia v4 export** — the other format teams
@@ -1871,7 +1892,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.77.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.78.0...HEAD
+[1.78.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.77.0...v1.78.0
 [1.77.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.76.0...v1.77.0
 [1.76.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.75.0...v1.76.0
 [1.75.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.74.0...v1.75.0

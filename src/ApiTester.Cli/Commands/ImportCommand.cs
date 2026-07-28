@@ -10,6 +10,7 @@ public static class ImportCommand
                certapi import har <file>             [--into <folder>] [--workspace <file>]
                certapi import postman <file>         [--into <folder>] [--workspace <file>]
                certapi import insomnia <file>        [--into <folder>] [--workspace <file>]
+               certapi import wsdl <file>            [--into <folder>] [--workspace <file>]
 
         Adds requests to your collections — the live GUI state by default, or a workspace
         file. --into names a root-level folder (created if needed).
@@ -28,6 +29,14 @@ public static class ImportCommand
         this product's {{name}} -- and its environments come across as environments. A tag
         template ({% ... %}) is a small program rather than a value and has no equivalent here, so
         it is left in the text and named in a warning.
+
+        wsdl: reads a WSDL 1.1 document (and the SOAP 1.2 binding variant), turning each operation
+        into a POST at the port's address with the right content type, the SOAPAction header for
+        1.1, and an envelope skeleton naming the operation and its message parts. Deliberately
+        minimal: types are NOT expanded from the schema -- each part becomes a commented
+        placeholder naming its element or type, so a request is about ninety percent written and
+        the rest is filled in by hand. An imported schema or document is named in a warning, never
+        fetched: this reads the one file you name and touches no network.
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -133,6 +142,17 @@ public static class ImportCommand
                     state.Environments.Add(env);
                     stderr.WriteLine($"Imported environment '{env.Name}' ({env.Variables.Count} variable{(env.Variables.Count == 1 ? "" : "s")}).");
                 }
+                foreach (var warning in result.Warnings) stderr.WriteLine("warning: " + warning);
+                added = CountRequests(result.Root); what = result.Root.Name;
+                break;
+            }
+            case "wsdl":
+            {
+                if (!File.Exists(positionals[1])) throw new CliDataException($"File not found: {positionals[1]}");
+                WsdlImportResult result;
+                try { result = WsdlImport.Parse(File.ReadAllText(positionals[1])); }
+                catch (FormatException ex) { throw new CliDataException($"Could not parse '{positionals[1]}': {ex.Message}"); }
+                add(result.Root);
                 foreach (var warning in result.Warnings) stderr.WriteLine("warning: " + warning);
                 added = CountRequests(result.Root); what = result.Root.Name;
                 break;
