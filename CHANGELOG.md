@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.90.0] - 2026-07-28
+
+### Added
+- **`certapi run --md <file>` writes the run as a markdown note**, and `--md-vault <folder>` files
+  it as `certapi/runs/<name>-<timestamp>.md`. A run tells you what passed today; a folder of run
+  notes tells you whether a suite is getting better or worse, which is the thing a single terminal
+  run can never show — so the frontmatter carries `total`, `passed`, `failed` and the timestamp for
+  charting, and each run writes a new note rather than overwriting the history a trend needs.
+  The body carries what a failure investigation actually needs: a pass/fail table with per-request
+  timings, and for each failure **the assertion that broke and what arrived instead**. A transport
+  failure is reported as one rather than as a missing assertion.
+- **A chain's report lands *in* the catalogue rather than beside it.** Steps are numbered in order,
+  steps skipped after a failure are shown rather than dropped — an output that just stops leaves
+  the reader guessing whether the rest passed — and each step links back to its request note from
+  `export markdown`.
+- **Captured variables are listed by name only, never by value.** A captured value is usually the
+  credential the next step authenticates with, and these notes go into folders that sync. Failed
+  captures are named too, with the reason. Credential-looking query values are redacted as
+  elsewhere; `--md-include-secrets` keeps them.
+- As with `doctor --md`, a report that cannot be written warns without changing the exit code: a
+  build must not turn green or red because of a folder permission.
+
+### Fixed
+- **A chain step's wikilink pointed at a note that does not exist.** A chain labels its steps
+  `<chain>/<n>. <request>`, so the obvious "take the last path segment" produced `[[1. Get
+  orders]]` — a dead link. Found by running a real chain rather than by reading the format. The fix
+  is deliberately not a cleverer string rule: a request genuinely named `2. Follow-up` is
+  indistinguishable from a chain ordinal by inspection, so the renderer is told whether it is
+  rendering a chain instead of guessing, and a suite label is left intact.
+
 ## [1.89.0] - 2026-07-28
 
 ### Added
@@ -2267,7 +2297,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.89.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.0...HEAD
+[1.90.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.88.0...v1.89.0
 [1.88.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.87.0...v1.88.0
 [1.87.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.86.0...v1.87.0

@@ -66,3 +66,31 @@ if ($LASTEXITCODE -ne 0) { throw "API smoke tests failed" }
 ```
 
 Next: [Capturing Values](12-Capturing-Values.md).
+
+## Keeping a run: `--md`
+
+A run tells you what passed today. A folder of run notes tells you whether a suite is getting
+better or worse — which is the thing a single terminal run can never show:
+
+```powershell
+certapi run --all --md report.md
+certapi run --chain "Login then fetch" --md-vault C:\Users\me\Vault
+```
+
+The note's frontmatter carries `total`, `passed`, `failed` and the run timestamp, so a vault of
+them can be charted over time. The body carries what a failure investigation actually needs: a
+pass/fail table with per-request timings, and for each failure the assertion that broke **and what
+arrived instead**.
+
+A chain's report is numbered in step order, shows steps skipped after a failure rather than
+dropping them, and links each step back to its request note from `certapi export markdown` — so a
+chain report lands *in* the catalogue rather than beside it.
+
+Captured variables are listed **by name only**, never by value: a captured value is usually the
+credential the next step authenticates with, and these notes go into folders that sync.
+Credential-looking query values are redacted too; `--md-include-secrets` keeps them.
+
+`--md-vault` files reports as `certapi/runs/<name>-<timestamp>.md`, a new note per run — the
+history a trend needs is never overwritten. If the report cannot be written the command says so and
+still exits on the run's own verdict: a build must not turn green or red because of a folder
+permission.

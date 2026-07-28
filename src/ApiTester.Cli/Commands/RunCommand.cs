@@ -42,6 +42,15 @@ public static class RunCommand
                                   as one HAR file, written once when the run finishes
           --har-include-secrets   Don't redact Authorization/Proxy-Authorization/Cookie/
                                   Set-Cookie values in the captured HAR (redacted by default)
+          --md <file>             Also write the run as a markdown note: a pass/fail table, each
+                                  failed assertion with what arrived instead, per-request timing,
+                                  and totals in frontmatter so a vault can chart a suite's health
+                                  over time. A chain's steps link back to their request notes
+          --md-vault <folder>     Write that report into a vault instead, as
+                                  certapi/runs/<name>-<timestamp>.md — a new note per run, so the
+                                  history a trend needs is never overwritten
+          --md-include-secrets    Keep credential-looking query values in the report (redacted by
+                                  default, because a vault syncs)
 
         Chains:
           --chain <name>          Run a saved chain: its requests, in the order the chain names them,
@@ -138,6 +147,13 @@ public static class RunCommand
         var transportOverrides = TransportFlags.Parse(args, out bool showRedirects, environment: null, services.Profile);
         string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         string? harPath = args.Value("--har");
+        string? mdFile = args.Value("--md");
+        string? mdVault = args.Value("--md-vault");
+        bool mdIncludeSecrets = args.Flag("--md-include-secrets");
+        if (mdFile is not null && mdVault is not null)
+            throw new CliUsageException("--md and --md-vault both name where the report goes; pick one.");
+        if (mdIncludeSecrets && mdFile is null && mdVault is null)
+            throw new CliUsageException("--md-include-secrets only applies with --md or --md-vault.");
         bool harIncludeSecrets = args.Flag("--har-include-secrets");
         string? diffHar = args.Value("--diff-har");
         var diffIgnorePaths = args.Values("--diff-ignore");
@@ -275,6 +291,9 @@ public static class RunCommand
         // (including every redirect hop), written once at the end of the run.
         var harEntries = harPath is not null ? new List<HarEntry>() : null;
         var results = new List<(string Path, RequestModel Model, string Url, ApiResponse Response)>();
+        // Kept alongside the tuples above so the markdown report can name what each step
+        // captured; the tuple shape is load-bearing for the existing text and JSON output.
+        var outcomes = new List<RequestOutcome>();
         // Chain steps that never ran because an earlier one failed. Reported rather than dropped: an
         // output that just stops leaves the reader guessing whether the rest passed.
         var skippedSteps = new List<string>();
@@ -300,6 +319,7 @@ public static class RunCommand
         void Collect(RequestOutcome outcome)
         {
             results.Add((outcome.Label, outcome.Request, outcome.Url, outcome.Response));
+            outcomes.Add(outcome);
             capturedAny |= outcome.CapturedValues;
             tokensCaptured |= outcome.CapturedTokens;
         }
@@ -402,7 +422,44 @@ public static class RunCommand
                              $" · {clock.Elapsed.TotalSeconds:F1} s");
         }
 
+        if (mdFile is not null || mdVault is not null)
+            WriteReport(outcomes, skippedSteps, chainName, clock.Elapsed,
+                        mdFile, mdVault, mdIncludeSecrets, stderr);
+
         return failed == 0 ? ExitCodes.Ok : ExitCodes.Failure;
+    }
+
+    /// <summary>Write the run as a markdown note. As with `doctor --md`, a failure to write is
+    /// reported but never changes the run's own verdict: the results are what the caller asked for,
+    /// and a CI job must not turn green or red because of a folder permission.</summary>
+    private static void WriteReport(List<RequestOutcome> outcomes, List<string> skipped, string? chainName,
+                                    TimeSpan elapsed, string? file, string? vault, bool includeSecrets,
+                                    TextWriter stderr)
+    {
+        var when = DateTimeOffset.UtcNow;
+        var report = new RunReport(chainName,
+            outcomes.Select(o => new RunReportRow(
+                o.Label, o.Request.Method, o.Url, o.Response.StatusCode, o.Response.Elapsed,
+                o.Response.Body.LongLength, o.Passed,
+                o.Request.Assertions.Any(a => a.Enabled)
+                    ? AssertionEvaluator.Evaluate(o.Request.Assertions, o.Response)
+                    : Array.Empty<AssertionResult>(),
+                o.Response.Error?.Message,
+                o.Captures)).ToList(),
+            skipped, elapsed);
+
+        string path = file ?? Path.Combine(vault!,
+            RunReportMarkdown.VaultPath(report, when).Replace('/', Path.DirectorySeparatorChar));
+        try
+        {
+            if (Path.GetDirectoryName(path) is { Length: > 0 } folder) Directory.CreateDirectory(folder);
+            File.WriteAllText(path, RunReportMarkdown.Render(report, when, includeSecrets));
+            stderr.WriteLine($"wrote the run report to {path}");
+        }
+        catch (Exception ex)
+        {
+            stderr.WriteLine($"warning: could not write the run report to {path}: {ex.Message}");
+        }
     }
 
     /// <summary>A request passes when its enabled assertions all pass; with no assertions it falls
