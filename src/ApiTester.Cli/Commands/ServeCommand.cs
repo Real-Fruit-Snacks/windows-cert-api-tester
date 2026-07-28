@@ -40,6 +40,14 @@ public static class ServeCommand
                                   accepts it silently (explicit, logged, and reversible)
           --tls-untrust           Remove a previously trusted gateway certificate and exit
 
+        Record / replay (two ends of one HAR format — capture a session live, replay it offline):
+          --record <file.har>     Append every forwarded exchange to a HAR file, written on Ctrl+C.
+                                  Secrets (Authorization, Cookie) are redacted by default
+          --record-include-secrets   Keep the secrets in the recording (only with --record)
+          --replay <file.har>     Answer from a recorded HAR without ever contacting the upstream —
+                                  develop against a captured session when the real one is gone.
+                                  Mutually exclusive with --record
+
         Browser (so a page on another origin can call the upstream through the gateway):
           --browser               The bundle: turns on all four accommodations below at once
           --cors [<origins>]      Answer CORS preflights here and add the response headers a
@@ -158,6 +166,16 @@ public static class ServeCommand
         bool tls = args.Flag("--tls");
         bool tlsTrust = args.Flag("--tls-trust");
         bool tlsUntrust = args.Flag("--tls-untrust");
+        string? recordPath = args.Value("--record");
+        string? replayPath = args.Value("--replay");
+        bool recordIncludeSecrets = args.Flag("--record-include-secrets");
+
+        // Record captures what the upstream really said; replay answers WITHOUT an upstream. Doing
+        // both at once has no meaning — you cannot record a session you are inventing.
+        if (recordPath is not null && replayPath is not null)
+            throw new CliUsageException("--record and --replay are mutually exclusive: one captures the upstream, the other answers without it.");
+        if (recordIncludeSecrets && recordPath is null)
+            throw new CliUsageException("--record-include-secrets only applies with --record.");
 
         if (tlsUntrust)
         {
@@ -258,6 +276,21 @@ public static class ServeCommand
         // gets its own relay, built only when upgrades are actually allowed.
         var relay = allowUpgrade ? new GatewayWebSocketRelay(cert, insecure) : null;
 
+        // Replay answers from a recorded HAR and never contacts the upstream; record captures every
+        // forwarded exchange and writes the HAR on shutdown. Both reuse the same format the rest of
+        // the product reads and writes, so a session captured here replays here (or through `mock`).
+        HarReplaySource? replay = null;
+        if (replayPath is not null)
+        {
+            if (!File.Exists(replayPath)) throw new CliDataException($"File not found: {replayPath}");
+            Har replayHar;
+            try { replayHar = HarReader.Parse(File.ReadAllText(replayPath)); }
+            catch (HarFormatException ex) { throw new CliDataException(ex.Message); }
+            replay = new HarReplaySource(replayHar);
+        }
+        var recorder = recordPath is not null ? new GatewayRecorder(recordIncludeSecrets) : null;
+        string localBase = $"{scheme}://127.0.0.1:{port}";
+
         X509Certificate2? gatewayCert = null;
         string? gatewayThumb = null;
         if (tls)
@@ -303,6 +336,10 @@ public static class ServeCommand
         catch (HttpListenerException ex) { throw new CliDataException($"Could not listen on port {port}: {ex.Message}"); }
 
         Log($"listening on {scheme}://127.0.0.1:{port}   (cert: {cert?.Subject ?? "none"})");
+        if (replay is not null)
+            Log($"replay mode: answering from {replayPath} ({replay.Count} recorded exchange(s)) — the upstream is never contacted.");
+        if (recorder is not null)
+            Log($"recording every forwarded exchange to {recordPath}" + (recordIncludeSecrets ? " (secrets included)." : " (secrets redacted; --record-include-secrets keeps them)."));
         if (tls)
         {
             Log(tlsTrust || GatewayCertificate.IsTrusted(gatewayThumb!)
@@ -324,7 +361,8 @@ public static class ServeCommand
                 try { context = listener.GetContextAsync().GetAwaiter().GetResult(); }
                 catch (Exception) when (ct.IsCancellationRequested) { break; }   // Stop() unblocked us
 
-                var task = HandleAsync(context, gateway, routes, browser, headerRules, relay, token, Log, ct);
+                var task = HandleAsync(context, gateway, routes, browser, headerRules, relay, token,
+                    replay, recorder, localBase, Log, ct);
                 inFlight[task] = 0;
                 _ = task.ContinueWith(t => inFlight.TryRemove(t, out _), TaskScheduler.Default);
             }
@@ -336,6 +374,12 @@ public static class ServeCommand
             catch { }
             try { listener.Close(); } catch { }
             gatewayCert?.Dispose();
+            // Written once, at shutdown, after the in-flight requests above have finished appending.
+            if (recorder is not null)
+            {
+                try { recorder.Save(recordPath!); Log($"recorded {recorder.Count} exchange(s) to {recordPath}."); }
+                catch (Exception ex) { Log("warning: could not write the recording: " + ex.Message); }
+            }
         }
 
         Log("stopped.");
@@ -493,6 +537,7 @@ public static class ServeCommand
     private static async Task HandleAsync(
         HttpListenerContext context, MtlsGateway gateway, GatewayRoutes routes,
         BrowserOptions browser, HeaderRules headerRules, GatewayWebSocketRelay? relay, string? token,
+        HarReplaySource? replay, GatewayRecorder? recorder, string localBase,
         Action<string> log, CancellationToken ct)
     {
         var req = context.Request;
@@ -510,6 +555,31 @@ public static class ServeCommand
                 return;
             }
 
+            // Replay short-circuits before anything is forwarded: the recorded response is the
+            // answer, and no upstream is contacted. A miss is the source's own no-match status.
+            if (replay is not null)
+            {
+                var recorded = replay.Match(method, pathAndQuery, out var matchKind);
+                if (recorded is not null)
+                {
+                    res.StatusCode = recorded.Status;
+                    if (recorded.StatusText is { } st) res.StatusDescription = st;
+                    foreach (var h in recorded.Headers)
+                        try { res.Headers.Add(h.Key, h.Value); } catch (ArgumentException) { /* restricted header HttpListener manages */ }
+                    res.ContentLength64 = recorded.Body.Length;
+                    await res.OutputStream.WriteAsync(recorded.Body, ct);
+                    res.Close();
+                    log($"{method,-6} {pathAndQuery}  -> {recorded.Status} (replay {matchKind})  {sw.ElapsedMilliseconds} ms");
+                }
+                else
+                {
+                    res.StatusCode = replay.Options.NoMatchStatus;
+                    res.Close();
+                    log($"{method,-6} {pathAndQuery}  -> {replay.Options.NoMatchStatus} (replay miss)");
+                }
+                return;
+            }
+
             // Without --allow-upgrade an upgrade request falls through to the plain relay exactly as
             // it always has, so nothing changes for callers who never asked for WebSockets.
             if (relay is not null && browser.AllowUpgrade && req.IsWebSocketRequest)
@@ -524,8 +594,19 @@ public static class ServeCommand
                     foreach (var v in req.Headers.GetValues(key) ?? Array.Empty<string>())
                         headers.Add(new(key, v));
 
-            var gwReq = new GatewayRequest(method, pathAndQuery, headers,
-                req.HasEntityBody ? req.InputStream : null, req.ContentType);
+            // When recording, the request body is buffered up front so it can be both forwarded and
+            // written into the HAR; otherwise it streams straight through as it always has.
+            byte[] recordedRequestBody = Array.Empty<byte>();
+            Stream? requestBody = req.HasEntityBody ? req.InputStream : null;
+            if (recorder is not null && requestBody is not null)
+            {
+                using var buffer = new MemoryStream();
+                await requestBody.CopyToAsync(buffer, ct);
+                recordedRequestBody = buffer.ToArray();
+                requestBody = new MemoryStream(recordedRequestBody);
+            }
+
+            var gwReq = new GatewayRequest(method, pathAndQuery, headers, requestBody, req.ContentType);
 
             // A preflight is the browser asking the gateway's own permission, so the gateway answers
             // it. Forwarding it would ask the upstream a question about a policy that is not theirs.
@@ -578,10 +659,25 @@ public static class ServeCommand
                 if (contentLength is { } len) res.ContentLength64 = len;
                 else res.SendChunked = true;
 
-                await gwResp.Body.CopyToAsync(res.OutputStream, ct);
+                if (recorder is null)
+                {
+                    await gwResp.Body.CopyToAsync(res.OutputStream, ct);
+                }
+                else
+                {
+                    // Tee the body: read it whole so the same bytes go to the client and into the
+                    // HAR. Only when recording — the default relay still streams without buffering.
+                    using var captured = new MemoryStream();
+                    await gwResp.Body.CopyToAsync(captured, ct);
+                    byte[] body = captured.ToArray();
+                    await res.OutputStream.WriteAsync(body, ct);
+                    recorder.Record(
+                        method, localBase + pathAndQuery, headers, recordedRequestBody, req.ContentType,
+                        gwResp.StatusCode, gwResp.ReasonPhrase, responseHeaders, body, sw.Elapsed.TotalMilliseconds);
+                }
             }
             res.Close();
-            log($"{method,-6} {pathAndQuery}  -> {gwResp.StatusCode}  {sw.ElapsedMilliseconds} ms");
+            log($"{method,-6} {pathAndQuery}  -> {gwResp.StatusCode}  {sw.ElapsedMilliseconds} ms" + (recorder is not null ? " (recorded)" : ""));
         }
         catch (GatewayRouteNotFoundException ex)
         {

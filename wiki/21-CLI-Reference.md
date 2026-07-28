@@ -435,6 +435,10 @@ actually gets (see [Troubleshooting](23-Troubleshooting.md)).
 - `--revocation none|offline|online` / `--revocation-strict` — the [same revocation
   checking](#send) as `send`, enforced on the gateway's connection to the upstream (default `none`;
   see [Local Gateway](19-Local-Gateway.md))
+- `--record <file.har>` — append every forwarded exchange to a HAR, written on Ctrl+C
+  (`Authorization`/`Cookie` redacted unless `--record-include-secrets`)
+- `--replay <file.har>` — answer from a recorded HAR without contacting the upstream; mutually
+  exclusive with `--record`. The same format `mock --har` replays
 
 ## grpc
 

@@ -6,7 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.73.0] - 2026-07-28
+## [1.74.0] - 2026-07-28
+
+### Added
+- **`certapi serve --record <file.har>` captures every exchange the gateway forwards, and
+  `--replay <file.har>` answers from that capture without ever contacting the upstream.** Two ends
+  of one format, for the case where the real thing is not available: record while the upstream is
+  up, then develop, demo, or test against the recording on a plane, after the service is
+  decommissioned, or when production must not be touched. The recording is an ordinary HTTP
+  Archive, so a session captured through the gateway also replays through `certapi mock --har`
+  with no gateway at all — the two features were built to meet in the middle, and replay reuses
+  the existing `HarReplaySource` rather than growing a second matcher.
+  `Authorization` and `Cookie` are redacted by default, because a recording is a file people
+  share; `--record-include-secrets` keeps them. Framing headers (`Content-Length`,
+  `Transfer-Encoding`) are dropped from the capture so a replay never re-frames a response it did
+  not build. The two flags are mutually exclusive — you cannot record a session you are inventing —
+  and the recording is written once at shutdown, after in-flight requests finish, so a relay never
+  pays a file write per request. Buffering only happens when recording; the default relay still
+  streams bodies straight through, untouched.
 
 ### Added
 - **`--http3` pins a request to HTTP/3 over QUIC**, beside `--http1.1` and `--http2` (the three
@@ -1797,7 +1814,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.73.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.74.0...HEAD
+[1.74.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.73.0...v1.74.0
 [1.73.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.72.0...v1.73.0
 [1.72.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.71.0...v1.72.0
 [1.71.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.70.0...v1.71.0

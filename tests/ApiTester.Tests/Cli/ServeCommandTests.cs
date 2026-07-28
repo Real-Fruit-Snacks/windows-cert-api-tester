@@ -21,7 +21,7 @@ public class ServeCommandTests
     // Runs `serve` on a background thread with a gateway pointed at the given loopback mTLS server,
     // returns a cancel action + the completion task so the test can stop it.
     private static (CancellationTokenSource cts, Task<int> run, int port) StartServe(
-        LoopbackMtlsServer upstream, X509Certificate2 clientCert, string? token = null)
+        LoopbackMtlsServer upstream, X509Certificate2 clientCert, string? token = null, params string[] extraArgs)
     {
         int port = FreePort();
         var cts = new CancellationTokenSource();
@@ -45,8 +45,20 @@ public class ServeCommandTests
         var args = new List<string> { "serve", "https://placeholder", "--port", port.ToString(),
                                       "--cert", "GatewayClient", "--insecure", "-q" };
         if (token is not null) { args.Add("--token"); args.Add(token); }
+        args.AddRange(extraArgs);
 
         var run = Task.Run(() => CliApp.Run(args.ToArray(), TextWriter.Null, TextWriter.Null, services: services));
+        return (cts, run, port);
+    }
+
+    // Replay needs no upstream at all, so it takes a HAR path and no loopback server.
+    private static (CancellationTokenSource cts, Task<int> run, int port) StartReplay(string harPath)
+    {
+        int port = FreePort();
+        var cts = new CancellationTokenSource();
+        var services = new CliServices { Cancel = cts.Token };
+        var args = new[] { "serve", "https://placeholder", "--port", port.ToString(), "--replay", harPath, "-q" };
+        var run = Task.Run(() => CliApp.Run(args, TextWriter.Null, TextWriter.Null, services: services));
         return (cts, run, port);
     }
 
@@ -122,6 +134,55 @@ public class ServeCommandTests
             }
             finally { cts.Cancel(); await run; }
         }
+    }
+
+    [Fact]
+    public void Record_and_replay_together_is_a_usage_error()
+    {
+        int code = CliApp.Run(
+            new[] { "serve", "https://x", "--port", "18790", "--record", "a.har", "--replay", "b.har" },
+            TextWriter.Null, new StringWriter(), services: new CliServices());
+        Assert.Equal(2, code);
+    }
+
+    [Fact]
+    public async Task Record_captures_a_session_that_replay_then_serves_without_an_upstream()
+    {
+        var harPath = Path.Combine(Path.GetTempPath(), $"serve-record-{Guid.NewGuid():N}.har");
+        var (ca, server, client) = Certs();
+        using (ca) using (server) using (client)
+        {
+            // --- record: drive one request through the gateway and capture it ---
+            await using (var upstream = await LoopbackMtlsServer.StartAsync(server, client.Thumbprint!, "{\"served\":true}"))
+            {
+                var (cts, run, port) = StartServe(upstream, client, token: null, "--record", harPath);
+                try
+                {
+                    using var http = new HttpClient();
+                    string body = await Poll(async () => await http.GetStringAsync($"http://127.0.0.1:{port}/orders"));
+                    Assert.Contains("served", body);
+                }
+                finally { cts.Cancel(); await run; }   // the HAR is written on shutdown
+            }
+
+            Assert.True(File.Exists(harPath), "the recording should have been written on shutdown");
+
+            // --- replay: the upstream is gone; the gateway answers from the file alone ---
+            var (rcts, rrun, rport) = StartReplay(harPath);
+            try
+            {
+                using var http = new HttpClient();
+                var resp = await Poll(async () => await http.GetAsync($"http://127.0.0.1:{rport}/orders"));
+                Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+                Assert.Contains("served", await resp.Content.ReadAsStringAsync());
+
+                // A path the session never recorded is the source's no-match status, not a crash.
+                var miss = await http.GetAsync($"http://127.0.0.1:{rport}/never-recorded");
+                Assert.Equal(HttpStatusCode.NotFound, miss.StatusCode);
+            }
+            finally { rcts.Cancel(); await rrun; }
+        }
+        try { File.Delete(harPath); } catch { }
     }
 
     // Retry a call for up to ~5s while the listener finishes binding.

@@ -112,6 +112,28 @@ all: it requires the `Secure` attribute, which no browser accepts over plaintext
 Rather than dropping such a cookie behind your back, the gateway still relays it and names it in a
 warning. `--tls` is the fix, because it serves the gateway itself over HTTPS.
 
+## Record a session, replay it offline
+
+Two ends of one HTTP Archive (HAR) format: capture what the real upstream says while it is up,
+then answer from that capture when it is gone — a plane, a demo, an upstream that has been
+decommissioned, or a test suite that must not hit production.
+
+```powershell
+# capture: every forwarded exchange is appended, written on Ctrl+C
+certapi serve https://api.internal --port 8443 --cert "CN=My Client" --record session.har
+
+# replay: the upstream is never contacted; answers come from the file
+certapi serve https://api.internal --port 8443 --replay session.har
+```
+
+`--record` redacts `Authorization` and `Cookie` by default, since a recording is a file people
+share; `--record-include-secrets` keeps them. `--replay` matches a request the way `mock --har`
+does — method and path, query included when it disambiguates, in recorded order for a repeated
+call — and answers a path the session never saw with 404. The two flags are mutually exclusive:
+you cannot record a session you are inventing. Because the format is the same one `mock --har`
+reads, a session recorded here can also be replayed by `certapi mock --har session.har` without a
+gateway at all.
+
 ## Browsers and Private Network Access
 
 Chrome runs a further check, PNA, before it lets a page on a public origin
