@@ -146,6 +146,39 @@ you guessing. Use `--trace` there instead.
 One consequence worth knowing: a request with `--wire` does not reuse a pooled connection (the
 tapped connection is not shared), so you see the handshake as well as the exchange.
 
+## "Can I decrypt certapi's traffic in Wireshark?" — no, and you don't need to
+
+The usual way to read encrypted traffic in Wireshark is a **key log file**: the application writes
+its TLS session secrets out in NSS (Network Security Services) key-log format, and Wireshark uses
+them to decrypt what it captured. .NET appears to offer exactly that, through the
+`System.Net.EnableSslKeyLogging` switch and the `SSLKEYLOGFILE` environment variable.
+
+**On Windows it does nothing.** This was tested rather than assumed — three configurations, each
+with a real HTTPS request that genuinely succeeded, so TLS certainly happened:
+
+| What was tried | Key log written? |
+|---|---|
+| The switch set in code before any TLS work | no |
+| The switch baked into the app's `runtimeconfig.json` | no |
+| That, plus `SSLKEYLOGFILE` set in the environment before launch | no |
+
+The reason is structural: .NET's key-log support is implemented behind OpenSSL, and Windows TLS
+goes through SChannel, which does not hand out session secrets. No amount of configuration changes
+that, so **certapi deliberately has no `--keylog` flag** — a switch that always produced an empty
+file would imply the capability exists and merely needs coaxing.
+
+**Use `--wire` instead, and note what you were actually after.** A key log is a means, not an end:
+you wanted the decrypted conversation. `--wire` gives you that directly, because this tool is one
+end of the connection and reads the bytes before they are encrypted. No keys, no capture, no
+administrator rights.
+
+**If you genuinely need packet-level facts** — retransmits, resets, MTU (maximum transmission
+unit) problems, timing at the IP (Internet Protocol) layer — those live below TLS and Wireshark
+reads them *without* decryption. Run your own capture alongside the request; `--trace` stamps every
+connect and handshake with a millisecond offset, which is enough to line its events up against the
+packets. Capturing packets needs a driver and administrator rights, which is why this tool does not
+do it for you.
+
 ## Self-test
 
 Before blaming an endpoint, prove your machine can do mTLS at all:

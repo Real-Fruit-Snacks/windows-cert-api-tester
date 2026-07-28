@@ -6,6 +6,44 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.85.1] - 2026-07-28
+
+### Changed
+- **`--keylog` now explains itself instead of dead-ending.** Typing `--keylog`, `--key-log`, or
+  `--sslkeylogfile` used to produce a bare `Unknown option`, which is useless to someone who came
+  to decrypt traffic. It now names the reason and the alternative at the moment the wall is hit.
+  Options that deliberately do not exist can be given this treatment generally; the key-log family
+  is the first entry.
+
+### Fixed
+- **A trace test could fail because of what other tests were doing** (test-suite only, no product
+  behaviour involved). The connection-reuse test asserted that no socket connect appeared during
+  its traced window — but the trace is deliberately process-wide, so that is a claim about the
+  whole process, and any unrelated connection opened in parallel falsified it. It passed alone and
+  failed in the full suite. It now makes the reuse claim against
+  `System.Net.Http/ConnectionEstablished`, which carries `port=` in plain text and can therefore
+  name *its own* server; the socket-level event cannot, without decoding an opaque address blob.
+  The test now also opens an unrelated connection mid-window on purpose, so the interference that
+  broke it is reproduced rather than merely avoided.
+
+### Documentation
+- **Answered "can I decrypt certapi's traffic in Wireshark?" honestly: no, and you do not need to**
+  (wiki page 23). TLS key logging — the usual route, via `System.Net.EnableSslKeyLogging` and
+  `SSLKEYLOGFILE` — **does not work on Windows**, and this was established by testing rather than
+  assumed. Three configurations were tried, each with a real HTTPS request that genuinely
+  succeeded, so TLS certainly happened: the switch set in code, the switch baked into
+  `runtimeconfig.json`, and that plus `SSLKEYLOGFILE` set in the process environment before launch.
+  No key log was written in any of them. The cause is structural rather than a misconfiguration:
+  .NET implements key logging behind OpenSSL, and Windows TLS goes through SChannel, which does not
+  expose session secrets.
+  **So no `--keylog` flag ships**, deliberately. A switch that always produced an empty file would
+  imply the capability exists and merely needs coaxing, which would cost users more time than
+  having no flag at all. `--wire` (1.85.0) already delivers what the keys were wanted *for* — the
+  decrypted conversation — because this tool is one end of the connection. The page also notes what
+  Wireshark is still uniquely good for (retransmits, resets, MTU, timing at the IP layer, all of
+  which are readable *without* decryption) and that `--trace` timestamps let you line a capture of
+  your own up against the request.
+
 ## [1.85.0] - 2026-07-28
 
 ### Added
@@ -2055,7 +2093,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.1...HEAD
+[1.85.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.0...v1.85.1
 [1.85.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.84.0...v1.85.0
 [1.84.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.83.0...v1.84.0
 [1.83.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.82.0...v1.83.0

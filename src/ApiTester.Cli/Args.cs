@@ -82,7 +82,9 @@ public sealed class Args
         {
             if (t is null) continue;
             if (t.StartsWith('-') && t.Length > 1 && !char.IsDigit(t[1]))
-                throw new CliUsageException($"Unknown option '{t}'.");
+                throw new CliUsageException(UnsupportedOptions.Explain(t) is { } why
+                    ? $"Option '{t}' does not exist. {why}"
+                    : $"Unknown option '{t}'.");
             positionals.Add(t);
         }
         return positionals;

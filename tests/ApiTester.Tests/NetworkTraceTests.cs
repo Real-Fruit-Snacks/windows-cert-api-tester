@@ -50,11 +50,19 @@ public class NetworkTraceTests
         // The pooling answer, and the shape W5's inspector will read: on a reused connection the
         // ABSENCE of ConnectStart/HandshakeStart is the signal.
         //
-        // Two things this test had to be built around, both learned by getting it wrong first:
+        // Three things this test had to be built around, all learned by getting it wrong first:
         //   * `MockServer` answers `Connection: close`, so nothing is ever reusable against it —
         //     a keep-alive server is required to observe reuse at all. Kestrel is one.
         //   * The trace is PROCESS-wide, so with an in-process server it also sees that server's
         //     own accept and handshake. Client-side facts are the ones with isServer=False.
+        //   * **A negative assertion must name OUR connection.** The first version asserted that no
+        //     `System.Net.Sockets/ConnectStart` appeared at all, which is a claim about the whole
+        //     process: any other test connecting anywhere during the traced window failed it, and
+        //     the full suite duly did while the test passed alone. `ConnectStart` cannot be
+        //     attributed to a destination without decoding an opaque sockaddr blob, but
+        //     `System.Net.Http/ConnectionEstablished` carries `port=` in plain text — so that is
+        //     the event the reuse claim is made against. The unrelated connection below is
+        //     deliberate: it reproduces the interference that broke the original assertion.
         var builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(k => k.Listen(System.Net.IPAddress.Loopback, 0));
@@ -67,15 +75,29 @@ public class NetworkTraceTests
             var client = new ApiClient();
             var request = new ApiRequest { Method = HttpMethod.Get, Url = url };
 
+            int port = new Uri(url).Port;
+
             // Warm the pool first, outside the trace.
             Assert.True((await client.SendAsync(request, null)).IsSuccess);
 
             using var trace = new NetworkTrace();
             Assert.True((await client.SendAsync(request, null)).IsSuccess);
 
+            // Somebody else's connection, mid-window, going nowhere (port 1 refuses). Stands in for
+            // whatever the rest of the suite is doing in parallel; the assertions below must be
+            // indifferent to it.
+            using (var unrelated = new HttpClient())
+            {
+                try { await unrelated.GetStringAsync("http://127.0.0.1:1/"); } catch { /* expected */ }
+            }
+
             var lines = trace.Lines;
             Assert.Contains(lines, l => l.Source == "System.Net.Http" && l.Event == "RequestStart");
-            Assert.DoesNotContain(lines, l => l.Source == "System.Net.Sockets" && l.Event == "ConnectStart");
+
+            // The reuse claim itself: no NEW connection was established to THIS server.
+            Assert.DoesNotContain(lines, l => l.Source == "System.Net.Http"
+                                           && l.Event == "ConnectionEstablished"
+                                           && l.Detail.Contains($"port={port}"));
         }
         finally { await app.StopAsync(); await app.DisposeAsync(); }
     }

@@ -30,6 +30,30 @@ public class ArgsTests
         Assert.Contains("--nope", ex.Message);
     }
 
+    [Theory]
+    [InlineData("--keylog")]
+    [InlineData("--key-log")]
+    [InlineData("--SSLKEYLOGFILE")]   // also proves the lookup is case-insensitive
+    public void Key_log_options_explain_why_they_do_not_exist(string option)
+    {
+        var a = new Args(new[] { "url", option });
+        var ex = Assert.Throws<CliUsageException>(() => a.Positionals());
+
+        // The bare "Unknown option" message would be a dead end for someone who came here to
+        // decrypt traffic. They must leave with the reason and the alternative.
+        Assert.Contains(option, ex.Message);
+        Assert.Contains("SChannel", ex.Message);
+        Assert.Contains("--wire", ex.Message);
+    }
+
+    [Fact]
+    public void An_ordinary_unknown_option_gets_no_invented_explanation()
+    {
+        var a = new Args(new[] { "url", "--typo" });
+        var ex = Assert.Throws<CliUsageException>(() => a.Positionals());
+        Assert.Equal("Unknown option '--typo'.", ex.Message);
+    }
+
     [Fact]
     public void Option_value_may_start_with_a_dash_when_adjacent()
     {
