@@ -64,6 +64,65 @@ public sealed record MockRoute(
     public int Calls => Volatile.Read(ref _calls);
 }
 
+/// <summary>What a caller must present before any route is consulted. This is what lets the mock
+/// refuse the way a real protected endpoint refuses, so a client's authentication paths meet a
+/// realistic answer rather than an echo.</summary>
+public sealed record MockRequirements
+{
+    /// <summary>Require a client certificate. With <see cref="ClientCertIssuer"/> or
+    /// <see cref="ClientCertThumbprint"/> null, any certificate satisfies it — the "mutual TLS is
+    /// demanded, whose certificate is not the point" case.</summary>
+    public bool ClientCert { get; init; }
+    public string? ClientCertIssuer { get; init; }
+    public string? ClientCertThumbprint { get; init; }
+
+    /// <summary>The exact bearer token an Authorization header must carry.</summary>
+    public string? Bearer { get; init; }
+
+    /// <summary>What an unmet requirement answers with: 401 (default), 403, or 407.</summary>
+    public int OnFail { get; init; } = 401;
+
+    public bool Any => ClientCert || Bearer is not null;
+
+    /// <summary>Why this request is refused, or null when it satisfies everything. Pure, so every
+    /// rule is testable without a socket.</summary>
+    public string? Refuse(string? clientCertSubject, string? clientCertIssuer, string? clientCertThumbprint,
+                          IReadOnlyDictionary<string, string> headers)
+    {
+        if (ClientCert)
+        {
+            if (clientCertSubject is null) return "a client certificate is required";
+            if (ClientCertIssuer is { } issuer &&
+                (clientCertIssuer is null || !clientCertIssuer.Contains(issuer, StringComparison.OrdinalIgnoreCase)))
+                return $"the client certificate must be issued by '{issuer}'";
+            if (ClientCertThumbprint is { } thumb &&
+                !string.Equals(clientCertThumbprint, thumb, StringComparison.OrdinalIgnoreCase))
+                return "the client certificate's thumbprint is not the one required";
+        }
+
+        if (Bearer is { } expected)
+        {
+            if (!headers.TryGetValue("Authorization", out var authorization))
+                return "an Authorization header is required";
+            const string prefix = "Bearer ";
+            if (!authorization.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(authorization[prefix.Length..].Trim(), expected, StringComparison.Ordinal))
+                return "the bearer token is not the one required";
+        }
+
+        return null;
+    }
+
+    /// <summary>The challenge header a refusal carries, so a client meets the same shape a real
+    /// endpoint would present rather than a bare status.</summary>
+    public KeyValuePair<string, string> Challenge() =>
+        OnFail == 407
+            ? new("Proxy-Authenticate", "Bearer realm=\"certapi mock\"")
+            : new("WWW-Authenticate", Bearer is not null
+                ? "Bearer realm=\"certapi mock\""
+                : "Certificate realm=\"certapi mock\"");
+}
+
 /// <summary>A parsed scenario file: the routes in file order, the answer for a request that matches
 /// none, and warnings for anything that could not be carried across — a route with an
 /// uncompilable pattern or an unreadable body file is dropped and named, never silently ignored.</summary>
@@ -72,6 +131,10 @@ public sealed record MockScenario(
     MockResponse? Fallback,
     IReadOnlyList<string> Warnings)
 {
+    /// <summary>What every caller must present, checked before routes — so a scenario can be both
+    /// "requires a bearer" and "answers these paths".</summary>
+    public MockRequirements? Require { get; init; }
+
     /// <summary>The first route that matches this request, or null when none does.</summary>
     public MockRoute? Match(string method, string pathAndQuery, IReadOnlyDictionary<string, string> headers)
     {
@@ -235,7 +298,34 @@ public sealed record MockScenario(
             if (root.TryGetProperty("fallback", out var fb) && fb.ValueKind == JsonValueKind.Object)
                 fallback = ReadResponse(fb, 0, baseDirectory, read, warnings);
 
-            return new MockScenario(routes, fallback, warnings);
+            MockRequirements? require = null;
+            if (root.TryGetProperty("require", out var req) && req.ValueKind == JsonValueKind.Object)
+            {
+                int onFail = Int(req, "onFail") ?? 401;
+                if (onFail is not (401 or 403 or 407))
+                {
+                    warnings.Add($"'require.onFail' is {onFail}, which is not 401, 403, or 407; using 401.");
+                    onFail = 401;
+                }
+
+                bool wantsCert = req.TryGetProperty("clientCert", out var certElement) &&
+                                 certElement.ValueKind is JsonValueKind.Object or JsonValueKind.True;
+                require = new MockRequirements
+                {
+                    ClientCert = wantsCert,
+                    ClientCertIssuer = certElement.ValueKind == JsonValueKind.Object ? Str(certElement, "issuer") : null,
+                    ClientCertThumbprint = certElement.ValueKind == JsonValueKind.Object ? Str(certElement, "thumbprint") : null,
+                    Bearer = Str(req, "bearer"),
+                    OnFail = onFail
+                };
+                if (!require.Any)
+                {
+                    warnings.Add("'require' asks for nothing (no clientCert, no bearer) and was ignored.");
+                    require = null;
+                }
+            }
+
+            return new MockScenario(routes, fallback, warnings) { Require = require };
         }
     }
 

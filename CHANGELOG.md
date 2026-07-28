@@ -6,7 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.82.0] - 2026-07-28
+## [1.83.0] - 2026-07-28
+
+### Added
+- **A mock scenario can require credentials**, so an agent, an app, or a teammate pointed at the
+  mock meets a realistic refusal instead of an echo. A `require` block asks for a client
+  certificate (any, or narrowed by `issuer` or `thumbprint`), a specific bearer token, or both,
+  and refuses with 401 (default), 403, or 407.
+  Requirements are checked **before** routes, which means a scenario can be both "requires a
+  bearer" and "answers these paths" — and a refusal can never leak a route's body. The refusal
+  carries a real challenge header (`WWW-Authenticate`, or `Proxy-Authenticate` for 407), so a
+  client under test sees the shape a real endpoint sends rather than a bare status. A client
+  certificate is judged at the application layer, after the handshake, the way a real service
+  does it: the connection succeeds and the request is refused, which is a different code path in
+  the client from a handshake that fails.
+  A `require` block that asks for nothing, or an `onFail` outside 401/403/407, is named in a
+  warning rather than silently obeyed.
+
+### Note
+- This completes the five-release configuration and configurable-mock program that began with
+  configuration profiles in v1.79.0. The mock now answers from declared routes, a recorded
+  session, or both; misbehaves on demand with delays, drips, aborts, resets, and per-call
+  sequences; serves deliberately broken certificates; and can demand credentials — which together
+  make every client-side path this product ships reproducible from a terminal.
 
 ### Added
 - **`certapi mock --tls-mode expired | wrong-host | self-signed` serves a deliberately broken
@@ -1984,7 +2006,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.82.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.83.0...HEAD
+[1.83.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.82.0...v1.83.0
 [1.82.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.81.0...v1.82.0
 [1.81.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.80.0...v1.81.0
 [1.80.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.79.0...v1.80.0

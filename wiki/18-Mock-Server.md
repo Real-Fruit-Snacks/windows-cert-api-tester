@@ -126,6 +126,32 @@ rather than hand back a short body as if it were whole; `then: "reset"` tears th
 the way a middlebox or a crash does. Declaring both `respond` and `respondSequence` on one route is
 refused by name — it is a contradiction, not a merge.
 
+## Requiring authentication
+
+A scenario can demand credentials before it routes anything, so a client meets a realistic refusal
+rather than an echo:
+
+```jsonc
+{
+  "require": {
+    "clientCert": { "issuer": "CN=Corp Issuing CA" },   // or "thumbprint", or just true for "any"
+    "bearer": "expected-token",
+    "onFail": 401                                        // 401 (default), 403, or 407
+  },
+  "routes": [ { "match": { "path": "/secure" }, "respond": { "status": 200, "body": "admitted" } } ]
+}
+```
+
+- **Checked before routes**, so a scenario is both "requires a bearer" *and* "answers these paths",
+  and a refusal can never leak a route's body.
+- **The refusal carries a challenge** — `WWW-Authenticate`, or `Proxy-Authenticate` for 407 — so
+  the client sees the shape a real endpoint would send, not a bare status.
+- **`clientCert: true`** means a certificate is required but whose does not matter; add `issuer` or
+  `thumbprint` to narrow it. The certificate is checked at the *application* layer, after the
+  handshake, which is how a real service behaves.
+- A `require` block that asks for nothing, or an `onFail` that is not 401/403/407, is named in a
+  warning rather than silently obeyed.
+
 ## Serving a deliberately broken certificate
 
 Every TLS error this tool reports — expired, wrong host, untrusted — is easy to *read about* and

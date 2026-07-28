@@ -189,6 +189,9 @@ public sealed class MockServer : IAsyncDisposable
     {
         Stream stream = client.GetStream();
         string? clientCertSubject = null;
+        // Kept alongside the subject so a scenario can require a specific issuer or thumbprint,
+        // not merely "some certificate".
+        string? clientCertIssuer = null, clientCertThumbprint = null;
 
         if (_tls != MockTlsMode.Http)
         {
@@ -207,6 +210,8 @@ public sealed class MockServer : IAsyncDisposable
             {
                 using var c = new X509Certificate2(ssl.RemoteCertificate);
                 clientCertSubject = c.Subject;
+                clientCertIssuer = c.Issuer;
+                clientCertThumbprint = c.Thumbprint;
             }
             stream = ssl;
         }
@@ -224,6 +229,27 @@ public sealed class MockServer : IAsyncDisposable
             {
                 await HandleWebSocketAsync(stream, headers, ct);
                 _onRequest?.Invoke(new(method, path, 101, clientCertSubject));
+                return;
+            }
+
+            // Before any route: what the scenario says every caller must present. A protected
+            // endpoint refuses before it routes, and a mock that echoed instead would teach a
+            // client's authentication path nothing.
+            if (_scenario?.Require is { } require &&
+                require.Refuse(clientCertSubject, clientCertIssuer, clientCertThumbprint, headers) is { } reason)
+            {
+                var challenge = require.Challenge();
+                var refusal = new MockResponse(
+                    require.OnFail,
+                    new[] { challenge, new KeyValuePair<string, string>("Content-Type", "application/json") },
+                    Encoding.UTF8.GetBytes(
+                        $"{{\"server\":\"certapi mock\",\"refused\":{JsonSerializer.Serialize(reason)}}}"),
+                    "application/json");
+                await WriteMockResponseAsync(stream, refusal, client, ct);
+                _onRequest?.Invoke(new MockRequestLog(method, path, require.OnFail, clientCertSubject)
+                {
+                    Replay = "refused"
+                });
                 return;
             }
 
