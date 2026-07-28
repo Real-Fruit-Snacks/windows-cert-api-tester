@@ -49,7 +49,7 @@ public static class TrustCommand
         bool json = args.Flag("--json");
         string? thumbprint = args.Value("--thumbprint");
         string? fromUrl = args.Value("--from-url");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         // Only --from-url ever needs a client certificate, but options are consumed here (before
         // Positionals()) for every subcommand, the same way CertsCommand/SendCommand always do.
         var cert = CliCert.Resolve(args, store, services, stderr);

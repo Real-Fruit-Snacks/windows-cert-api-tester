@@ -73,14 +73,14 @@ public static class McpCommand
 
     public static int Run(Args args, TextReader input, TextWriter stdout, TextWriter stderr, CliServices services)
     {
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         var allowHosts = args.Values("--allow");
         bool insecure = args.Flag("--insecure");
         string? timeoutRaw = args.Value("--timeout");
         string? workspace = args.Value("--workspace");
         bool noAutoToken = args.Flag("--no-auto-token");
         string? protosetPath = args.Value("--protoset");
-        var overrides = TransportFlags.Parse(args, out _);
+        var overrides = TransportFlags.Parse(args, out _, environment: null, services.Profile);
         // Resolve the certificate before Positionals() rejects its options (store or a file).
         var cert = CliCert.Resolve(args, store, services, stderr);
         bool localMachine = store.Equals("LocalMachine", StringComparison.OrdinalIgnoreCase);

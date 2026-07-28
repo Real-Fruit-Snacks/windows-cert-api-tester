@@ -32,6 +32,7 @@ the complete guide to both.
 15. [Live Streaming](15-Live-Streaming.md) — WebSocket & Server-Sent Events (SSE)
 16. [Response Views](16-Response-Views.md) — Pretty, Raw, Diagnostics, Rendered, Network
 - Also: [Session Capture](26-Session-Capture.md) — log in once in a browser, reuse the session (cookies + tokens)
+- Also: [Configuration](27-Configuration.md) — profiles that carry the tedious half of every command line
 
 ### Tooling
 17. [Import & Export](17-Import-and-Export.md) — cURL and OpenAPI

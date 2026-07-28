@@ -124,7 +124,7 @@ public static class RunCommand
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
         bool all = args.Flag("--all");
-        string? workspace = args.Value("--workspace");
+        string? workspace = args.Value("--workspace") ?? services.Profile?.Workspace;
         string? envName = args.Value("--env");
         var varOverrides = args.Values("--var");
         bool recordFlag = args.Flag("--record");
@@ -135,8 +135,8 @@ public static class RunCommand
         string? dataFile = args.Value("--data");
         string? chainName = args.Value("--chain");
         bool useCookies = args.Flag("--cookies");
-        var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
-        string store = args.Value("--store") ?? "CurrentUser";
+        var transportOverrides = TransportFlags.Parse(args, out bool showRedirects, environment: null, services.Profile);
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         string? harPath = args.Value("--har");
         bool harIncludeSecrets = args.Flag("--har-include-secrets");
         string? diffHar = args.Value("--diff-har");

@@ -139,7 +139,7 @@ public static class ServeCommand
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
         string? portRaw = args.Value("--port");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? token = args.Value("--token");
         string? timeoutRaw = args.Value("--timeout");
@@ -161,7 +161,7 @@ public static class ServeCommand
         var requestHeaderRemovals = args.Values("--remove-request-header");
         var responseHeaderSets = args.Values("--response-header");
         var responseHeaderRemovals = args.Values("--remove-response-header");
-        var transportOverrides = TransportFlags.Parse(args, out _);
+        var transportOverrides = TransportFlags.Parse(args, out _, environment: null, services.Profile);
 
         bool tls = args.Flag("--tls");
         bool tlsTrust = args.Flag("--tls-trust");

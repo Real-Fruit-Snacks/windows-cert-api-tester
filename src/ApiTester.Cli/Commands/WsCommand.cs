@@ -46,12 +46,12 @@ public static class WsCommand
     {
         var messages = args.Values("-m", "--message");
         var headers = args.Values("-H", "--header");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         bool quiet = args.Flag("-q", "--quiet");
         string? workspace = args.Value("--workspace");
         bool noAutoToken = args.Flag("--no-auto-token");
-        var transport = TransportFlags.ParseStreamSubset(args, insecure);
+        var transport = TransportFlags.ParseStreamSubset(args, insecure, environment: null, services.Profile);
         string? expectRaw = args.Value("--expect");
         int? expect = null;
         if (expectRaw is not null)

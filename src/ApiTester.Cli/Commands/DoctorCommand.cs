@@ -44,11 +44,11 @@ public static class DoctorCommand
 
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool json = args.Flag("--json");
         bool quiet = args.Flag("-q", "--quiet");
         bool insecure = args.Flag("--insecure");
-        var transport = TransportFlags.ParseStreamSubset(args, insecure);
+        var transport = TransportFlags.ParseStreamSubset(args, insecure, environment: null, services.Profile);
         var cert = CliCert.Resolve(args, store, services, stderr);
 
         var positionals = args.Positionals();

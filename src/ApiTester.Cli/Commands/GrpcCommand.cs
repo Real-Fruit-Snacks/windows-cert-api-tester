@@ -140,7 +140,7 @@ public static class GrpcCommand
         string? dataFile = args.Value("--data-file");
         var headers = args.Values("-H", "--header");
         string? maxMessagesRaw = args.Value("--max-messages");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? proxyUrl = args.Value("--proxy");
         bool noProxy = args.Flag("--no-proxy");

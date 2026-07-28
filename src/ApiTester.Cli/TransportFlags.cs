@@ -54,13 +54,28 @@ public static class TransportFlags
     /// <paramref name="environment"/> is how a test supplies NO_PROXY without touching the process's
     /// own environment, which is global state a parallel test run must never mutate; every real call
     /// site leaves it null and gets <see cref="Environment.GetEnvironmentVariable"/>.</summary>
-    public static TransportOverrides Parse(Args args, out bool showRedirects, Func<string, string?>? environment = null)
+    public static TransportOverrides Parse(Args args, out bool showRedirects, Func<string, string?>? environment = null) =>
+        Parse(args, out showRedirects, environment, profile: null);
+
+    /// <param name="profile">Defaults from the configuration profile in effect. A typed flag is
+    /// non-null and wins; the profile fills in what was not typed; the built-in default stands
+    /// when neither said anything. Null — a caller with no configuration — behaves exactly as
+    /// before profiles existed.</param>
+    public static TransportOverrides Parse(
+        Args args, out bool showRedirects, Func<string, string?>? environment, ConfigProfile? profile)
     {
         // Every option is consumed unconditionally, even when this command will not act on it:
         // Args.Positionals() rejects anything option-shaped that is left over.
-        string? proxyUrl = args.Value("--proxy");
-        bool noProxy = args.Flag("--no-proxy");
-        string? proxyUser = args.Value("--proxy-user");
+        // Each option is consumed exactly once — Value and Flag both take the token off the line —
+        // so the typed values are read first and the profile is folded in afterwards.
+        string? proxyFlag = args.Value("--proxy");
+        bool noProxyFlag = args.Flag("--no-proxy");
+        // Naming either one is a choice between them, so a typed flag suppresses the profile's
+        // opposite setting rather than colliding with it (the same rule the certificate sources
+        // follow). Only when neither was typed does the profile decide.
+        string? proxyUrl = proxyFlag ?? (noProxyFlag ? null : profile?.Proxy);
+        bool noProxy = noProxyFlag || (proxyFlag is null && profile?.NoProxy == true);
+        string? proxyUser = args.Value("--proxy-user") ?? profile?.ProxyUser;
         bool noRedirect = args.Flag("--no-redirect");
         string? maxRedirsRaw = args.Value("--max-redirs");
         bool noDecompress = args.Flag("--no-decompress");
@@ -68,15 +83,18 @@ public static class TransportFlags
         bool http2 = args.Flag("--http2");
         bool http3 = args.Flag("--http3");
         var resolveSpecs = args.Values("--resolve");
-        string? noProxySpec = args.Value("--noproxy");
+        // A bypass list belongs to whichever proxy is in play, so it takes the profile's value the
+        // same way the proxy itself does — and a typed --no-proxy suppresses it, since there would
+        // be nothing left to narrow.
+        string? noProxySpec = args.Value("--noproxy") ?? (noProxyFlag ? null : profile?.NoProxyList);
         showRedirects = args.Flag("--show-redirects");
-        string? retryRaw = args.Value("--retry");
+        string? retryRaw = args.Value("--retry") ?? profile?.Retry?.ToString();
         string? retryOnRaw = args.Value("--retry-on");
         string? retryDelayRaw = args.Value("--retry-delay");
         bool retryUnsafe = args.Flag("--retry-unsafe");
         bool noRetryTransport = args.Flag("--no-retry-transport");
-        string? revocationRaw = args.Value("--revocation");
-        bool revocationStrict = args.Flag("--revocation-strict");
+        string? revocationRaw = args.Value("--revocation") ?? profile?.Revocation;
+        bool revocationStrict = args.Flag("--revocation-strict") || profile?.RevocationStrict == true;
 
         if (proxyUrl is not null && noProxy)
             throw new CliUsageException("--proxy and --no-proxy are mutually exclusive.");
@@ -185,14 +203,23 @@ public static class TransportFlags
     /// would be the `mock --http` bug class in reverse. Shares every strict-parse rule with
     /// <see cref="Parse"/> via the same helpers.</summary>
     public static TransportOptions ParseStreamSubset(
-        Args args, bool ignoreServerCertificateErrors, Func<string, string?>? environment = null)
+        Args args, bool ignoreServerCertificateErrors, Func<string, string?>? environment = null) =>
+        ParseStreamSubset(args, ignoreServerCertificateErrors, environment, profile: null);
+
+    /// <param name="profile">Defaults from the configuration profile in effect — same precedence
+    /// as <see cref="Parse(Args, out bool, Func{string, string?}, ConfigProfile)"/>: a typed flag
+    /// wins, the profile fills in the rest.</param>
+    public static TransportOptions ParseStreamSubset(
+        Args args, bool ignoreServerCertificateErrors, Func<string, string?>? environment, ConfigProfile? profile)
     {
-        string? proxyUrl = args.Value("--proxy");
-        bool noProxy = args.Flag("--no-proxy");
-        string? proxyUser = args.Value("--proxy-user");
-        string? noProxySpec = args.Value("--noproxy");
-        string? revocationRaw = args.Value("--revocation");
-        bool revocationStrict = args.Flag("--revocation-strict");
+        string? proxyFlag = args.Value("--proxy");
+        bool noProxyFlag = args.Flag("--no-proxy");
+        string? proxyUrl = proxyFlag ?? (noProxyFlag ? null : profile?.Proxy);
+        bool noProxy = noProxyFlag || (proxyFlag is null && profile?.NoProxy == true);
+        string? proxyUser = args.Value("--proxy-user") ?? profile?.ProxyUser;
+        string? noProxySpec = args.Value("--noproxy") ?? (noProxyFlag ? null : profile?.NoProxyList);
+        string? revocationRaw = args.Value("--revocation") ?? profile?.Revocation;
+        bool revocationStrict = args.Flag("--revocation-strict") || profile?.RevocationStrict == true;
 
         if (proxyUrl is not null && noProxy)
             throw new CliUsageException("--proxy and --no-proxy are mutually exclusive.");

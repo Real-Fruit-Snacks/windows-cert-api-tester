@@ -118,7 +118,7 @@ public static class BenchCommand
         string? warmupRaw = args.Value("--warmup");
         bool json = args.Flag("--json");
         bool benchRetries = args.Flag("--bench-retries");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? envName = args.Value("--env");
         var varOverrides = args.Values("--var");
@@ -130,7 +130,7 @@ public static class BenchCommand
         string? contentType = args.Value("--content-type");
         string? bearer = args.Value("--bearer");
         string? timeoutRaw = args.Value("--timeout");
-        var transportOverrides = TransportFlags.Parse(args, out _);
+        var transportOverrides = TransportFlags.Parse(args, out _, environment: null, services.Profile);
         // Resolve the certificate here so its options are consumed before Positionals() sees them.
         var cert = CliCert.Resolve(args, store, services, stderr);
 

@@ -98,7 +98,7 @@ public static class FuzzCommand
         string? methodsRaw = args.Value("-X", "--methods");
         var headers = args.Values("-H", "--header");
         string? bearer = args.Value("--bearer");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         string? timeoutRaw = args.Value("--timeout");
         string? envName = args.Value("--env");
@@ -117,7 +117,7 @@ public static class FuzzCommand
         string? harPath = args.Value("--har");
         bool harIncludeSecrets = args.Flag("--har-include-secrets");
         // --show-redirects is accepted and has nothing to report: probes never follow redirects.
-        var transportOverrides = TransportFlags.Parse(args, out _);
+        var transportOverrides = TransportFlags.Parse(args, out _, environment: null, services.Profile);
         // Resolve the certificate (store or file) before Positionals() rejects its options.
         var cert = CliCert.Resolve(args, store, services, stderr);
 

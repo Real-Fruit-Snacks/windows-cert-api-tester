@@ -44,13 +44,13 @@ public static class SseCommand
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
         var headers = args.Values("-H", "--header");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         bool json = args.Flag("--json");
         bool quiet = args.Flag("-q", "--quiet");
         string? workspace = args.Value("--workspace");
         bool noAutoToken = args.Flag("--no-auto-token");
-        var transport = TransportFlags.ParseStreamSubset(args, insecure);
+        var transport = TransportFlags.ParseStreamSubset(args, insecure, environment: null, services.Profile);
         string? maxRaw = args.Value("--max-events");
         int? maxEvents = null;
         if (maxRaw is not null)

@@ -78,12 +78,12 @@ public static class TokenCommand
         bool save = args.Flag("--save");
         var forUrls = args.Values("--for");
         string? workspace = args.Value("--workspace");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool insecure = args.Flag("--insecure");
         bool json = args.Flag("--json");
         bool quiet = args.Flag("-q", "--quiet");
         string? deviceUrl = args.Value("--device-url");
-        var transport = TransportFlags.ParseStreamSubset(args, insecure);
+        var transport = TransportFlags.ParseStreamSubset(args, insecure, environment: null, services.Profile);
         // Resolve the certificate before Positionals()/validation so its options aren't leftovers.
         var cert = CliCert.Resolve(args, store, services, stderr);
 

@@ -23,7 +23,7 @@ public static class CertsCommand
     public static int Run(Args args, TextWriter stdout, TextWriter stderr, CliServices services)
     {
         string? filter = args.Value("--filter");
-        string store = args.Value("--store") ?? "CurrentUser";
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
         bool json = args.Flag("--json");
         if (args.Positionals().Count > 0) throw new CliUsageException(Help);
 

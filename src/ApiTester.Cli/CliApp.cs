@@ -29,6 +29,33 @@ public sealed class CliServices
 
     /// <summary>Diagnostic sink for --debug / --log-file; set per invocation by CliApp.</summary>
     public CliLog Log { get; set; } = CliLog.None;
+
+    /// <summary>The configuration profile in effect, resolved once per invocation by CliApp from
+    /// <c>--profile</c>/<c>--config</c> and the discovered file. Null when there is no
+    /// configuration, or when <c>--no-config</c> was given — which is exactly the state every
+    /// command had before configuration files existed, so nothing changes for a user without one.
+    /// <para>Where the working directory is, for discovery. A test sets it rather than relying on
+    /// the process's own.</para></summary>
+    public ConfigProfile? Profile { get; set; }
+
+    /// <summary>Which file the profile came from, and by which discovery rule — set alongside
+    /// <see cref="Profile"/> so `certapi config path` reports what this invocation actually used
+    /// rather than re-running discovery and possibly disagreeing with it.</summary>
+    public ConfigSource? ProfileSource { get; set; }
+
+    /// <summary>The directory discovery walks up from. Overridable so a test never depends on
+    /// where the test host happens to be running.</summary>
+    public string WorkingDirectory { get; init; } = Directory.GetCurrentDirectory();
+
+    /// <summary>The per-user configuration path, or null to disable that discovery rule. A test
+    /// sets it to null so a developer's own file can never change a test's outcome.</summary>
+    public string? UserConfigPath { get; init; } = ConfigLoader.DefaultUserConfigPath();
+
+    /// <summary>How discovery decides a candidate file is there. Injectable for the same reason the
+    /// certificate store and the gateway factory are: walking up from a directory reaches shared
+    /// ancestors — a test running under the temporary directory would otherwise discover whatever
+    /// another process happened to leave there, which is exactly the flake this seam prevents.</summary>
+    public Func<string, bool> FileExists { get; init; } = File.Exists;
 }
 
 public static class CliApp
@@ -46,6 +73,7 @@ public static class CliApp
           ws <url>          Open a WebSocket, send messages, print what arrives
           doctor <url>      Diagnose a connection stage by stage (why can't I reach this?)
           proxy [<url>]     Show the machine's proxy settings, and which proxy a URL gets
+          config            Show the configuration file and profile in effect
           certs             List client certificates
           selftest          Prove the mTLS path end-to-end against a loopback server
           mock              Run a local test server to fire requests at (http/tls/mtls)
@@ -61,6 +89,10 @@ public static class CliApp
           --debug           Rich diagnostics on stderr: resolved URLs, headers (Authorization
                             masked), certificate lookup, TLS details, timings, full stack traces
           --log-file <path> Append everything (diagnostics + all stderr output) to a log file
+          --profile <name>  Use this profile's defaults from the configuration file, so a long
+                            command line becomes a short one (see 'certapi help config')
+          --config <path>   Read configuration from this file instead of discovering one
+          --no-config       Ignore configuration entirely, whatever is on disk
 
         Examples:
           certapi certs
@@ -85,8 +117,8 @@ public static class CliApp
         if (args.Length > 0 && IsStreamingCommand(args[0]))
         {
             string cmd = args[0].ToLowerInvariant();
-            (string[] Remaining, bool Debug, string? LogFile) g;
-            try { g = GlobalOptions.Extract(args.Skip(1).ToArray()); }
+            (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig) g;
+            try { g = GlobalOptions.ExtractAll(args.Skip(1).ToArray()); }
             catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
 
             using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
@@ -94,6 +126,9 @@ public static class CliApp
             var err = log.WrapStderr(stderr);
             try
             {
+                // The streaming commands take the same profile as everything else: a configuration
+                // that applies to `send` but not to `ws` would be a trap rather than a convenience.
+                services.Profile = ResolveProfile(g.Config, g.Profile, g.NoConfig, services, log);
                 return cmd switch
                 {
                     "mcp"  => Commands.McpCommand.Run(new Args(g.Remaining), input, stdout, err, services),
@@ -124,8 +159,8 @@ public static class CliApp
         services ??= new CliServices();
         if (args.Length == 0) { stderr.WriteLine(Usage); return ExitCodes.Usage; }
 
-        (string[] Remaining, bool Debug, string? LogFile) g;
-        try { g = GlobalOptions.Extract(args); }
+        (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig) g;
+        try { g = GlobalOptions.ExtractAll(args); }
         catch (CliUsageException ex) { stderr.WriteLine(ex.Message); return ExitCodes.Usage; }
 
         using var log = CliLog.Create(g.Debug, g.LogFile, stderr);
@@ -133,6 +168,9 @@ public static class CliApp
         var err = log.WrapStderr(stderr);
         try
         {
+            // Resolved once, here, so every command below sees the same profile — and so a broken
+            // configuration is reported before a command starts doing work with half of it.
+            services.Profile = ResolveProfile(g.Config, g.Profile, g.NoConfig, services, log);
             if (g.Remaining.Length == 0) { err.WriteLine(Usage); return ExitCodes.Usage; }
             string command = g.Remaining[0].ToLowerInvariant();
             var rest = g.Remaining.Skip(1).ToArray();
@@ -155,12 +193,55 @@ public static class CliApp
                 "grpc" => Commands.GrpcCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
                 "doctor" => Commands.DoctorCommand.Run(new Args(rest), stdout, err, services),
                 "proxy" => Commands.ProxyCommand.Run(new Args(rest), stdout, err, services),
+                "config" => Commands.ConfigCommand.Run(new Args(rest), stdout, err, services),
                 _ => throw new CliUsageException($"Unknown command '{g.Remaining[0]}'.\n{Usage}")
             };
         }
         catch (CliUsageException ex) { err.WriteLine(ex.Message); return ExitCodes.Usage; }
         catch (CliDataException ex) { err.WriteLine(ex.Message); return ExitCodes.Data; }
         catch (Exception ex) { err.WriteLine("error: " + log.Describe(ex)); return ExitCodes.Failure; }
+    }
+
+    /// <summary>The profile in effect for this invocation, or null when there is no configuration
+    /// to apply. <c>--no-config</c> short-circuits every discovery rule, which is what makes a run
+    /// reproducible regardless of what happens to sit in the working directory.</summary>
+    internal static ConfigProfile? ResolveProfile(
+        string? configPath, string? profileName, bool noConfig, CliServices services, CliLog log)
+    {
+        if (noConfig) return null;
+
+        ConfigSource? source;
+        try
+        {
+            source = ConfigLoader.Discover(
+                configPath, services.WorkingDirectory, services.UserConfigPath,
+                environment: null, fileExists: services.FileExists);
+        }
+        catch (ConfigException ex) { throw new CliDataException(ex.Message); }
+
+        services.ProfileSource = source;
+
+        if (source is null)
+        {
+            // A named profile with no file to name it in is a mistake worth reporting: the command
+            // would otherwise run with the identity the user believed they had selected missing.
+            if (profileName is not null)
+                throw new CliDataException(
+                    $"--profile {profileName} was given, but no configuration file was found. " +
+                    $"Create {ConfigLoader.FileName} here, or pass --config <path>.");
+            return null;
+        }
+
+        try
+        {
+            var config = ConfigLoader.Parse(File.ReadAllText(source.Path), source);
+            var profile = config.Resolve(profileName);
+            if (profile is not null)
+                log.Debug($"configuration: {source.Path} ({source.Rule}), profile '{profileName ?? config.DefaultProfile}'");
+            return profile;
+        }
+        catch (ConfigException ex) { throw new CliDataException(ex.Message); }
+        catch (IOException ex) { throw new CliDataException($"could not read {source.Path}: {ex.Message}"); }
     }
 
     private static int Version(TextWriter stdout)
@@ -194,6 +275,7 @@ public static class CliApp
             "grpc" => Commands.GrpcCommand.Help,
             "doctor" => Commands.DoctorCommand.Help,
             "proxy" => Commands.ProxyCommand.Help,
+            "config" => Commands.ConfigCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;

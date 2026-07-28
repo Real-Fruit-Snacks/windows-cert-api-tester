@@ -6,7 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.78.0] - 2026-07-28
+## [1.79.0] - 2026-07-28
+
+### Added
+- **Configuration files with named profiles, so a long command line becomes a short one.** A
+  `certapi.config.json` carries the half of every invocation that never changes — the certificate,
+  the proxy group, revocation, retries, timeout, a default workspace, and standing headers — and
+  `certapi send https://api.internal/orders --profile corp` uses it. The three options that reach
+  it (`--profile`, `--config`, `--no-config`) are **global**, so they work on every command rather
+  than needing to be re-declared per command.
+  The file is found by the first rule that matches: an explicit `--config`, the `CERTAPI_CONFIG`
+  variable, `certapi.config.json` **found by walking up from the working directory** (so a
+  per-repository configuration works from anywhere inside it), then a per-user file. `--no-config`
+  ignores all four, which is what makes a continuous-integration run reproducible regardless of
+  what sits in a parent directory. Comments and trailing commas are accepted, because these files
+  are edited by people.
+  **Precedence is one sentence: an explicitly typed flag always wins, the profile fills in what
+  you did not type, and the built-in default stands when neither said anything.** There is no new
+  precedence engine — it is the null-coalescing chain the commands already used, which is why it
+  behaves predictably. Naming one of a mutually exclusive pair counts as choosing it, so
+  `--cert-file` on the line suppresses a profile's `cert` and `--no-proxy` suppresses a profile's
+  `proxy`, instead of colliding with it.
+  **Secrets stay out of the file:** any value may contain `${env:NAME}`, resolved from the
+  environment when the file is read, so the file names *which* secret it needs while the secret
+  itself lives wherever the machine or pipeline keeps secrets. A reference to a variable that is
+  not set is an error naming the profile, the field, and the variable — never a silently empty
+  credential.
+- **`certapi config path | show | profiles`** reports what is actually in effect, in the same
+  spirit as `doctor` and `proxy`: which file was found and by which rule, which profiles exist and
+  which is the default, and the resolved profile exactly as a command would see it. It prints
+  `(set)` for a password or proxy credential rather than the value — a diagnostic must never be the
+  thing that leaks a secret.
 
 ### Added
 - **`certapi import wsdl <file>` turns a SOAP contract into saved requests** — one POST per
@@ -1892,7 +1922,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.78.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.79.0...HEAD
+[1.79.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.78.0...v1.79.0
 [1.78.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.77.0...v1.78.0
 [1.77.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.76.0...v1.77.0
 [1.76.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.75.0...v1.76.0

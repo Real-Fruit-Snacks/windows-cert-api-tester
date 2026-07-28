@@ -27,6 +27,7 @@ Usage: certapi <command> [options]
 | [`grpc`](#grpc) | Discover and call a gRPC service (unary, server-, client-, or bidirectional-streaming) |
 | [`doctor <url>`](#doctor) | Diagnose a connection stage by stage — why can't I reach this? |
 | [`proxy [<url>]`](#proxy) | Show the machine's proxy settings, and which proxy a URL gets |
+| [`config`](#config) | Show the configuration file and profile in effect |
 | [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
 
@@ -418,6 +419,22 @@ actually gets (see [Troubleshooting](23-Troubleshooting.md)).
 - When the two disagree, that is called out: it explains a request that works in a browser but
   not here, or the reverse
 - Exit 0 whether or not a proxy is configured; 2 on usage
+
+## config
+
+`certapi config path | show [--profile <name>] | profiles` — what configuration is in effect (see
+[Configuration](27-Configuration.md)).
+
+These three options are **global** — they work on every command, not just this one:
+
+- `--profile <name>` — use that profile's defaults
+- `--config <path>` — read this file instead of discovering one
+- `--no-config` — ignore configuration entirely
+
+A profile supplies defaults for the certificate group, the proxy group, revocation, retries,
+timeout, workspace, and standing headers. **A typed flag always wins over the profile**, and the
+profile wins over the built-in default. Values may contain `${env:NAME}`, so secrets live in the
+environment rather than the file.
 
 ## serve
 

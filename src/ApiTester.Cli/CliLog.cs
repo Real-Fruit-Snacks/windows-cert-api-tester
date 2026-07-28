@@ -109,20 +109,49 @@ public static class GlobalOptions
 {
     public static (string[] Remaining, bool Debug, string? LogFile) Extract(string[] args)
     {
+        var extracted = ExtractAll(args);
+        return (extracted.Remaining, extracted.Debug, extracted.LogFile);
+    }
+
+    /// <summary>Every option that applies to all commands alike, taken off the line before the
+    /// command reads what is left: the diagnostics pair, and the configuration trio
+    /// (<c>--config</c>, <c>--profile</c>, <c>--no-config</c>). Configuration is global for the
+    /// same reason diagnostics are — a profile carries the identity and transport half of any
+    /// command, so it must not have to be re-declared per command.</summary>
+    public static (string[] Remaining, bool Debug, string? LogFile, string? Config, string? Profile, bool NoConfig)
+        ExtractAll(string[] args)
+    {
         var rest = new List<string>(args.Length);
-        bool debug = false;
-        string? logFile = null;
+        bool debug = false, noConfig = false;
+        string? logFile = null, config = null, profile = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i].Equals("--debug", StringComparison.OrdinalIgnoreCase)) { debug = true; continue; }
+            if (args[i].Equals("--no-config", StringComparison.OrdinalIgnoreCase)) { noConfig = true; continue; }
             if (args[i].Equals("--log-file", StringComparison.OrdinalIgnoreCase))
             {
                 if (i + 1 >= args.Length) throw new CliUsageException("Option --log-file needs a value.");
                 logFile = args[++i];
                 continue;
             }
+            if (args[i].Equals("--config", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 >= args.Length) throw new CliUsageException("Option --config needs a value.");
+                config = args[++i];
+                continue;
+            }
+            if (args[i].Equals("--profile", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 >= args.Length) throw new CliUsageException("Option --profile needs a value.");
+                profile = args[++i];
+                continue;
+            }
             rest.Add(args[i]);
         }
-        return (rest.ToArray(), debug, logFile);
+
+        if (noConfig && (config is not null || profile is not null))
+            throw new CliUsageException("--no-config cannot be combined with --config or --profile.");
+
+        return (rest.ToArray(), debug, logFile, config, profile, noConfig);
     }
 }

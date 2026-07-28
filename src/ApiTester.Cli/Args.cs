@@ -21,6 +21,12 @@ public sealed class Args
         return false;
     }
 
+    /// <summary>As <see cref="Flag"/>, but distinguishing "not given" (null) from "given" (true).
+    /// That distinction is what lets a configuration profile supply a boolean default which an
+    /// explicitly typed flag still overrides: <c>args.FlagOrNull("--insecure") ?? profile?.Insecure
+    /// ?? false</c> reads exactly as the precedence rule is written.</summary>
+    public bool? FlagOrNull(params string[] names) => Flag(names) ? true : null;
+
     /// <summary>Consume one option and its value (name match is case-insensitive); null when absent.
     /// An option present without a value is a usage error.</summary>
     public string? Value(params string[] names)

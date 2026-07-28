@@ -159,15 +159,17 @@ public static class SendCommand
         string? contentType = args.Value("--content-type");
         string? bearer = args.Value("--bearer");
         string? basic = args.Value("--basic");
-        string store = args.Value("--store") ?? "CurrentUser";
-        bool insecure = args.Flag("--insecure");
-        string? timeoutRaw = args.Value("--timeout");
+        string store = args.Value("--store") ?? services.Profile?.Store ?? "CurrentUser";
+        // FlagOrNull rather than Flag: a profile's `insecure: true` must be usable, and only the
+        // three-state read can tell "not typed" from "typed", which is what the precedence needs.
+        bool insecure = args.FlagOrNull("--insecure") ?? services.Profile?.Insecure ?? false;
+        string? timeoutRaw = args.Value("--timeout") ?? services.Profile?.Timeout?.ToString();
         int timeout = 100;
         if (timeoutRaw is not null && (!int.TryParse(timeoutRaw, out timeout) || timeout <= 0))
             throw new CliUsageException($"--timeout expects a positive number of seconds, got '{timeoutRaw}'.");
         string? envName = args.Value("--env");
         var varOverrides = args.Values("--var");
-        string? workspace = args.Value("--workspace");
+        string? workspace = args.Value("--workspace") ?? services.Profile?.Workspace;
         bool strictVars = args.Flag("--strict-vars");
         string? outFile = args.Value("-o", "--output");
         bool include = args.Flag("--include");
@@ -181,7 +183,7 @@ public static class SendCommand
         bool windowsAuth = args.Flag("--windows-auth", "--ntlm", "--negotiate");
         string? winUser = args.Value("--windows-user");
         string? winPass = args.Value("--windows-password");
-        var transportOverrides = TransportFlags.Parse(args, out bool showRedirects);
+        var transportOverrides = TransportFlags.Parse(args, out bool showRedirects, environment: null, services.Profile);
         bool allIps = args.Flag("--all-ips");
         string? diffBaseline = args.Value("--diff");
         bool diffFail = args.Flag("--diff-fail");
