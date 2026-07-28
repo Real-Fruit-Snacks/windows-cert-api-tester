@@ -851,8 +851,12 @@ public sealed class ApiClient : IDisposable
         if (transport.Proxy is ProxyMode.Explicit &&
             (string.IsNullOrWhiteSpace(transport.ProxyUrl) ||
              !Uri.TryCreate(transport.ProxyUrl, UriKind.Absolute, out var proxyUri) ||
-             proxyUri.Scheme is not ("http" or "https")))
-            return $"--proxy must be an absolute http(s) URL, got '{transport.ProxyUrl}'.";
+             // The four schemes the handler itself speaks: HTTP CONNECT proxies and SOCKS.
+             // socks5 is what `ssh -D` provides, which is how an API behind a jump host is
+             // reached; the handler resolves the hostname locally for socks4/5 and remotely
+             // for socks4a/5 per its own rules.
+             proxyUri.Scheme is not ("http" or "https" or "socks5" or "socks4" or "socks4a")))
+            return $"--proxy must be an absolute http(s) or socks4/socks4a/socks5 URL, got '{transport.ProxyUrl}'.";
 
         foreach (var pin in transport.Resolve)
         {

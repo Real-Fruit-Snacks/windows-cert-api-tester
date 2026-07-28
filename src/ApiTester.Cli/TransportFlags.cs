@@ -10,7 +10,10 @@ public static class TransportFlags
     /// so the three cannot drift apart.</summary>
     public const string Help = """
         Transport:
-          --proxy <url>           Route through this proxy (e.g. http://proxy.corp:8080)
+          --proxy <url>           Route through this proxy: http(s), or socks4/socks4a/socks5.
+                                  An SSH jump host works here: `ssh -D 1080 user@jump` then
+                                  socks5://127.0.0.1:1080 reaches what the jump host can reach,
+                                  mutual TLS intact (SOCKS relays bytes, it never ends TLS)
           --no-proxy              Ignore the system/PAC proxy — also restores TLS diagnostics
           --proxy-user <u:pass>   Proxy credentials
           --no-redirect           Do not follow 3xx redirects
@@ -160,7 +163,8 @@ public static class TransportFlags
     /// the three cannot drift from each other or from this parser.</summary>
     public const string StreamHelp = """
         Transport:
-          --proxy <url>           Route through this proxy (e.g. http://proxy.corp:8080)
+          --proxy <url>           Route through this proxy: http(s), or socks4/socks4a/socks5
+                                  (an `ssh -D` tunnel is a socks5 proxy)
           --no-proxy              Ignore the system/PAC proxy
           --proxy-user <u:pass>   Proxy credentials
           --noproxy <list>        Hosts that bypass the proxy, comma-separated, NO_PROXY-style

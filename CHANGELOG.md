@@ -6,7 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.71.0] - 2026-07-28
+## [1.72.0] - 2026-07-28
+
+### Added
+- **`--proxy` speaks SOCKS: `socks5://`, `socks4a://`, and `socks4://` are accepted everywhere the
+  flag exists.** The case this serves is the SSH jump host: `ssh -D 1080 user@jump` opens a SOCKS5
+  proxy on your own machine, and `--proxy socks5://127.0.0.1:1080` then reaches whatever the jump
+  host can reach — with **mutual TLS intact end to end**, because SOCKS relays bytes and never
+  terminates TLS, so the client certificate arrives at the real server. (An HTTP-inspecting proxy
+  cannot make that promise; it is the difference this scheme exists for.) The transport layer
+  already knew how to speak SOCKS — the work was the validation gate that refused the scheme, the
+  documentation, and the proof: a loopback SOCKS5 server now fronts the mutual-TLS test server in
+  the suite, with the tunnel's own accept counter showing the bytes went through it and a bypass
+  rule shown still sending matching hosts around it. The refusal message for an unsupported scheme
+  now names what is accepted.
 
 ### Fixed
 - **Every redirect hop in an exported HTTP Archive claimed to have taken no time at all.** The
@@ -1767,7 +1780,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.71.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.72.0...HEAD
+[1.72.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.71.0...v1.72.0
 [1.71.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.70.0...v1.71.0
 [1.70.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.69.0...v1.70.0
 [1.69.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.68.0...v1.69.0
