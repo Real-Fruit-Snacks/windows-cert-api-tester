@@ -118,10 +118,14 @@ public static class HarWriter
             var (_, rawQuery) = QueryString.Split(hop.From);
             var queryString = QueryString.Parse(rawQuery).Select(q => new HarNameValue(q.Key, q.Value)).ToList();
 
+            // A hop's own duration, not zero: every HAR viewer renders `time` as a bar, and a zero
+            // draws a redirect that took real time as instant — the one place a reader looks to
+            // find out that a chain of hops, not the destination, is what made a request slow.
+            double hopMs = hop.Elapsed.TotalMilliseconds;
             entries.Add(new HarEntry
             {
                 StartedDateTime = DateTimeOffset.UtcNow,
-                Time = 0,
+                Time = hopMs,
                 Request = new HarRequest
                 {
                     Method = request.Method.Method,
@@ -140,7 +144,10 @@ public static class HarWriter
                     Content = new HarContent { Size = 0 },
                     RedirectUrl = hop.To
                 },
-                Timings = new HarTimings { Wait = 0, Send = -1, Receive = -1 },
+                // -1 is HAR's own "not applicable", which is the truth for send/receive here; wait
+                // carries the measured time. An unmeasured hop (Elapsed default) still reports -1
+                // rather than claiming zero.
+                Timings = new HarTimings { Wait = hopMs > 0 ? hopMs : -1, Send = -1, Receive = -1 },
                 Certapi = null
             });
         }

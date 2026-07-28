@@ -51,6 +51,26 @@ follows. When those disagree, the command says so, and you have your explanation
 A PAC script is JavaScript, so nothing can predict its answer by reading configuration alone;
 this runs the real engine rather than guessing.
 
+## "It's slow" — reading the timings
+
+Three different measurements answer three different questions, and mixing them up wastes an
+afternoon:
+
+- **`certapi doctor <url>`** times each *stage* of one fresh connection — DNS, TCP, the proxy
+  tunnel, the TLS handshake, the first byte. This is the one that tells you *where* the time
+  goes. A slow TLS stage with fast everything else usually means revocation checking reaching for
+  a network endpoint; a slow DNS stage means a resolver problem, not an API problem.
+- **A redirect chain** is timed per hop (`--show-redirects`, and in the HTTP Archive (HAR) export).
+  A request that "takes two seconds" is often four hops of five hundred milliseconds, and the
+  destination is innocent.
+- **`certapi bench`** measures a *warm* endpoint under load, which is the number to quote for
+  throughput — it deliberately reuses connections.
+
+`certapi send` reports one total elapsed time and no phase breakdown, on purpose: connections are
+pooled, so a second request to the same host has no DNS lookup, no TCP connect, and no handshake
+to measure. Printing zeros for those would suggest they were instant rather than absent. Use
+`doctor` when you want the breakdown.
+
 ## Self-test
 
 Before blaming an endpoint, prove your machine can do mTLS at all:

@@ -6,7 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.70.0] - 2026-07-28
+## [1.71.0] - 2026-07-28
+
+### Fixed
+- **Every redirect hop in an exported HTTP Archive claimed to have taken no time at all.** The
+  hop entries were written with `time: 0` and `timings.wait: 0`, and every HAR viewer draws that
+  as an instant bar — which hides the exact thing the export is useful for: a request that takes
+  two seconds because it is four hops of five hundred milliseconds, not because the destination
+  is slow. Each hop is now measured on its own and carries its real time; a hop that genuinely
+  was not measured reports `-1`, which is HAR's own spelling of "not applicable", rather than
+  claiming zero.
+- **The redirect chain printed by `--show-redirects` now names each hop's duration** — the same
+  measurement, where a person reads it rather than a tool. A hop with no measurement prints no
+  duration instead of "0 ms".
+
+### Changed
+- **Documented how to read the three different timings this product reports**, because they
+  answer three different questions: `doctor` times the stages of one fresh connection (where the
+  time goes), a redirect chain is timed per hop (whether the hops are the problem), and `bench`
+  measures a warm endpoint under load (what to quote for throughput). The troubleshooting page
+  also now says plainly why `send` reports one total and no breakdown: its connections are
+  pooled, so a second request has no lookup, connect, or handshake left to measure, and printing
+  zeros would suggest those were instant rather than absent.
 
 ### Added
 - **`certapi proxy [<url>]` — which proxy do I actually get?** It prints how this machine is
@@ -1746,7 +1767,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.70.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.71.0...HEAD
+[1.71.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.70.0...v1.71.0
 [1.70.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.69.0...v1.70.0
 [1.69.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.68.0...v1.69.0
 [1.68.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.67.0...v1.68.0

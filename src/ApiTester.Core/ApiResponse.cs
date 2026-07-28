@@ -42,7 +42,13 @@ public sealed record RedirectHop(
     string From,
     string To,
     bool AuthorizationDropped,
-    bool SchemeDowngrade);
+    bool SchemeDowngrade)
+{
+    /// <summary>How long this hop itself took — the request that answered with the 3xx, not the
+    /// whole chain. Default zero keeps every existing construction site compiling and truthful
+    /// (an unmeasured hop claims nothing); <see cref="ApiClient"/> sets it for real.</summary>
+    public TimeSpan Elapsed { get; init; }
+}
 
 public sealed record ApiResponse
 {

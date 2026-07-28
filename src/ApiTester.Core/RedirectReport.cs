@@ -9,6 +9,8 @@ public static class RedirectReport
     public static string Lines(IReadOnlyList<RedirectHop> hops) =>
         string.Join("\n", hops.Select(h =>
             $"  {h.StatusCode} {h.From} -> {h.To}"
+            // Only when it was measured: a zero would be a claim, and an unmeasured hop makes none.
+            + (h.Elapsed > TimeSpan.Zero ? $"  ({h.Elapsed.TotalMilliseconds:F0} ms)" : "")
             + (h.AuthorizationDropped ? "  (authorization dropped)" : "")
             + (h.SchemeDowngrade ? "  (scheme downgrade)" : "")));
 }

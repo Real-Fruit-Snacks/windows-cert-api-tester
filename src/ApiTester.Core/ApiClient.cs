@@ -338,6 +338,10 @@ public sealed class ApiClient : IDisposable
             {
                 var hopUri = new Uri(currentUrl);
                 visitedOrigins.Add(OriginKey(hopUri));
+                // Where THIS hop began, so a recorded redirect can carry its own duration rather
+                // than the whole chain's. A HAR entry with a zero here reads as "instant" in every
+                // viewer, which is a lie about a hop that took real time.
+                var hopStarted = stopwatch.Elapsed;
 
                 using var message = BuildMessage(
                     request, transport, currentUrl, currentMethod, sentHeaders, sendBody);
@@ -400,7 +404,8 @@ public sealed class ApiClient : IDisposable
 
                     hops.Add(new RedirectHop(
                         (int)response.StatusCode, currentUrl, target.ToString(),
-                        crossOrigin && carriedAuthorization, schemeDowngrade));
+                        crossOrigin && carriedAuthorization, schemeDowngrade)
+                    { Elapsed = stopwatch.Elapsed - hopStarted });
 
                     // .NET strips Authorization on its own cross-origin redirects; match that, but
                     // having recorded it, so a 401 from the new origin is explicable.
