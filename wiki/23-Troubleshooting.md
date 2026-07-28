@@ -2,6 +2,38 @@
 
 Common problems and how to diagnose them.
 
+## Start here: `certapi doctor`
+
+When something won't connect and you don't yet know why, ask the doctor before reading anything
+else on this page:
+
+```powershell
+certapi doctor https://api.example.com/health --cert "CN=My Client"
+```
+
+It makes the connection one stage at a time — URL, proxy decision, DNS (domain name system), TCP
+(Transmission Control Protocol), the proxy tunnel, the TLS (Transport Layer Security) handshake,
+then an HTTP (Hypertext Transfer Protocol) GET — and tells you **which stage broke**, with what it
+saw at each. Every stage is timed, so "slow" is diagnosable too.
+
+Four things it can tell you that an ordinary request never will:
+
+- **Which certificate authorities the server accepts client certificates from**, matched against
+  the certificates you actually have. "The server accepts certificates from `CN=Corp Issuing CA 2`
+  — none of your 3 certificates are issued by any of those" answers the most common mTLS mystery
+  in one line, and it is information only visible during a handshake.
+- **Whether this network is decrypting TLS in the middle.** If the chain's root is an inspection
+  appliance (or a private root this machine happens to trust), doctor says so — and says why it
+  matters: a client certificate cannot survive an intercepting proxy.
+- **Which proxy the machine picks for this URL**, including one chosen by a PAC (proxy
+  auto-config) script, plus what the proxy said if it refused the tunnel — including the
+  authentication schemes it offered on a 407.
+- **Whether the internet is reachable at all**, or a captive portal (hotel or guest Wi-Fi
+  sign-in page) is in the way, or the host simply needs the VPN (virtual private network).
+
+`--json` prints the whole report for scripts; `-q` shows only what failed or carries advice.
+Exit 0 when every stage passed, 1 when one failed.
+
 ## Self-test
 
 Before blaming an endpoint, prove your machine can do mTLS at all:

@@ -25,6 +25,7 @@ Usage: certapi <command> [options]
 | [`export`](#export) | Export collections as OpenAPI, or the whole workspace |
 | [`serve <upstream>`](#serve) | Run a local mTLS gateway that forwards to an upstream |
 | [`grpc`](#grpc) | Discover and call a gRPC service (unary, server-, client-, or bidirectional-streaming) |
+| [`doctor <url>`](#doctor) | Diagnose a connection stage by stage — why can't I reach this? |
 | [`mcp`](#mcp) | Run an MCP (Model Context Protocol) server so AI (artificial intelligence) agents can make mTLS calls |
 | `help [command]` | Show help |
 
@@ -375,6 +376,22 @@ the client-certificate path end to end.
 - `certapi export workspace -o <file> [--workspace <file>] [--include-secrets]` — secrets (captured
   tokens/cookies, saved auth values, secret variables) are stripped by default; `--include-secrets`
   keeps them, written encrypted for the current Windows user.
+
+## doctor
+
+`certapi doctor <url> [options]` — diagnose a connection stage by stage (see
+[Troubleshooting](23-Troubleshooting.md)).
+
+- Stages, in order and each timed: URL → proxy decision → DNS → TCP → proxy tunnel (`CONNECT`)
+  → TLS handshake → HTTP GET. Reports the stage that broke rather than one error line
+- Reports what an ordinary request cannot: the certificate authorities the server accepts client
+  certificates from (matched against the ones you have), TLS-interception evidence, the proxy
+  actually chosen for this URL including a PAC result, and a 407's offered auth schemes
+- On a DNS or TCP failure, checks whether the internet is reachable at all and distinguishes a
+  captive portal from a host that needs the VPN
+- cert flags, `--json`, `-q`, and the same `--proxy`/`--noproxy`/`--revocation` flags as
+  [`send`](#send)
+- Exit 0 when every stage passed, 1 when one failed
 
 ## serve
 

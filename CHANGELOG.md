@@ -6,7 +6,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.68.0] - 2026-07-27
+## [1.69.0] - 2026-07-28
+
+### Added
+- **`certapi doctor <url>` — the answer to "why can't I reach this?"** It makes the connection one
+  stage at a time — URL, proxy decision, DNS, TCP, the proxy tunnel, the TLS handshake, then an
+  HTTP GET — and reports *the stage that broke*, with what it saw at each and how long each took,
+  instead of the single error line every other tool gives you. It deliberately owns the socket and
+  the TLS stream rather than going through the ordinary request pipeline, because that is the only
+  way to see four things worth more than any error message:
+  - **The certificate authorities the server accepts client certificates from, matched against the
+    certificates this machine actually has.** "The server accepts certificates from
+    `CN=Corp Issuing CA 2`; none of your 3 are issued by any of those" is the whole answer to the
+    most common mutual-TLS mystery, and it exists only inside a handshake — nothing else in this
+    product could report it. When the server asks for no client certificate at all, it says that
+    too, which is just as often the surprise.
+  - **Evidence that the network is decrypting TLS in the middle** — a chain rooted in a known
+    inspection product, or in a private root this machine happens to trust — worded as evidence
+    and never as a verdict, together with why it matters: a client certificate cannot survive an
+    intercepting proxy.
+  - **Which proxy this URL actually goes through**, including one chosen by a PAC script or WPAD,
+    why (explicit flag, bypass rule, or the system's own answer), and — when the proxy refuses the
+    tunnel — the authentication schemes it offered on its 407.
+  - **Whether anything is reachable at all**, when DNS or TCP fails: it distinguishes "no internet
+    at all" from "a captive portal answered — sign in to this Wi-Fi" from "the internet is fine, so
+    this host is either misspelled or needs the VPN".
+  `--json` prints the whole report for scripts, `-q` shows only what failed or carries advice, and
+  the exit code is 0 when every stage passed, 1 when one did not.
+
+### Fixed
+- **A defect found while building the above, before it ever shipped:** the first draft resolved the
+  target hostname before deciding on the proxy, which would have failed an internal hostname that
+  only the proxy can resolve — blaming DNS for a connection that would have worked. The proxy
+  decision now comes first, and DNS reports on whichever host is actually dialled, saying plainly
+  that the target is resolved by the proxy rather than here. A regression test pins it.
 
 ### Added
 - **`certapi import postman` reads a Postman Collection (v2.0/v2.1 export)** — the format most
@@ -1697,7 +1730,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.68.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.69.0...HEAD
+[1.69.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.68.0...v1.69.0
 [1.68.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.67.0...v1.68.0
 [1.67.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.1...v1.67.0
 [1.66.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.66.0...v1.66.1

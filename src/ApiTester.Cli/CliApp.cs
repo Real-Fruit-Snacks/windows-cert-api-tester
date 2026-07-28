@@ -44,6 +44,7 @@ public static class CliApp
           bench <url>       Measure an endpoint's latency under load (how fast is it?)
           sse <url>         Stream Server-Sent Events (text/event-stream)
           ws <url>          Open a WebSocket, send messages, print what arrives
+          doctor <url>      Diagnose a connection stage by stage (why can't I reach this?)
           certs             List client certificates
           selftest          Prove the mTLS path end-to-end against a loopback server
           mock              Run a local test server to fire requests at (http/tls/mtls)
@@ -151,6 +152,7 @@ public static class CliApp
                 "trust" => Commands.TrustCommand.Run(new Args(rest), stdout, err, services),
                 "serve" => Commands.ServeCommand.Run(new Args(rest), stdout, err, services),
                 "grpc" => Commands.GrpcCommand.Run(new Args(rest), TextReader.Null, stdout, err, services),
+                "doctor" => Commands.DoctorCommand.Run(new Args(rest), stdout, err, services),
                 _ => throw new CliUsageException($"Unknown command '{g.Remaining[0]}'.\n{Usage}")
             };
         }
@@ -188,6 +190,7 @@ public static class CliApp
             "serve" => Commands.ServeCommand.Help,
             "mcp" => Commands.McpCommand.Help,
             "grpc" => Commands.GrpcCommand.Help,
+            "doctor" => Commands.DoctorCommand.Help,
             _ => Usage
         });
         return ExitCodes.Ok;
