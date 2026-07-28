@@ -6,7 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.72.0] - 2026-07-28
+## [1.73.0] - 2026-07-28
+
+### Added
+- **`--http3` pins a request to HTTP/3 over QUIC**, beside `--http1.1` and `--http2` (the three
+  are mutually exclusive), and the desktop application's Transport tab gained the matching
+  option. Pinning stays exact: a server that cannot speak the pinned version fails loudly rather
+  than quietly downgrading — which is the point, since a gateway that behaves differently across
+  versions is otherwise very hard to catch in the act. Two boundaries are enforced up front with
+  messages that say why: HTTP/3 cannot go through a proxy (QUIC is UDP; the proxy protocols here
+  are TCP), and `--resolve` cannot re-point a QUIC dial. It needs an OS with msquic (Windows 11 /
+  Server 2022 or later). One honest limitation, stated in the code where it lives: an HTTP/3
+  send reports the server certificate as usual, but not the negotiated cipher — only the
+  hand-driven TCP path can observe that, and QUIC's handshake runs inside the handler.
+  The wire proof runs against an HTTP/3-**only** loopback server, so the pinned client passes
+  exactly when it really spoke QUIC, and a `--http2` control against the same server is shown to
+  fail loudly. The request editor's version drop-down grew a member, which tripped the round-trip
+  coverage gate built in v1.66.0 exactly as designed — the mapping had to be decided in both
+  directions before the suite would pass again.
 
 ### Added
 - **`--proxy` speaks SOCKS: `socks5://`, `socks4a://`, and `socks4://` are accepted everywhere the
@@ -1780,7 +1797,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.72.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.73.0...HEAD
+[1.73.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.72.0...v1.73.0
 [1.72.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.71.0...v1.72.0
 [1.71.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.70.0...v1.71.0
 [1.70.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.69.0...v1.70.0

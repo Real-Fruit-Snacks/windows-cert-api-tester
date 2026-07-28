@@ -629,10 +629,11 @@
                                         <ComboBoxItem>Automatic</ComboBoxItem>
                                         <ComboBoxItem>HTTP/1.1</ComboBoxItem>
                                         <ComboBoxItem>HTTP/2</ComboBoxItem>
+                                        <ComboBoxItem>HTTP/3</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <TextBlock FontSize="12" Foreground="{DynamicResource Text.Muted}" TextWrapping="Wrap" Margin="92,0,0,0"
-                                           Text="Pin a version when a gateway behaves differently on HTTP/1.1 and HTTP/2."/>
+                                           Text="Pin a version when a gateway behaves differently across them. HTTP/3 is QUIC (UDP): Windows 11 or Server 2022+, and it can't go through a proxy or a resolve pin."/>
                             </StackPanel>
                         </Border>
                         <!-- HonorRetryAfter deliberately has no control: it defaults to on, the command line does not

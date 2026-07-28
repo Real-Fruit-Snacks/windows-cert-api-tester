@@ -83,7 +83,7 @@ public sealed record RequestEditorState
         FollowRedirects = m.Transport.FollowRedirects,
         MaxRedirectsText = m.Transport.MaxRedirects.ToString(),
         Decompress = m.Transport.Decompress,
-        VersionIndex = m.Transport.Version switch { HttpVersionMode.Http11 => 1, HttpVersionMode.Http2 => 2, _ => 0 },
+        VersionIndex = m.Transport.Version switch { HttpVersionMode.Http11 => 1, HttpVersionMode.Http2 => 2, HttpVersionMode.Http3 => 3, _ => 0 },
         RetriesText = m.Transport.Retries.ToString(),
         RetryOnText = m.Transport.RetryOn ?? "",
         RetryDelayText = m.Transport.RetryDelayMs.ToString(),
@@ -138,7 +138,7 @@ public sealed record RequestEditorState
         m.Transport.FollowRedirects = FollowRedirects;
         m.Transport.MaxRedirects = ParseMaxRedirects(MaxRedirectsText);
         m.Transport.Decompress = Decompress;
-        m.Transport.Version = VersionIndex switch { 1 => HttpVersionMode.Http11, 2 => HttpVersionMode.Http2, _ => HttpVersionMode.Auto };
+        m.Transport.Version = VersionIndex switch { 1 => HttpVersionMode.Http11, 2 => HttpVersionMode.Http2, 3 => HttpVersionMode.Http3, _ => HttpVersionMode.Auto };
         m.Transport.Retries = ParseCount(RetriesText, fallback: 0, max: 20);
         // An emptied box has not said "never retry on status", it has said nothing — so fall back to
         // the default set, matching what TransportSettings.ToOptions() does for an unparseable string.

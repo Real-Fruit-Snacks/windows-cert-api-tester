@@ -250,6 +250,7 @@ public class RequestEditorStateTests
     [InlineData(HttpVersionMode.Auto, 0)]
     [InlineData(HttpVersionMode.Http11, 1)]
     [InlineData(HttpVersionMode.Http2, 2)]
+    [InlineData(HttpVersionMode.Http3, 3)]
     public void HttpVersionMode_round_trips_through_its_combo_index(HttpVersionMode mode, int expectedIndex)
     {
         var model = new RequestModel();
@@ -265,7 +266,9 @@ public class RequestEditorStateTests
     [Fact]
     public void Every_HttpVersionMode_member_is_wired_to_a_combo_index()
     {
-        Assert.Equal(3, Enum.GetValues<HttpVersionMode>().Length);
+        // Grew to 4 when HTTP/3 landed (v1.73.0) — the theory above gained its row and the
+        // window's combo gained its item in the same change, which is the whole point of this gate.
+        Assert.Equal(4, Enum.GetValues<HttpVersionMode>().Length);
     }
 
     [Fact]

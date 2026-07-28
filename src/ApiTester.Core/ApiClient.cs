@@ -185,12 +185,21 @@ public sealed class ApiClient : IDisposable
         var (disposition, bypassRule) = DecideProxy(request.Url, transport);
         bool viaProxy = disposition == ProxyDisposition.Proxied;
 
+        // HTTP/3 is QUIC over UDP: the direct path's hand-driven TLS-over-TCP ConnectCallback can
+        // never carry it, so an H3 send takes the handler-driven construction below (the proxied
+        // path's) with the proxy forced off — ValidateTransport has already refused any real
+        // proxy + --http3 combination, so forcing it off here changes nothing a user asked for.
+        // The cost, stated rather than hidden: an H3 send reports the server certificate (the
+        // SslOptions callback still runs under QUIC) but not the cipher or negotiated protocol,
+        // which only the hand-driven path can observe.
+        bool handlerDrivesTls = viaProxy || transport.Version is HttpVersionMode.Http3;
+
         // The two paths differ only in which handler answers the send, whether this call owns it
         // outright, and where its handshake diagnostics can be found. Everything else below — the
         // send/redirect/response loop, cookies, retries-of-hops, error classification — is written
         // once and runs the same for both, via that one difference.
         SendTransport sendTransport;
-        if (viaProxy)
+        if (handlerDrivesTls)
         {
             // Captured per call: this handler belongs to this one send alone, so a plain closure is
             // all the sharing it will ever need. Contrast the direct path's ConnectCallback, which is
@@ -248,7 +257,10 @@ public sealed class ApiClient : IDisposable
             }
 
             var handler = BuildCommonHandler(transport, request.WindowsAuth);
-            // Let the handler drive the proxy CONNECT + TLS; capture the server cert in the callback.
+            // An H3-direct send must never consult a proxy the validation already ruled out:
+            // QUIC cannot go through the TCP proxy protocols this product speaks.
+            if (!viaProxy) handler.UseProxy = false;
+            // Let the handler drive the tunnel/QUIC + TLS; capture the server cert in the callback.
             handler.SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate };
             RevocationCheck.Apply(handler.SslOptions, transport.Revocation);
             if (clientCertificate is not null)
@@ -790,6 +802,11 @@ public sealed class ApiClient : IDisposable
             message.Version = HttpVersion.Version20;
             message.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
         }
+        else if (transport.Version is HttpVersionMode.Http3)
+        {
+            message.Version = HttpVersion.Version30;
+            message.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
+        }
 
         foreach (var header in headers)
             message.Headers.TryAddWithoutValidation(header.Key, header.Value);
@@ -868,6 +885,14 @@ public sealed class ApiClient : IDisposable
 
         // There is no ConnectCallback on the proxied path, so a pinned address could only be
         // dropped on the floor — say so instead.
+        if (transport.Version is HttpVersionMode.Http3 && ProxyWillBeUsed(url, transport))
+            return "--http3 cannot go through a proxy: HTTP/3 is QUIC over UDP, and the proxy " +
+                   "protocols here (HTTP CONNECT, SOCKS) are TCP. Use --no-proxy, or drop the pin.";
+
+        if (transport.Version is HttpVersionMode.Http3 && transport.Resolve.Count > 0)
+            return "--resolve cannot be used with --http3: QUIC connects inside the handler, so " +
+                   "there is no dial this product could re-point.";
+
         if (transport.Resolve.Count > 0 && ProxyWillBeUsed(url, transport))
             return $"--resolve cannot be used together with a proxy (the connection is tunnelled " +
                    $"through {ProxyUriFor(url, transport) ?? "a proxy"}, so the address cannot be " +

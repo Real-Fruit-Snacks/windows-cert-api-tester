@@ -35,7 +35,11 @@ public enum HttpVersionMode
     /// <summary>Let the handler negotiate — the historical behavior.</summary>
     Auto,
     Http11,
-    Http2
+    Http2,
+    /// <summary>HTTP/3 over QUIC (UDP). Exact, like the others: a server that cannot speak it
+    /// fails loudly rather than downgrading. Cannot go through a proxy or a --resolve pin — the
+    /// proxy protocols here are TCP, and QUIC connects inside the handler.</summary>
+    Http3
 }
 
 /// <summary>Pin <paramref name="Host"/>:<paramref name="Port"/> to <paramref name="Address"/> so the

@@ -20,7 +20,9 @@ public static class TransportFlags
           --max-redirs <n>        Redirect limit (default 20)
           --show-redirects        Print the redirect hop chain to stderr
           --no-decompress         Relay compressed bytes exactly as received
-          --http1.1 / --http2     Pin the HTTP version
+          --http1.1 / --http2 / --http3   Pin the HTTP version. --http3 is QUIC (UDP): it needs
+                                  Windows 11 / Server 2022 or later, and cannot go through a
+                                  proxy or a --resolve pin
           --resolve <host:port:ip>  Pin a host to an address (repeatable; not valid with a proxy)
           --noproxy <list>        Hosts that bypass the proxy, comma-separated, NO_PROXY-style:
                                   internal.corp, .corp, *.corp, 10.0.0.0/8, or * for everything
@@ -64,6 +66,7 @@ public static class TransportFlags
         bool noDecompress = args.Flag("--no-decompress");
         bool http11 = args.Flag("--http1.1");
         bool http2 = args.Flag("--http2");
+        bool http3 = args.Flag("--http3");
         var resolveSpecs = args.Values("--resolve");
         string? noProxySpec = args.Value("--noproxy");
         showRedirects = args.Flag("--show-redirects");
@@ -100,8 +103,8 @@ public static class TransportFlags
             maxRedirects = n;
         }
 
-        if (http11 && http2)
-            throw new CliUsageException("--http1.1 and --http2 are mutually exclusive.");
+        if ((http11 ? 1 : 0) + (http2 ? 1 : 0) + (http3 ? 1 : 0) > 1)
+            throw new CliUsageException("--http1.1, --http2, and --http3 are mutually exclusive — pin one version.");
 
         var resolve = new List<ResolveOverride>();
         foreach (var raw in resolveSpecs) resolve.Add(ParseResolve(raw));
@@ -144,7 +147,7 @@ public static class TransportFlags
             FollowRedirects = noRedirect ? false : null,
             MaxRedirects = maxRedirects,
             Decompress = noDecompress ? false : null,
-            Version = http11 ? HttpVersionMode.Http11 : http2 ? HttpVersionMode.Http2 : null,
+            Version = http11 ? HttpVersionMode.Http11 : http2 ? HttpVersionMode.Http2 : http3 ? HttpVersionMode.Http3 : null,
             Resolve = resolve,
             NoProxy = noProxyRules,
             NoProxyFromEnvironment = noProxyFromEnvironment,
