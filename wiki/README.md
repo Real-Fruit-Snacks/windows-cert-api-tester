@@ -10,43 +10,18 @@ the complete guide to both.
 
 ## Contents
 
-### Getting started
-1. [Introduction](01-Introduction.md) — what it is and who it's for
-2. [Installation](02-Installation.md) — download, requirements, first run
-3. [Quick Start](03-Quick-Start.md) — your first request in two minutes
-4. [Core Concepts](04-Concepts.md) — certificates, mTLS, and the workspace model
-5. [The Interface](05-The-Interface.md) — a guided tour of the app
+**→ [Full table of contents](00-Table-of-Contents.md)** — every page, what is on it, and a way in
+by what you are trying to do.
 
-### Sending requests
-6. [Certificates & mTLS](06-Certificates-and-mTLS.md)
-7. [Building Requests](07-Building-Requests.md) — method, URL (Uniform Resource Locator), params, headers, body
-8. [Authentication](08-Authentication.md) — Auto, Bearer, Basic, OAuth 2.0, Windows Integrated
-9. [Environments & Variables](09-Environments-and-Variables.md)
-10. [Collections & History](10-Collections-and-History.md)
+The short version:
 
-### Beyond a single call
-11. [Testing & Assertions](11-Testing-and-Assertions.md)
-12. [Capturing Values](12-Capturing-Values.md)
-13. [Data-Driven Runs](13-Data-Driven-Runs.md)
-14. [Endpoint Discovery (fuzzing)](14-Endpoint-Discovery.md)
-15. [Live Streaming](15-Live-Streaming.md) — WebSocket & Server-Sent Events (SSE)
-16. [Response Views](16-Response-Views.md) — Pretty, Raw, Diagnostics, Rendered, Network
-- Also: [Session Capture](26-Session-Capture.md) — log in once in a browser, reuse the session (cookies + tokens)
-- Also: [Configuration](27-Configuration.md) — profiles that carry the tedious half of every command line
-
-### Tooling
-17. [Import & Export](17-Import-and-Export.md) — cURL and OpenAPI
-18. [Mock Server](18-Mock-Server.md) — a local endpoint to fire requests at
-19. [Local Gateway (`serve`)](19-Local-Gateway.md)
-20. [MCP Server](20-MCP-Server.md) — the Model Context Protocol server for AI (artificial
-    intelligence) agents
-21. [CLI Reference](21-CLI-Reference.md) — every `certapi` command-line interface (CLI) command
-
-### Reference
-22. [Keyboard Shortcuts](22-Keyboard-Shortcuts.md)
-23. [Troubleshooting](23-Troubleshooting.md)
-24. [FAQ](24-FAQ.md) — frequently asked questions
-25. [Building from Source](25-Building-from-Source.md)
+| | |
+|---|---|
+| **Getting started** | [Introduction](01-Introduction.md) · [Installation](02-Installation.md) · [Quick Start](03-Quick-Start.md) · [Core Concepts](04-Concepts.md) · [The Interface](05-The-Interface.md) |
+| **Sending requests** | [Certificates & mTLS](06-Certificates-and-mTLS.md) · [Building Requests](07-Building-Requests.md) · [Authentication](08-Authentication.md) · [Environments & Variables](09-Environments-and-Variables.md) · [Collections & History](10-Collections-and-History.md) |
+| **Beyond a single call** | [Testing & Assertions](11-Testing-and-Assertions.md) · [Capturing Values](12-Capturing-Values.md) · [Data-Driven Runs](13-Data-Driven-Runs.md) · [Endpoint Discovery](14-Endpoint-Discovery.md) · [Live Streaming](15-Live-Streaming.md) · [Response Views](16-Response-Views.md) · [Session Capture](26-Session-Capture.md) · [Configuration](27-Configuration.md) |
+| **Tooling** | [Import & Export](17-Import-and-Export.md) · [Mock Server](18-Mock-Server.md) · [Local Gateway](19-Local-Gateway.md) · [MCP Server](20-MCP-Server.md) · [CLI Reference](21-CLI-Reference.md) |
+| **Reference** | [Keyboard Shortcuts](22-Keyboard-Shortcuts.md) · [Troubleshooting](23-Troubleshooting.md) · [FAQ](24-FAQ.md) · [Building from Source](25-Building-from-Source.md) |
 
 ## At a glance
 

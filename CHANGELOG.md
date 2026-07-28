@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.90.2] - 2026-07-28
+
+### Added
+- **A table of contents as wiki page 00.** It sorts first in the folder, so it reads as the front
+  of the sequence rather than as a file below the numbered pages, and it lists **every** page with
+  a line on what is actually on it. It also adds a way in the handbook did not have: a **find it by
+  what you're trying to do** section — "it won't connect and I don't know why", "it works in my
+  browser but not here", "I need to see what actually went over the wire", "is it slow, and where"
+  — each pointing straight at the section that answers it.
+  `wiki/README.md` keeps the welcome and the at-a-glance table but no longer repeats the page list;
+  it links to page 00 instead, so there is one contents page rather than two that can drift.
+
+### Fixed
+- **The anchor rule in the new documentation guard was wrong**, which is the sort of error that
+  makes a test worse than useless: it reports correct links as broken. GitHub *drops* punctuation
+  from a heading rather than collapsing it, so `"It's slow" — reading the timings` keeps the spaces
+  either side of the dash and becomes `its-slow--reading-the-timings`, with a double hyphen. The
+  rule now matches, and the mistake was caught by the links it wrongly rejected.
+- Two pages — Session Capture and Configuration — had slipped into being parenthetical "also" notes
+  in the middle of the old index rather than entries in it. Both are now listed properly.
+
+### Changed
+- The gate now runs a **non-incremental** build for the warning check. An incremental one had been
+  reusing a cached compilation and reporting zero warnings for a file that actually had one — which
+  is a check that quietly stops checking.
+- **Two more documentation guards.** Anchors that point *into another page* are now checked, not
+  just anchors within a page — that link is the easiest to get wrong and the hardest to notice,
+  because the page opens and simply lands at the top. And the table of contents must list every
+  page in the wiki, which is what stops a page from quietly becoming undiscoverable. Both were
+  confirmed to fail when a link is broken and pass when it is not.
+
 ## [1.90.1] - 2026-07-28
 
 ### Fixed
@@ -2318,7 +2349,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.1...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.2...HEAD
+[1.90.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.1...v1.90.2
 [1.90.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.90.0...v1.90.1
 [1.90.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.89.0...v1.90.0
 [1.89.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.88.0...v1.89.0

@@ -33,10 +33,21 @@ public class DocsTests
         if (File.Exists(readme)) yield return readme;
     }
 
-    /// <summary>GitHub's heading-to-anchor rule, near enough for the headings this project uses:
-    /// lower-case, non-alphanumerics collapsed to hyphens, trimmed.</summary>
-    private static string Anchor(string heading) =>
-        Regex.Replace(heading.ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
+    /// <summary>GitHub's heading-to-anchor rule: lower-case, then **drop** every character that is
+    /// not a letter, digit, space or hyphen, then turn spaces into hyphens.
+    ///
+    /// <para>Dropping rather than collapsing is the part that matters, and getting it wrong the
+    /// other way produced false results here first. A heading like
+    /// <c>"It's slow" — reading the timings</c> loses its quotes, apostrophe and dash but keeps the
+    /// spaces that surrounded the dash, so the real anchor has a *double* hyphen:
+    /// <c>its-slow--reading-the-timings</c>. A rule that collapsed punctuation to one hyphen would
+    /// call the correct link broken.</para></summary>
+    private static string Anchor(string heading)
+    {
+        var kept = new string(heading.ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-').ToArray());
+        return kept.Replace(' ', '-');
+    }
 
     [Fact]
     public void Every_link_to_a_wiki_page_points_at_a_page_that_exists()
@@ -76,6 +87,57 @@ public class DocsTests
         }
 
         Assert.Empty(broken);
+    }
+
+    [Fact]
+    public void Every_anchor_into_another_page_points_at_a_heading_that_exists()
+    {
+        // A link into another page's section is the easiest kind to get wrong and the hardest to
+        // notice: the page opens, so it looks like it worked, and it silently lands at the top.
+        if (Root() is not { } root) return;
+
+        // Keyed on the wiki pages only: a cross-page anchor always targets a numbered page, and
+        // both the repository root and the wiki folder have a README.md, which would collide.
+        var headings = Directory.GetFiles(Path.Combine(root, "wiki"), "*.md").ToDictionary(
+            f => Path.GetFileName(f),
+            f => Regex.Matches(File.ReadAllText(f), @"^#{1,4} (.+)$", RegexOptions.Multiline)
+                      .Select(m => Anchor(m.Groups[1].Value)).ToHashSet(),
+            StringComparer.OrdinalIgnoreCase);
+
+        var broken = new List<string>();
+        foreach (var file in DocFiles(root))
+            foreach (Match match in Regex.Matches(File.ReadAllText(file),
+                                                  @"\]\((\d\d-[A-Za-z0-9-]+\.md)#([a-z0-9-]+)\)"))
+            {
+                string page = match.Groups[1].Value, anchor = match.Groups[2].Value;
+                if (!headings.TryGetValue(page, out var found) || !found.Contains(anchor))
+                    broken.Add($"{Path.GetFileName(file)} → {page}#{anchor}");
+            }
+
+        Assert.Empty(broken);
+    }
+
+    [Fact]
+    public void The_table_of_contents_lists_every_page()
+    {
+        // The contents page is the one thing that must never fall behind, because it is how a
+        // reader discovers a page exists at all. Two pages had already slipped into being
+        // parenthetical "also" notes in the old index; this makes that impossible to repeat.
+        if (Root() is not { } root) return;
+        string contents = Path.Combine(root, "wiki", "00-Table-of-Contents.md");
+        if (!File.Exists(contents)) return;
+
+        string text = File.ReadAllText(contents);
+        var missing = Directory.GetFiles(Path.Combine(root, "wiki"), "*.md")
+            .Select(Path.GetFileName)
+            .Where(name => name is not null
+                        && !name.StartsWith("00-", StringComparison.Ordinal)
+                        && !name.Equals("README.md", StringComparison.OrdinalIgnoreCase)
+                        && !text.Contains($"({name})", StringComparison.Ordinal)
+                        && !text.Contains($"({name}#", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Empty(missing);
     }
 
     [Fact]
