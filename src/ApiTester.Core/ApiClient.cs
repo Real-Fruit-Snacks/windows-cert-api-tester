@@ -24,6 +24,7 @@ public sealed class ApiClient : IDisposable
         TransportOptions? transport = null,
         Func<X509Certificate2?, bool>? trustServerCertificate = null,
         System.Net.CookieContainer? cookies = null,
+        WireLog? wireLog = null,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -38,7 +39,7 @@ public sealed class ApiClient : IDisposable
         {
             attempt++;
             var response = await SendOnceAsync(request, clientCertificate, transport,
-                                               trustServerCertificate, cookies, cancellationToken);
+                                               trustServerCertificate, cookies, wireLog, cancellationToken);
             if (!ShouldRetry(response, transport, request.Method, attempt, cancellationToken))
                 return response with { Attempts = attempt };
 
@@ -156,6 +157,7 @@ public sealed class ApiClient : IDisposable
         TransportOptions transport,
         Func<X509Certificate2?, bool>? trustServerCertificate,
         System.Net.CookieContainer? cookies,
+        WireLog? wireLog,
         CancellationToken cancellationToken)
     {
         // Set only by the proxied path's own Validate callback below. The shared direct-connection
@@ -274,6 +276,19 @@ public sealed class ApiClient : IDisposable
                 lookupHandshake: _ => new HandshakeInfo(
                     null, null, false, srvSubject, srvIssuer, srvThumb, srvNotAfter, chain, revocationStatus),
                 release: null);
+        }
+        else if (wireLog is not null)
+        {
+            // A wire log belongs to ONE send, and the direct handler is cached and shared by every
+            // send with the same key — so a tapped handler must never enter the cache, or one
+            // request's bytes would appear in another's transcript. This send owns its handler
+            // outright and disposes it, which also means it does not reuse a pooled connection:
+            // stated in the documentation, because that is a real (and for this purpose welcome)
+            // consequence — you see the handshake as well as the request.
+            var entry = CreateDirectHandlerEntry(
+                clientCertificate, transport, trustServerCertificate, request.WindowsAuth, wireLog);
+            sendTransport = new SendTransport(
+                entry.Handler, disposeHandler: true, lookupHandshake: entry.Lookup, release: null);
         }
         else
         {
@@ -637,11 +652,15 @@ public sealed class ApiClient : IDisposable
     /// certificate, the trust decision, the transport's TLS-relevant settings — is exactly what
     /// <see cref="HandlerKey"/> keys sharing on, so every call that ever reaches this handler already
     /// agrees on all of it.</summary>
+    /// <param name="wireLog">When supplied, the plaintext above the TLS stream is copied into it.
+    /// A handler built with one is never cached — see the call site — because a log belongs to a
+    /// single send.</param>
     private static HandlerEntry CreateDirectHandlerEntry(
         X509Certificate2? clientCertificate,
         TransportOptions transport,
         Func<X509Certificate2?, bool>? trustServerCertificate,
-        WindowsAuthOptions? windowsAuth)
+        WindowsAuthOptions? windowsAuth,
+        WireLog? wireLog = null)
     {
         var handler = BuildCommonHandler(transport, windowsAuth);
 
@@ -725,7 +744,12 @@ public sealed class ApiClient : IDisposable
                 return false;
             }
 
-            var ssl = new SslStream(network, leaveInnerStreamOpen: false, Validate);
+            // A tapped stream when a byte transcript was asked for, an ordinary one otherwise —
+            // and a SUBCLASS either way, because the handler decides whether to run its own TLS
+            // handshake by checking whether this is an SslStream. See TappedSslStream's remarks.
+            var ssl = wireLog is null
+                ? new SslStream(network, leaveInnerStreamOpen: false, Validate)
+                : new TappedSslStream(network, leaveInnerStreamOpen: false, Validate, wireLog);
             // TargetHost stays the requested hostname so SNI is unaffected by a --resolve override.
             var sslOptions = new SslClientAuthenticationOptions { TargetHost = context.DnsEndPoint.Host };
             RevocationCheck.Apply(sslOptions, transport.Revocation);

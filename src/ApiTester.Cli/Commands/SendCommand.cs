@@ -90,6 +90,13 @@ public static class SendCommand
                                   HAR file, written once when the command finishes
           --har-include-secrets   Don't redact Authorization/Proxy-Authorization/Cookie/
                                   Set-Cookie values in the captured HAR (redacted by default)
+          --wire                  Print the plaintext bytes of the exchange: the request as it was
+                                  actually framed and the response as it actually arrived, hex and
+                                  ASCII for anything that isn't text. Direct connections only —
+                                  through a proxy or on HTTP/3 the TLS belongs to the handler, and
+                                  it says so instead of printing nothing
+          --wire-file <path>      Write that transcript to a file instead of stdout
+          --wire-include-secrets  Keep credential header values in it (redacted by default)
 
         Global: --debug (verbose diagnostics) and --log-file <path> work here too.
 
@@ -191,6 +198,12 @@ public static class SendCommand
         var diffIgnoreHeaders = args.Values("--diff-ignore-header");
         string? harPath = args.Value("--har");
         bool harIncludeSecrets = args.Flag("--har-include-secrets");
+        bool wire = args.Flag("--wire");
+        string? wireFile = args.Value("--wire-file");
+        bool wireIncludeSecrets = args.Flag("--wire-include-secrets");
+        if (wireFile is not null) wire = true;
+        if (wireIncludeSecrets && !wire)
+            throw new CliUsageException("--wire-include-secrets only applies together with --wire.");
         // Resolve the certificate here (Windows store or a file) so its options are consumed
         // before Positionals() rejects anything option-shaped that's left over.
         var cert = CliCert.Resolve(args, store, services, stderr);
@@ -410,10 +423,29 @@ public static class SendCommand
             return SendToEveryAddress(request, cert, transport, cookieJar, showRedirects, fail, stdout, stderr, services,
                 trustCert, harPath, harIncludeSecrets, harVersion, quiet);
 
+        // The byte view works only where this product drives its own TLS: the direct path. A
+        // proxied send lets the handler own the tunnel's TLS, and HTTP/3 runs QUIC inside the
+        // handler — neither has a plaintext stream to tee. Saying so beats producing nothing.
+        WireLog? wireLog = null;
+        if (wire)
+        {
+            string? why = ApiClient.ProxyWillBeUsed(request.Url, transport)
+                ? "the request goes through a proxy, which owns the tunnel's TLS"
+                : transport.Version == HttpVersionMode.Http3
+                    ? "HTTP/3 runs QUIC inside the HTTP handler"
+                    : null;
+            if (why is not null)
+                stderr.WriteLine($"note: --wire cannot show the bytes here because {why}. " +
+                                 "The request is sent normally; use --trace for what the stack reports.");
+            else wireLog = new WireLog();
+        }
+
         var response = services.Client.SendAsync(request, cert,
             transport: transport,
             trustServerCertificate: trustCert,
-            cookies: cookieJar, cancellationToken: services.Cancel).GetAwaiter().GetResult();
+            cookies: cookieJar, wireLog: wireLog, cancellationToken: services.Cancel).GetAwaiter().GetResult();
+
+        if (wireLog is not null) WriteWire(wireLog, wireFile, wireIncludeSecrets, stdout, stderr);
         services.Log.Debug("result: " + (response.Error is null
             ? $"{response.StatusCode} {response.ReasonPhrase}".Trim()
             : $"[{response.Error.Kind}] {response.Error.Message}")
@@ -635,6 +667,21 @@ public static class SendCommand
     /// <summary>The creator version written into a captured HAR document — the same idiom as
     /// <c>certapi --version</c>: the assembly's informational version with any <c>+build</c>
     /// metadata stripped.</summary>
+    /// <summary>Write the byte transcript where it was asked for. To a file when named — a large
+    /// exchange is easier to read in an editor — and otherwise to stdout with the response, since
+    /// the transcript IS the output the user asked for.</summary>
+    private static void WriteWire(WireLog log, string? file, bool includeSecrets, TextWriter stdout, TextWriter stderr)
+    {
+        string rendered = log.Render(includeSecrets);
+        if (file is null) { stdout.Write(rendered); return; }
+        try
+        {
+            File.WriteAllText(file, rendered);
+            stderr.WriteLine($"wrote the wire transcript to {file}");
+        }
+        catch (Exception ex) { stderr.WriteLine("warning: could not write the wire transcript: " + ex.Message); }
+    }
+
     private static string HarCreatorVersion()
     {
         var version = Assembly.GetExecutingAssembly()

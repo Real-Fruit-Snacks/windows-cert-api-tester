@@ -6,7 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.84.0] - 2026-07-28
+## [1.85.0] - 2026-07-28
+
+### Added
+- **`certapi send --wire` prints the plaintext bytes of the exchange** — the request exactly as it
+  was framed on the wire and the response exactly as it arrived, after TLS and before any parsing,
+  with hex and ASCII side by side for anything that is not text. `--wire-file` writes the
+  transcript out instead of to stdout, and credential headers are redacted (the header name stays,
+  so you can still see it was sent) unless `--wire-include-secrets` is given.
+  **This is the one thing a packet capture cannot give you** for an encrypted connection without
+  its keys — and it needs no driver and no administrator rights, because the tool is one end of the
+  connection: the direct send path drives its own TLS stream, so the plaintext is simply available.
+  **Direct connections only**, and it says so rather than printing nothing: through a proxy the
+  tunnel's TLS belongs to the HTTP handler, and on HTTP/3 the QUIC session runs inside it, so
+  neither has a plaintext stream to read. Both cases print one explanatory line, send the request
+  normally, and point at `--trace`.
+  Two implementation facts worth recording, because both were found by the code failing rather
+  than by reading documentation:
+  - **The tap must be a subclass of the TLS stream, not a wrapper around it.** `SocketsHttpHandler`
+    skips its own TLS handshake only when the stream returned from its connect callback *is* an
+    `SslStream`; a pass-through wrapper broke that check, so the handler negotiated a second TLS
+    session inside the first and the request failed outright. The first version of this feature did
+    exactly that, and the byte transcript showed a `ClientHello` instead of HTTP — which is how it
+    was caught.
+  - **A tapped connection is never pooled.** The direct handler is cached and shared between sends,
+    so a tapped one must not enter that cache or one request's bytes would appear in another's
+    transcript. A `--wire` request therefore owns its connection and shows the handshake too.
 
 ### Added
 - **`--trace` reports what the network stack itself did**, on any command: DNS resolution, the TCP
@@ -2030,7 +2055,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.84.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.0...HEAD
+[1.85.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.84.0...v1.85.0
 [1.84.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.83.0...v1.84.0
 [1.83.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.82.0...v1.83.0
 [1.82.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.81.0...v1.82.0

@@ -108,6 +108,44 @@ handshakes. And it is not packet capture — capturing packets needs a kernel dr
 administrator rights, which this tool deliberately never requires. What it gives instead is the
 decrypted, structured account of connections a sniffer could not read anyway.
 
+## Seeing the actual bytes: `--wire`
+
+`--trace` reports what the stack *did*. `--wire` shows what it actually *sent and received* —
+after TLS, before any parsing:
+
+```powershell
+certapi send https://api.internal/orders --cert "CN=My Client" --wire
+```
+
+```
+>> sent 73 bytes at 80.7 ms
+   GET /orders HTTP/1.1
+   Host: api.internal
+   Accept-Encoding: gzip, deflate, br
+
+<< received 632 bytes at 103.5 ms
+   HTTP/1.1 200 OK
+   Content-Type: application/json
+   …
+```
+
+Anything that isn't text is shown as hex and ASCII side by side, so a binary body is still
+readable. `--wire-file <path>` writes the transcript out instead; credential headers are
+**redacted** (the header name stays, so you can still see it was sent) unless you pass
+`--wire-include-secrets`.
+
+**This is the thing a packet capture cannot give you.** On an encrypted connection a sniffer sees
+ciphertext; this is the decrypted conversation, and it needs no driver and no administrator
+rights, because the tool is one end of the connection.
+
+**Direct connections only.** Through a proxy, or on HTTP/3, the TLS session belongs to the HTTP
+handler rather than to this tool, so there is no plaintext stream to read. In those cases the
+command says so in one line and sends the request normally — it never prints nothing and leaves
+you guessing. Use `--trace` there instead.
+
+One consequence worth knowing: a request with `--wire` does not reuse a pooled connection (the
+tapped connection is not shared), so you see the handshake as well as the exchange.
+
 ## Self-test
 
 Before blaming an endpoint, prove your machine can do mTLS at all:

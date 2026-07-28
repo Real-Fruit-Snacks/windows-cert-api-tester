@@ -1,0 +1,201 @@
+using System.Text;
+
+namespace ApiTester.Core;
+
+/// <summary>Which side of the conversation a chunk of bytes belongs to.</summary>
+public enum WireDirection { Sent, Received }
+
+/// <summary>One chunk of plaintext as it crossed the wire, with when it happened.</summary>
+public sealed record WireChunk(TimeSpan At, WireDirection Direction, byte[] Bytes);
+
+/// <summary>Collects the plaintext bytes of a connection — what was really sent and really
+/// received, after TLS, before any parsing.
+/// <para>This is the one thing a packet capture cannot give you for an encrypted connection
+/// without its keys, and it costs no driver and no administrator rights: this product's direct
+/// send path hand-drives its own <see cref="System.Net.Security.SslStream"/>, so a tee inserted
+/// above it sees exactly what the HTTP layer wrote and read.</para>
+/// <para>Thread-safe: a connection's reads and writes can overlap.</para></summary>
+public sealed class WireLog
+{
+    private readonly object _gate = new();
+    private readonly List<WireChunk> _chunks = new();
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private readonly long _limit;
+    private long _captured;
+
+    /// <param name="limitBytes">Stop collecting after this much, so a large download does not
+    /// become a memory problem. The report says plainly when it stopped rather than pretending
+    /// the conversation ended.</param>
+    public WireLog(long limitBytes = 1024 * 1024) => _limit = limitBytes;
+
+    public bool Truncated { get; private set; }
+
+    public IReadOnlyList<WireChunk> Chunks { get { lock (_gate) return _chunks.ToArray(); } }
+
+    public void Record(WireDirection direction, ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length == 0) return;
+        lock (_gate)
+        {
+            if (_captured >= _limit) { Truncated = true; return; }
+            int take = (int)Math.Min(bytes.Length, _limit - _captured);
+            if (take < bytes.Length) Truncated = true;
+            _chunks.Add(new WireChunk(_clock.Elapsed, direction, bytes[..take].ToArray()));
+            _captured += take;
+        }
+    }
+
+    /// <summary>The conversation as text, one direction-marked block per chunk. A block that is
+    /// not valid text is rendered as hex and ASCII side by side, the way any byte viewer does —
+    /// a body is often a mixture, and guessing wrong in either direction loses information.</summary>
+    public string Render(bool includeSecrets = false)
+    {
+        var sb = new StringBuilder();
+        foreach (var chunk in Chunks)
+        {
+            string arrow = chunk.Direction == WireDirection.Sent ? ">>" : "<<";
+            sb.Append(arrow).Append(' ')
+              .Append(chunk.Direction == WireDirection.Sent ? "sent" : "received").Append(' ')
+              .Append(chunk.Bytes.Length).Append(" bytes at ")
+              .Append(chunk.At.TotalMilliseconds.ToString("F1")).AppendLine(" ms");
+
+            if (LooksTextual(chunk.Bytes))
+            {
+                string text = Encoding.UTF8.GetString(chunk.Bytes);
+                if (!includeSecrets) text = RedactHeaders(text);
+                foreach (var line in text.Replace("\r\n", "\n").Split('\n'))
+                    sb.Append("   ").AppendLine(line);
+            }
+            else
+            {
+                sb.Append(Hex(chunk.Bytes));
+            }
+            sb.AppendLine();
+        }
+        if (Truncated) sb.AppendLine("… truncated: the capture limit was reached (--wire-file keeps more).");
+        return sb.ToString();
+    }
+
+    /// <summary>Whether a chunk is worth showing as text: mostly printable, no NUL bytes. A
+    /// heuristic, deliberately — HTTP/1.1 headers are text, an HTTP/2 frame is not, and a body may
+    /// be either.</summary>
+    internal static bool LooksTextual(ReadOnlySpan<byte> bytes)
+    {
+        int printable = 0;
+        foreach (byte b in bytes)
+        {
+            if (b == 0) return false;
+            if (b is >= 0x20 and < 0x7f or (byte)'\r' or (byte)'\n' or (byte)'\t') printable++;
+        }
+        return printable >= bytes.Length * 0.85;
+    }
+
+    /// <summary>Hex and ASCII side by side, sixteen bytes to a line.</summary>
+    internal static string Hex(ReadOnlySpan<byte> bytes)
+    {
+        var sb = new StringBuilder();
+        for (int offset = 0; offset < bytes.Length; offset += 16)
+        {
+            int count = Math.Min(16, bytes.Length - offset);
+            sb.Append("   ").Append(offset.ToString("x8")).Append("  ");
+            for (int i = 0; i < 16; i++)
+            {
+                sb.Append(i < count ? bytes[offset + i].ToString("x2") : "  ").Append(' ');
+                if (i == 7) sb.Append(' ');
+            }
+            sb.Append(" |");
+            for (int i = 0; i < count; i++)
+            {
+                byte b = bytes[offset + i];
+                sb.Append(b is >= 0x20 and < 0x7f ? (char)b : '.');
+            }
+            sb.AppendLine("|");
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Blank the value of a credential-bearing header while keeping the header's name, so
+    /// the transcript still shows that it was sent. A wire log is pasted into tickets; this
+    /// feature must not be how a token escapes.</summary>
+    internal static string RedactHeaders(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        foreach (var line in text.Split('\n'))
+        {
+            int colon = line.IndexOf(':');
+            if (colon > 0 && IsSecretHeader(line[..colon].Trim()))
+            {
+                sb.Append(line[..(colon + 1)]).Append(" (redacted)");
+                if (line.EndsWith('\r')) sb.Append('\r');
+            }
+            else sb.Append(line);
+            sb.Append('\n');
+        }
+        return sb.ToString().TrimEnd('\n');
+    }
+
+    private static readonly string[] SecretHeaders =
+        { "Authorization", "Proxy-Authorization", "Cookie", "Set-Cookie" };
+
+    private static bool IsSecretHeader(string name) =>
+        SecretHeaders.Contains(name, StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>An <see cref="System.Net.Security.SslStream"/> that also copies the plaintext crossing
+/// it into a <see cref="WireLog"/> — what the HTTP layer wrote, and what it read back, after
+/// encryption and decryption.
+/// <para><b>Why a subclass rather than a wrapper.</b> The obvious design — a pass-through stream
+/// wrapped around the TLS stream — silently breaks the request. <c>SocketsHttpHandler</c> skips
+/// its own TLS handshake only when the stream its <c>ConnectCallback</c> returns actually IS an
+/// <see cref="System.Net.Security.SslStream"/>; hand it anything else and it negotiates a second
+/// TLS session inside the first, which the server cannot parse. Subclassing keeps that type
+/// identity, so the handler still recognises the connection as already secured while every byte
+/// still passes through here.</para></summary>
+public sealed class TappedSslStream : System.Net.Security.SslStream
+{
+    private readonly WireLog _log;
+
+    public TappedSslStream(Stream innerStream, bool leaveInnerStreamOpen,
+                           System.Net.Security.RemoteCertificateValidationCallback? validationCallback,
+                           WireLog log)
+        : base(innerStream, leaveInnerStreamOpen, validationCallback) => _log = log;
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        int read = base.Read(buffer, offset, count);
+        if (read > 0) _log.Record(WireDirection.Received, buffer.AsSpan(offset, read));
+        return read;
+    }
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+    {
+        int read = await base.ReadAsync(buffer, ct);
+        if (read > 0) _log.Record(WireDirection.Received, buffer.Span[..read]);
+        return read;
+    }
+
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+    {
+        int read = await base.ReadAsync(buffer, offset, count, ct);
+        if (read > 0) _log.Record(WireDirection.Received, buffer.AsSpan(offset, read));
+        return read;
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        _log.Record(WireDirection.Sent, buffer.AsSpan(offset, count));
+        base.Write(buffer, offset, count);
+    }
+
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+    {
+        _log.Record(WireDirection.Sent, buffer.Span);
+        return base.WriteAsync(buffer, ct);
+    }
+
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+    {
+        _log.Record(WireDirection.Sent, buffer.AsSpan(offset, count));
+        return base.WriteAsync(buffer, offset, count, ct);
+    }
+}
