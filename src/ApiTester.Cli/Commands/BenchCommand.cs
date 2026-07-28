@@ -27,6 +27,10 @@ public static class BenchCommand
                                   figures describe a warmed-up endpoint. Warm-up requests are
                                   extra — they do not come out of --count.
           --bench-retries         Let the retry flags below apply during the bench (off by default)
+          --pool                  Also report the connections this run actually used: how many
+                                  were opened and how many requests each served. Turns the note
+                                  below into a measurement — a server answering 'Connection:
+                                  close' makes every request pay a fresh handshake
 
         Request:
           -X, --method <m>        HTTP method (default GET)
@@ -112,6 +116,7 @@ public static class BenchCommand
     {
         // ---- bind options ----
         // Every option is consumed before Positionals(), which rejects anything option-shaped left over.
+        bool pool = args.Flag("--pool");
         string? countRaw = args.Value("-n", "--count");
         string? concurrencyRaw = args.Value("-c", "--concurrency");
         string? durationRaw = args.Value("--duration");
@@ -277,6 +282,12 @@ public static class BenchCommand
         string host = TokenService.HostOf(request.Url);
         var options = new BenchOptions(count, concurrency, duration, warmUp);
 
+        // The note this command has always printed — "connections are pooled and reused" — is a
+        // claim about what happened. --pool measures it rather than asserting it, which matters
+        // because a server sending 'Connection: close' silently turns every request into a fresh
+        // handshake, and that dominates the very latency this command exists to report.
+        using var inspector = pool ? new ConnectionInspector() : null;
+
         services.Log.Debug($"bench {request.Method} {request.Url}"
             + (savedPath is null ? "" : $" ({savedPath})"));
         services.Log.Debug(duration is { } d
@@ -294,6 +305,15 @@ public static class BenchCommand
 
         if (json) stdout.WriteLine(BuildEnvelope(result));
         else WriteReport(result, request, savedPath, options, stdout);
+
+        if (inspector is not null)
+        {
+            if (!json) stdout.WriteLine();
+            // Narrowed to the origin benched: the listener is process-wide, and this run had one target.
+            stdout.Write(Uri.TryCreate(request.Url, UriKind.Absolute, out var benched)
+                ? inspector.Render(ConnectionInspector.OriginOf(benched))
+                : inspector.Render());
+        }
 
         // A bench reports numbers rather than passing judgement: an endpoint that answers 503 every time
         // has still been measured, and its latencies still mean something, so a high failure rate exits 0.

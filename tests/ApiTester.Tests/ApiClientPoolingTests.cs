@@ -319,6 +319,14 @@ public class ApiClientPoolingTests
     // ~800ms this test takes when it passes, which is generous enough that the bound itself can never
     // become a flake, while still turning a 100-second silent stall into a 15-second one that fails
     // loudly with "The request timed out."
+    //
+    // FOR THE NEXT PERSON WHO SEES THIS STALL: `ConnectionInspector` (shipped in v1.87.0, and driven
+    // from the command line by `certapi connections`) answers, from the runtime's own events, what
+    // several of the investigations above had to infer — which connection each request went out on,
+    // whether it was newly opened or taken from the pool, and how many requests it had already
+    // served. Wrapping the sends below in one turns "was hypothesis (1), handler-cache eviction,
+    // actually happening?" from an argument into an observation. It is not wired in here on purpose:
+    // the stall does not currently reproduce, and instrumenting a passing test proves nothing.
     private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(15);
 
     [Fact]

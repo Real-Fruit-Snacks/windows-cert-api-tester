@@ -6,6 +6,50 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.87.0] - 2026-07-28
+
+### Added
+- **`certapi connections <url>` answers "am I actually reusing connections?"** — by making the
+  requests and reporting which connection each one went out on: the connections opened, their
+  origin, protocol version, peer address and when they opened, how many requests each served, and
+  then a plain verdict. Reusing a pooled connection skips a TCP handshake and a TLS handshake,
+  which against a remote endpoint is most of the time a small request takes — and whether it is
+  happening is otherwise invisible, because the responses look identical either way. `-n` sets how
+  many requests, `--parallel` sends several at a time (those genuinely need a connection each, and
+  the help says so, because the honest reading is requests against connections rather than
+  connections alone), and `--json` gives the same answer to a script. Certificate and transport
+  options work exactly as for `send`.
+- **`certapi bench --pool` measures the reuse that command has always asserted.** Bench prints a
+  note saying connections are pooled and reused; `--pool` reports what the run that just finished
+  actually did. This matters for reading the numbers: a server answering `Connection: close` makes
+  every request pay a fresh handshake, which dominates the latency the command exists to report.
+- The connection facts come from the runtime's own HTTP event source — no driver, no administrator
+  rights, no private API — and **the two things it cannot see are stated rather than glossed**: the
+  runtime emits no connection-closed event this can observe, so the report covers every connection
+  seen since the command started rather than a live count of open sockets; and it is process-wide,
+  so a server running in the same process would appear too.
+  Both facts it *does* rest on were established by probe rather than assumed, and the tests say so:
+  each request's event carries the identifier of the connection it went out on, and those
+  identifiers are unique across origins within a process (two origins were observed receiving 0 and
+  1, not 0 and 0 — had they collided, two connections would have merged into one wrong count).
+- The long-running pooling-stall investigation recorded in `ApiClientPoolingTests` now carries a
+  pointer to this: several of its eliminated hypotheses had to be argued from inference, and this
+  turns the central one — was the handler cache evicting? — into something directly observable. It
+  is deliberately not wired into that test, because the stall does not currently reproduce and
+  instrumenting a passing test proves nothing.
+
+- **The report is narrowed to the origin it was asked about.** The listener is process-wide by
+  nature, so anything else the process connected to would otherwise land in the middle of the
+  answer. Connections to other origins are still counted, in a closing line, so the narrowing hides
+  nothing.
+
+### Changed
+- **`send --diagnostics` did not gain pool fields, deliberately** — the design had planned for it,
+  but there is no such flag, and more to the point a single `send` runs in a fresh process where
+  nothing exists to reuse: the answer would have been "new connection, 1 request" every time.
+  Connection reuse only means something across several requests, which is why it lives in
+  `connections` and `bench --pool` instead.
+
 ## [1.86.0] - 2026-07-28
 
 ### Added
@@ -2157,7 +2201,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.86.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.87.0...HEAD
+[1.87.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.86.0...v1.87.0
 [1.86.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.1...v1.86.0
 [1.85.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.85.0...v1.85.1
 [1.85.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.84.0...v1.85.0

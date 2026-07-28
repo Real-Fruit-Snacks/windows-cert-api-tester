@@ -191,6 +191,42 @@ the byte view, unless `--wire-include-secrets` is given.
 For the header *contents*, the ordinary response output and `--diagnostics` already show them
 decoded; the frame view is for the framing.
 
+## "Am I actually reusing connections?" — `certapi connections`
+
+Reusing a pooled connection skips a TCP handshake and a TLS handshake. Against a remote endpoint
+that is most of the time a small request takes, so whether it happens dominates throughput — and it
+is normally invisible, because the responses look identical either way.
+
+```powershell
+certapi connections https://api.internal/orders --cert "CN=My Client" -n 10
+```
+
+```
+connection 0  https://api.internal:443  HTTP/1.1  opened at 84.2 ms  requests 10  last used at 611.9 ms  peer 10.4.2.9
+
+10 request(s) over 1 connection(s) to 1 origin(s).
+Connections are being reused, which is what you want.
+```
+
+More requests than connections means reuse is working. One connection per request means it is not,
+and the usual causes are a server answering `Connection: close`, a proxy in the way, or a fresh
+client per request. `--parallel <n>` sends several at a time — those genuinely need a connection
+each, so read requests against connections rather than counting connections alone. `--json` gives
+the same answer for a script.
+
+`certapi bench --pool` reports the same thing for a load run. Bench has always printed a note
+saying connections are pooled and reused; `--pool` measures it for the run that just happened,
+which matters because a server closing connections silently makes every request pay a handshake and
+changes what the latency figures mean.
+
+**How this is known, and its two limits.** It reads the runtime's own HTTP event source — no
+driver, no administrator rights, no private API. `ConnectionEstablished` gives a connection's
+identifier, origin, protocol version and peer address; each request reports the connection its
+headers went out on, and a reused connection produces no establishment event at all. The limits:
+the runtime emits no connection-closed event that this can see, so the report covers every
+connection *observed since the command started* rather than a live count of open sockets; and it is
+process-wide, so a `mock` or `serve` server running in the same process would appear too.
+
 ## "Can I decrypt certapi's traffic in Wireshark?" — no, and you don't need to
 
 The usual way to read encrypted traffic in Wireshark is a **key log file**: the application writes
