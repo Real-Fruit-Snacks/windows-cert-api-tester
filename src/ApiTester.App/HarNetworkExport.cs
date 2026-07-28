@@ -35,7 +35,7 @@ public static class HarNetworkExport
             Request = new HarRequest
             {
                 Method = entry.Method,
-                Url = entry.Url,
+                Url = HarWriter.RecordedUrl(entry.Url, includeSecrets),
                 Headers = requestHeaders,
                 QueryString = new List<HarNameValue>(),
                 PostData = null

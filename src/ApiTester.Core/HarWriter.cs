@@ -202,12 +202,15 @@ public static class HarWriter
     /// object is left as-is.</summary>
     /// <summary>A URL as it should be written into an archive: credentials in the query string and
     /// in a <c>user:password@host</c> prefix masked, unless the caller asked to keep them.
+    /// <para>Public because three different places build archives — a send, the gateway's recorder,
+    /// and the desktop application's network export — and a redaction rule that only one of them
+    /// applied is the shape of every leak found so far.</para>
     /// <para>One consequence, stated because it is a real trade: an archive replayed with
     /// <c>mock --har</c> or <c>serve --replay</c> matches on the recorded URL, so a request that is
     /// distinguished <em>only</em> by a secret query value can no longer be told apart from its
     /// sibling. That is what <c>--har-include-secrets</c> is for; the default stays "safe to hand
     /// to someone else", which is what an archive is usually for.</para></summary>
-    private static string RecordedUrl(string url, bool includeSecrets) =>
+    public static string RecordedUrl(string url, bool includeSecrets) =>
         includeSecrets ? url : MarkdownSecrets.RedactUrl(url);
 
     private static string RedactJsonBody(string body)

@@ -72,6 +72,35 @@ public class GatewayRecorderTests
     }
 
     [Fact]
+    public void A_credential_in_the_recorded_url_is_redacted_like_the_header_beside_it()
+    {
+        // `serve --record` exists to produce an archive that goes somewhere else — replayed
+        // offline, handed to a teammate. The Authorization header was redacted and the credential
+        // in the URL two lines away was not.
+        var recorder = new GatewayRecorder();
+        recorder.Record("GET", "http://h/x?api_key=url-secret&page=2", NoHeaders, Array.Empty<byte>(), null,
+            200, "OK", NoHeaders, Array.Empty<byte>(), 1.0);
+
+        var har = SaveAndReload(recorder, out string rawText);
+        var request = har.Log.Entries[0].Request;
+
+        Assert.DoesNotContain("url-secret", rawText);      // the file itself
+        Assert.Contains("api_key=REDACTED", request.Url);
+        Assert.Contains("page=2", request.Url);            // a harmless parameter survives
+        Assert.Equal("REDACTED", request.QueryString.Single(q => q.Name == "api_key").Value);
+    }
+
+    [Fact]
+    public void The_recorded_url_keeps_its_credential_when_secrets_are_kept()
+    {
+        var recorder = new GatewayRecorder(includeSecrets: true);
+        recorder.Record("GET", "http://h/x?api_key=url-secret", NoHeaders, Array.Empty<byte>(), null,
+            200, "OK", NoHeaders, Array.Empty<byte>(), 1.0);
+
+        Assert.Contains("api_key=url-secret", SaveAndReload(recorder).Log.Entries[0].Request.Url);
+    }
+
+    [Fact]
     public void Framing_headers_are_dropped_so_a_replay_never_re_frames_a_response()
     {
         var recorder = new GatewayRecorder();

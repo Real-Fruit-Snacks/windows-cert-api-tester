@@ -6,6 +6,37 @@ namespace ApiTester.Tests;
 public class HarNetworkExportTests
 {
     [Fact]
+    public void A_credential_in_the_exported_url_is_redacted()
+    {
+        // The app's "Export Network trace as HAR…" builds its entries itself rather than going
+        // through the send path's builder, so it needed the same rule applied rather than inherited.
+        var entry = new NetworkEntry
+        {
+            Method = "GET",
+            Url = "https://svc:hunter2@h/x?token=url-secret",
+            StatusCode = 200,
+            ElapsedMs = 12
+        };
+
+        string json = HarNetworkExport.ToHar(new[] { entry }, includeSecrets: false, creatorVersion: "1.0.0");
+
+        Assert.DoesNotContain("hunter2", json);
+        Assert.DoesNotContain("url-secret", json);
+        Assert.Contains("svc:REDACTED@", json);
+        Assert.Contains("token=REDACTED", json);
+    }
+
+    [Fact]
+    public void The_exported_url_is_untouched_when_secrets_are_kept()
+    {
+        var entry = new NetworkEntry { Method = "GET", Url = "https://h/x?token=url-secret", StatusCode = 200 };
+
+        string json = HarNetworkExport.ToHar(new[] { entry }, includeSecrets: true, creatorVersion: "1.0.0");
+
+        Assert.Contains("token=url-secret", json);
+    }
+
+    [Fact]
     public void ToHar_produces_an_honest_partial_when_only_metadata_was_kept()
     {
         var entry = new NetworkEntry

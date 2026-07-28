@@ -232,6 +232,30 @@ public class DocsTests
     }
 
     [Fact]
+    public void Every_place_that_builds_an_archive_entry_redacts_the_url_it_records()
+    {
+        // Three separate places build HAR entries — a send, the gateway's recorder, and the desktop
+        // application's network export — and each one leaked the credential in its URL until it was
+        // found individually. The shape of that bug is "a rule only some of the builders applied",
+        // so a fourth builder must not be able to repeat it silently.
+        if (Root() is not { } root) return;
+
+        var offenders = new List<string>();
+        foreach (var file in Directory.GetFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")) continue;
+            string text = File.ReadAllText(file);
+            if (!text.Contains("new HarRequest", StringComparison.Ordinal)) continue;
+
+            // Whoever builds a HarRequest must route its Url through the shared rule.
+            if (!text.Contains("RecordedUrl", StringComparison.Ordinal))
+                offenders.Add(Path.GetFileName(file));
+        }
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
     public void Every_command_file_is_accounted_for_by_the_option_check()
     {
         // Guards the guard: a new command file with no entry in CommandFiles would have its options

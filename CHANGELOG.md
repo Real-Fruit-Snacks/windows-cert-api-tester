@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.92.3] - 2026-07-28
+
+### Security
+- **The other two places that build archives leaked the same way 1.92.2 fixed.** `serve --record`
+  and the desktop application's **Export Network trace as HAR…** each construct their entries
+  directly rather than through the send path's builder, so each redacted its headers and wrote the
+  credential in the URL beside them — `?api_key=…` and `https://svc:pw@host/…` alike. Both now
+  apply the same rule, and `--record-include-secrets` (and the app's equivalent) still keep
+  everything.
+  `serve --record` is the worse of the two: it exists specifically to produce an archive that goes
+  somewhere else, replayed offline or handed to a teammate.
+
+### Added
+- **A test that stops a fourth archive builder repeating this.** The shape of the bug was never
+  "one place got it wrong" — it was "a rule only some of the places applied", found three times
+  over by inspecting each one individually. Anything that constructs a `HarRequest` must now route
+  its URL through the one shared redaction, and the check fails if a new builder does not.
+
 ## [1.92.2] - 2026-07-28
 
 ### Security
@@ -2511,7 +2529,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.2...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.3...HEAD
+[1.92.3]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.2...v1.92.3
 [1.92.2]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.1...v1.92.2
 [1.92.1]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.92.0...v1.92.1
 [1.92.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.91.2...v1.92.0

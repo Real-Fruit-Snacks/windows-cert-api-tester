@@ -30,7 +30,10 @@ public sealed class GatewayRecorder
         IReadOnlyList<KeyValuePair<string, string>> responseHeaders, byte[] responseBody,
         double elapsedMs)
     {
-        var (path, rawQuery) = SplitQuery(url);
+        // The recorded URL is redacted for the same reason the headers below are: this archive is
+        // written precisely so it can be replayed elsewhere or handed to someone.
+        string recordedUrl = HarWriter.RecordedUrl(url, _includeSecrets);
+        var (path, rawQuery) = SplitQuery(recordedUrl);
         var entry = new HarEntry
         {
             StartedDateTime = DateTimeOffset.UtcNow,
@@ -38,7 +41,7 @@ public sealed class GatewayRecorder
             Request = new HarRequest
             {
                 Method = method,
-                Url = url,
+                Url = recordedUrl,
                 Headers = Redact(requestHeaders),
                 QueryString = QueryString.Parse(rawQuery)
                     .Select(q => new HarNameValue(q.Key, q.Value)).ToList(),
