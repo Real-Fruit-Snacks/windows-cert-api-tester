@@ -84,13 +84,15 @@ public sealed class MockServer : IAsyncDisposable
     private readonly X509Certificate2? _serverCert;
     private readonly Action<MockRequestLog>? _onRequest;
     private readonly HarReplaySource? _replay;
+    private readonly MockScenario? _scenario;
     private bool _disposed;
 
     public string BaseUrl { get; }
     public int Port { get; }
 
     private MockServer(TcpListener listener, int port, MockTlsMode tls,
-        X509Certificate2? serverCert, Action<MockRequestLog>? onRequest, HarReplaySource? replay)
+        X509Certificate2? serverCert, Action<MockRequestLog>? onRequest, HarReplaySource? replay,
+        MockScenario? scenario)
     {
         _listener = listener;
         Port = port;
@@ -98,15 +100,20 @@ public sealed class MockServer : IAsyncDisposable
         _serverCert = serverCert;
         _onRequest = onRequest;
         _replay = replay;
+        _scenario = scenario;
         BaseUrl = $"{(tls == MockTlsMode.Http ? "http" : "https")}://127.0.0.1:{port}/";
         _acceptLoop = AcceptLoopAsync();
     }
 
     /// <summary>Start listening. <paramref name="port"/> 0 picks a free port (see <see cref="Port"/>).
-    /// A server certificate is required for HTTPS/mTLS. When <paramref name="replay"/> is supplied,
-    /// every request is answered from the recorded HAR session instead of the built-in routes.</summary>
+    /// A server certificate is required for HTTPS/mTLS.
+    /// <para>Three answering modes, tried in this order: a declared <paramref name="scenario"/>,
+    /// then a recorded <paramref name="replay"/> session, then the built-in echo routes. Supplying
+    /// both a scenario and a replay is deliberate and useful — the scenario states the handful of
+    /// routes you care about, and the recording covers everything else.</para></summary>
     public static MockServer Start(int port, MockTlsMode tls,
-        X509Certificate2? serverCert = null, Action<MockRequestLog>? onRequest = null, HarReplaySource? replay = null)
+        X509Certificate2? serverCert = null, Action<MockRequestLog>? onRequest = null,
+        HarReplaySource? replay = null, MockScenario? scenario = null)
     {
         if (tls != MockTlsMode.Http && serverCert is null)
             throw new ArgumentException("A server certificate is required for HTTPS/mTLS.", nameof(serverCert));
@@ -114,7 +121,7 @@ public sealed class MockServer : IAsyncDisposable
         var listener = new TcpListener(IPAddress.Loopback, port);
         listener.Start();
         int actualPort = ((IPEndPoint)listener.LocalEndpoint).Port;
-        return new MockServer(listener, actualPort, tls, serverCert, onRequest, replay);
+        return new MockServer(listener, actualPort, tls, serverCert, onRequest, replay, scenario);
     }
 
     private async Task AcceptLoopAsync()
@@ -176,6 +183,37 @@ public sealed class MockServer : IAsyncDisposable
                 await HandleWebSocketAsync(stream, headers, ct);
                 _onRequest?.Invoke(new(method, path, 101, clientCertSubject));
                 return;
+            }
+
+            // A declared scenario is consulted first: it states the routes someone deliberately
+            // wrote, which must win over both a recording and the built-in echo routes. A miss
+            // falls through — to the recording when there is one (scenario for what you care
+            // about, capture for the rest), and otherwise to the scenario's own fallback.
+            if (_scenario is not null)
+            {
+                var route = _scenario.Match(method, target, headers);
+                if (route is not null)
+                {
+                    await WriteMockResponseAsync(stream, route.Response, ct);
+                    _onRequest?.Invoke(new MockRequestLog(method, path, route.Response.Status, clientCertSubject)
+                    {
+                        Replay = "route"
+                    });
+                    return;
+                }
+                if (_replay is null)
+                {
+                    var fallback = _scenario.Fallback
+                        ?? new MockResponse(404, Array.Empty<KeyValuePair<string, string>>(),
+                            Encoding.UTF8.GetBytes("{\"server\":\"certapi mock\",\"scenario\":\"no route\"}"),
+                            "application/json");
+                    await WriteMockResponseAsync(stream, fallback, ct);
+                    _onRequest?.Invoke(new MockRequestLog(method, path, fallback.Status, clientCertSubject)
+                    {
+                        Replay = "no route"
+                    });
+                    return;
+                }
             }
 
             // Replay mode: the recorded HAR session is the whole surface — a miss answers
@@ -311,6 +349,26 @@ public sealed class MockServer : IAsyncDisposable
 
         await stream.WriteAsync(Encoding.ASCII.GetBytes(sb.ToString()), ct);
         await stream.WriteAsync(recorded.Body, ct);
+        await stream.FlushAsync(ct);
+    }
+
+    /// <summary>Write a declared scenario response. Mirrors <see cref="WriteRecordedAsync"/>,
+    /// including its defence against a header value that would inject a second response.</summary>
+    private static async Task WriteMockResponseAsync(Stream stream, MockResponse response, CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.Append("HTTP/1.1 ").Append(response.Status).Append(' ')
+          .Append(ReasonPhrase(response.Status)).Append("\r\n");
+        foreach (var h in response.Headers)
+        {
+            if (ContainsCrLf(h.Key) || ContainsCrLf(h.Value)) continue;
+            sb.Append(h.Key).Append(": ").Append(h.Value).Append("\r\n");
+        }
+        sb.Append("Content-Length: ").Append(response.Body.Length).Append("\r\n");
+        sb.Append("Connection: close\r\n\r\n");
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(sb.ToString()), ct);
+        await stream.WriteAsync(response.Body, ct);
         await stream.FlushAsync(ct);
     }
 

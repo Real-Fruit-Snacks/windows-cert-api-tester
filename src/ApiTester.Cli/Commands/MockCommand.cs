@@ -27,6 +27,12 @@ public static class MockCommand
           --mtls            HTTPS that also requires a client certificate (any cert is accepted)
           --cert-dir <dir>  Where to write generated certificates (default ./certapi-mock-certs)
           -q, --quiet       Don't log each request
+          --routes <file>   Serve the routes declared in a JSON scenario file instead of the
+                            built-in ones: each route says what it matches (method, path glob or
+                            regular expression, required query and headers) and what it answers
+                            (status, headers, inline body or bodyFile). Matched top to bottom,
+                            first match winning. With --har as well, a request the routes miss
+                            falls through to the recording
           --har <file>      Replay a captured HTTP Archive (HAR) instead of the built-in routes:
                             each request is answered with the recorded response for that method
                             and path (query included when it disambiguates), in recorded order
@@ -74,7 +80,24 @@ public static class MockCommand
         if (noMatchRaw is not null && (!int.TryParse(noMatchRaw, out noMatchStatus) || noMatchStatus is < 100 or > 599))
             throw new CliUsageException($"--no-match-status expects an HTTP status 100-599, got '{noMatchRaw}'.");
 
+        string? routesFile = args.Value("--routes");
+
         if (args.Positionals().Count > 0) throw new CliUsageException(Help);
+
+        MockScenario? scenario = null;
+        if (routesFile is not null)
+        {
+            if (!File.Exists(routesFile)) throw new CliDataException($"No such file: {routesFile}");
+            try
+            {
+                // Body files are resolved against the scenario's own folder, so a scenario and its
+                // bodies move together rather than depending on the working directory.
+                scenario = MockScenario.Parse(
+                    File.ReadAllText(routesFile), Path.GetDirectoryName(Path.GetFullPath(routesFile)));
+            }
+            catch (FormatException ex) { throw new CliDataException($"Could not parse '{routesFile}': {ex.Message}"); }
+            foreach (var warning in scenario.Warnings) stderr.WriteLine("warning: " + warning);
+        }
 
         HarReplaySource? replay = null;
         if (harFile is not null)
@@ -100,7 +123,7 @@ public static class MockCommand
         MockServer server;
         try
         {
-            server = MockServer.Start(port, mode, serverCert, onRequest, replay);
+            server = MockServer.Start(port, mode, serverCert, onRequest, replay, scenario);
         }
         catch (System.Net.Sockets.SocketException ex)
         {
@@ -110,6 +133,9 @@ public static class MockCommand
         }
 
         stderr.WriteLine($"certapi mock listening on {server.BaseUrl}  ({mode})");
+        if (scenario is not null)
+            stderr.WriteLine($"serving {scenario.Routes.Count} declared route(s) from {routesFile}" +
+                (replay is not null ? "; anything they miss falls through to the recording" : ""));
         if (replay is not null)
         {
             stderr.WriteLine($"replaying {replay.Count} recorded responses from {harFile}");

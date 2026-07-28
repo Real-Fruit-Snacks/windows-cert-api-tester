@@ -35,6 +35,54 @@ It runs until `Ctrl+C` and logs each request.
 | `/cookie-auth` | Sets a session cookie, then reports authenticated once you send it back — try it with [Session Capture](26-Session-Capture.md) |
 | *Upgrade: websocket* (any path) | A WebSocket echo — try it with `certapi ws` |
 
+## Declaring your own routes
+
+The built-in routes echo; `--routes` makes the mock answer like *your* API, without capturing a
+session first:
+
+```powershell
+certapi mock --routes .\orders.json --port 8770
+```
+
+```jsonc
+{
+  "routes": [
+    {
+      "match": {
+        "method": "GET",
+        "path": "/api/orders/*",              // * within a segment, ** across them
+        "query":   { "status": "open" },      // every pair listed must be present
+        "headers": { "Accept": "application/json" }
+      },
+      "respond": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "body": "{\"orders\":[]}"             // or "bodyFile": "orders.json"
+      }
+    },
+    { "match": { "pathRegex": "^/orders/[0-9]+$" }, "respond": { "status": 404 } }
+  ],
+  "fallback": { "status": 418, "body": "nothing declared for this" }
+}
+```
+
+Rules worth knowing:
+
+- **Top to bottom, first match wins** — so a narrow route written above a broad one shadows it
+  deliberately.
+- **A route says what it *requires*.** Extra query parameters and headers on the request do not
+  prevent a match.
+- **`bodyFile` is resolved against the scenario file's own folder**, so a scenario and its bodies
+  move together.
+- **Declared routes beat the built-in ones**, and a request matching none gets your `fallback`
+  (or a 404 saying no route matched).
+- **A route that cannot be used is dropped and named** — an uncompilable `pathRegex`, a missing
+  `respond`, a status outside 100–599 — rather than silently ignored. Comments and trailing
+  commas are allowed, because these files are written by hand.
+
+Combine it with `--har` when you want both: the declared routes cover what you care about, and a
+request they miss falls through to the recorded session.
+
 ## Modes and certificates
 
 - **`--http`** (default) — plain HTTP; hit it with anything (curl, a browser, the app), no

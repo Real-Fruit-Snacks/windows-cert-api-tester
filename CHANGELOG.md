@@ -6,7 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.79.0] - 2026-07-28
+## [1.80.0] - 2026-07-28
+
+### Added
+- **`certapi mock --routes <file>` makes the mock answer like *your* API.** Until now the mock
+  echoed, or replayed a session you had already captured; there was no way to simply declare "these
+  paths answer these bodies" and stand a fake backend up in a minute. A scenario file is a list of
+  routes, each saying what it matches — method, path as a glob (`*` within a segment, `**` across
+  them) or a regular expression, required query pairs and headers — and what it answers: status,
+  headers, and an inline `body` or a `bodyFile`.
+  Routes are matched **top to bottom, first match winning**, so a narrow route written above a
+  broad one shadows it deliberately. A route states what it *requires*, so extra query parameters
+  and headers on the request do not prevent a match. A `bodyFile` is resolved against the scenario
+  file's own folder, which keeps a scenario and its bodies portable as one unit. Declared routes
+  beat the built-in echo routes — they are what someone deliberately wrote — and a request matching
+  none gets the scenario's own `fallback`, or a 404 that says no route matched.
+  **A route that cannot be used is dropped and named**: an uncompilable `pathRegex`, a missing
+  `respond` block, a status outside 100–599, or an unreadable `bodyFile` (that last one still
+  answers, with an empty body, since the status is usually the point). Comments and trailing commas
+  are accepted, because these files are written by hand.
+  `--routes` and `--har` compose deliberately: the declared routes cover the handful of paths you
+  care about, and anything they miss falls through to the recorded session. A header value carrying
+  a newline cannot forge a second response, the same defence the replay path already had.
 
 ### Added
 - **Configuration files with named profiles, so a long command line becomes a short one.** A
@@ -1922,7 +1943,8 @@ Initial release.
 - Save any response (including binary) to a file.
 - Self-contained single-file executable — no installer, no admin rights, no runtime dependency.
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.79.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.80.0...HEAD
+[1.80.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.79.0...v1.80.0
 [1.79.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.78.0...v1.79.0
 [1.78.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.77.0...v1.78.0
 [1.77.0]: https://github.com/Real-Fruit-Snacks/windows-cert-api-tester/compare/v1.76.0...v1.77.0
